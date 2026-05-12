@@ -1,7 +1,7 @@
 {
   "name": "1688-cli",
-  "version": "0.1.13",
-  "description": "1688.com CLI for humans, Codex, and Claude Code — search, cart, orders, logistics, seller IM, fake-shipping detection.",
+  "version": "0.1.14",
+  "description": "1688.com CLI for humans, Codex, and Claude Code. Sourcing (search / image-search / offer / inquire) and orders (list / detail / logistics / seller chat).",
   "license": "MIT",
   "author": "nobodyjack",
   "homepage": "https://github.com/superjack2050/1688-cli#readme",

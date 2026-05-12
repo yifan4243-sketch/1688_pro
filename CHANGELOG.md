@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.14] - 2026-05-13
+
+### Changed
+- Description in `package.json` and the GitHub repo "About" updated to reflect
+  the actual core flow (sourcing + orders) instead of niche shortcuts.
+
 ## [0.1.13] - 2026-05-13
 
 ### Added
