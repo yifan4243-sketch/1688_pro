@@ -12,11 +12,19 @@ agents can drive it without parsing.
 
 ```bash
 npm i -g 1688-cli
-1688 login                                # scan QR with the 1688 app
-1688 search "机械键盘" --max 10
-1688 stuck                                # orders paid but not shipped > 3 days
-1688 fake-shipped                         # waybill printed but courier never collected
-1688 seller chat <orderId> "麻烦尽快发货谢谢"
+1688 login                                       # scan QR with the 1688 app
+
+# Sourcing
+1688 search "机械键盘" --max 10                   # keyword search
+1688 image-search ./sample.jpg                   # search by image
+1688 offer 628196518518                          # product detail (price / SKUs / seller)
+1688 seller inquire 628196518518 "支持定制 logo 吗？"   # pre-sale inquiry
+
+# Orders
+1688 order list --status waitsellersend          # list orders
+1688 order get   <orderId>                       # one order's detail
+1688 order logistics <orderId>                   # tracking + trace
+1688 seller chat <orderId> "麻烦尽快发货谢谢"      # post-sale inquiry (auto-attaches order card)
 ```
 
 ---

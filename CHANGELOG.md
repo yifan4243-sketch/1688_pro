@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.12] - 2026-05-13
+
+### Changed
+- README: showcase now highlights the actual core procurement flow
+  (search → image-search → offer → inquire → order list → order get →
+  logistics → post-sale chat), not the niche `stuck` / `fake-shipped`
+  shortcuts. Those remain in the Workflow shortcuts section.
+
 ## [0.1.11] - 2026-05-13
 
 ### Fixed
