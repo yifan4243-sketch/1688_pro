@@ -1,0 +1,18 @@
+// Per-command-type rate limiter + jittered minimum gap between operations.
+// Keeps daemon behavior from looking like a hammering bot.
+
+const lastInvokedAt = new Map<string, number>();
+const MIN_GAP_MS = 1200;
+const JITTER_MS = 1800;
+
+export async function throttle(cmd: string): Promise<void> {
+  const last = lastInvokedAt.get(cmd) ?? 0;
+  const minNextAt = last + MIN_GAP_MS;
+  const jitter = Math.floor(Math.random() * JITTER_MS);
+  const targetAt = minNextAt + jitter;
+  const wait = targetAt - Date.now();
+  if (wait > 0) {
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  lastInvokedAt.set(cmd, Date.now());
+}

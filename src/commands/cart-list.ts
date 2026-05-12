@@ -1,0 +1,273 @@
+import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
+import { dispatch } from '../session/dispatch.js';
+import { emit, info } from '../io/output.js';
+import { CliError } from '../io/errors.js';
+
+export interface CartListOpts {
+  profile?: string;
+  headed?: boolean;
+}
+
+export type CartListArgs = Record<string, never>;
+
+export interface CartItem {
+  cartId: string;
+  offerId: string;
+  skuId: string | null;
+  productTitle: string;
+  skuTitle: string | null;
+  unit: string | null;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  image: string | null;
+  checked: boolean;
+  effective: boolean;
+  addedAt: string | null;
+  seller: { sellerId: string; name: string | null; loginId: string | null };
+}
+
+export interface CartListResult {
+  total: number;
+  selectedCount: number;
+  items: CartItem[];
+}
+
+const CART_URL = 'https://cart.1688.com/';
+const RENDER_API_RE = /mtop\.1688\.buycenter\.mtoppurchaseastoreservice\.render/i;
+
+export async function execute(
+  ctx: BrowserContext,
+  _args: CartListArgs,
+): Promise<CartListResult> {
+  const page = await ctx.newPage();
+  let resolveCapture!: (v: unknown) => void;
+  const captured = new Promise<unknown>((r) => {
+    resolveCapture = r;
+  });
+
+  const onResp = async (resp: PWResponse) => {
+    if (!RENDER_API_RE.test(resp.url())) return;
+    try {
+      const text = await resp.text();
+      const parsed = parseMtop(text) as { data?: { model?: string } };
+      if (typeof parsed?.data?.model === 'string') {
+        resolveCapture(JSON.parse(parsed.data.model));
+      }
+    } catch {
+      /* ignore parse errors */
+    }
+  };
+  page.on('response', onResp);
+
+  info('Loading cart...');
+  try {
+    await page.goto(CART_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  } catch (e) {
+    throw new CliError(
+      9,
+      'NETWORK_ERROR',
+      `Failed to load cart page: ${(e as Error).message}`,
+    );
+  }
+  if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
+    throw new CliError(
+      3,
+      'NOT_LOGGED_IN',
+      'Session expired. Run `1688 login`.',
+    );
+  }
+
+  const model = await Promise.race([
+    captured,
+    new Promise<null>((res) => setTimeout(() => res(null), 25000)),
+  ]);
+  page.off('response', onResp);
+  await page.close().catch(() => {});
+
+  if (!model) {
+    throw new CliError(
+      11,
+      'NO_CART_DATA',
+      'Cart response was not captured. The page may have changed or been risk-controlled.',
+    );
+  }
+  return parseCart(model as RawModel);
+}
+
+function parseMtop(text: string): unknown {
+  const t = text.trim();
+  const m = t.match(/^\s*mtopjsonp\d+\(([\s\S]*)\)\s*$/);
+  return JSON.parse(m ? m[1]! : t);
+}
+
+interface RawModel {
+  data?: Record<string, RawComponent>;
+}
+
+interface RawComponent {
+  type?: string;
+  fields?: Record<string, unknown>;
+  events?: Record<
+    string,
+    { fields?: Record<string, unknown> }[]
+  >;
+}
+
+interface RawItemFields {
+  cartId?: number | string;
+  offerId?: number | string;
+  skuId?: number | string;
+  skuTitle?: string;
+  unit?: string;
+  quantity?: number;
+  unitPrice?: string;
+  unitPriceCent?: number;
+  amount?: string;
+  amountCent?: number;
+  minQuantity?: number;
+  maxQuantity?: number;
+  pic?: string;
+  checked?: boolean;
+  effective?: boolean;
+  addTime?: string;
+  sellerId?: number | string;
+}
+
+interface RawGroupFields {
+  offerId?: number | string;
+  title?: string;
+}
+
+interface RawShopFields {
+  sellerId?: number | string;
+  companyName?: string;
+  loginId?: string;
+}
+
+function parseCart(model: RawModel): CartListResult {
+  const data = model.data ?? {};
+  const items: CartItem[] = [];
+
+  // Build offerId → group (has title) and sellerId → shop maps
+  const groupsByOffer = new Map<string, RawGroupFields>();
+  const shopsBySeller = new Map<string, RawShopFields>();
+  for (const [k, comp] of Object.entries(data)) {
+    if (/^item_group_\d+$/.test(k)) {
+      const f = comp.fields as RawGroupFields | undefined;
+      if (f?.offerId !== undefined) groupsByOffer.set(String(f.offerId), f);
+    } else if (/^shop_top_\d+$/.test(k)) {
+      const f = comp.fields as RawShopFields | undefined;
+      if (f?.sellerId !== undefined) shopsBySeller.set(String(f.sellerId), f);
+    }
+  }
+
+  for (const [k, comp] of Object.entries(data)) {
+    if (!/^item_\d+$/.test(k)) continue;
+    const f = comp.fields as RawItemFields | undefined;
+    if (!f) continue;
+    const offerId = f.offerId !== undefined ? String(f.offerId) : '';
+    const sellerId = f.sellerId !== undefined ? String(f.sellerId) : '';
+    const group = groupsByOffer.get(offerId);
+    const shop = shopsBySeller.get(sellerId);
+    items.push({
+      cartId: f.cartId !== undefined ? String(f.cartId) : '',
+      offerId,
+      skuId: f.skuId !== undefined ? String(f.skuId) : null,
+      productTitle: group?.title ?? '',
+      skuTitle: f.skuTitle ?? null,
+      unit: f.unit ?? null,
+      quantity: f.quantity ?? 0,
+      unitPrice: parseFloatOrZero(f.unitPrice),
+      amount: parseFloatOrZero(f.amount),
+      minQuantity: f.minQuantity ?? null,
+      maxQuantity: f.maxQuantity ?? null,
+      image: normalizeImage(f.pic),
+      checked: f.checked ?? false,
+      effective: f.effective ?? true,
+      addedAt: f.addTime ?? null,
+      seller: {
+        sellerId,
+        name: shop?.companyName ?? null,
+        loginId: shop?.loginId ?? null,
+      },
+    });
+  }
+
+  // Sort by addedAt desc (newest first) when present
+  items.sort((a, b) => (a.addedAt && b.addedAt ? b.addedAt.localeCompare(a.addedAt) : 0));
+
+  return {
+    total: items.length,
+    selectedCount: items.filter((i) => i.checked).length,
+    items,
+  };
+}
+
+function parseFloatOrZero(s: string | number | undefined): number {
+  if (s === undefined) return 0;
+  const n = typeof s === 'string' ? parseFloat(s) : s;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeImage(pic: string | undefined): string | null {
+  if (!pic) return null;
+  if (pic.startsWith('//')) return 'https:' + pic;
+  return pic;
+}
+
+export async function run(opts: CartListOpts): Promise<void> {
+  const data = await dispatch<CartListArgs, CartListResult>(
+    'cart-list',
+    {},
+    { headed: opts.headed, profile: opts.profile },
+  );
+  emit({
+    human: () => printCart(data),
+    data,
+  });
+}
+
+function printCart(r: CartListResult): void {
+  if (r.items.length === 0) {
+    process.stdout.write('Cart is empty.\n');
+    return;
+  }
+  process.stdout.write(
+    `Cart: ${r.total} items (${r.selectedCount} selected)\n\n`,
+  );
+  const w = String(r.items.length).length;
+  r.items.forEach((it, i) => {
+    const idx = String(i + 1).padStart(w, ' ');
+    const check = it.checked ? '☑' : '☐';
+    const eff = it.effective ? '' : ' [失效]';
+    process.stdout.write(
+      `${idx}. ${check} ${truncate(it.productTitle, 50)}${eff}\n`,
+    );
+    const pad = ' '.repeat(w + 2);
+    process.stdout.write(
+      `${pad}${it.quantity}×¥${it.unitPrice.toFixed(2)} = ¥${it.amount.toFixed(
+        2,
+      )}${it.unit ? ` /${it.unit}` : ''}\n`,
+    );
+    if (it.skuTitle) process.stdout.write(`${pad}sku:    ${it.skuTitle}\n`);
+    if (it.seller.name)
+      process.stdout.write(`${pad}seller: ${it.seller.name}\n`);
+    process.stdout.write(`${pad}cartId: ${it.cartId} · offerId: ${it.offerId}\n`);
+    if (it.addedAt) process.stdout.write(`${pad}added:  ${it.addedAt}\n`);
+    if (i < r.items.length - 1) process.stdout.write('\n');
+  });
+  const totalAmount = r.items
+    .filter((i) => i.checked && i.effective)
+    .reduce((s, i) => s + i.amount, 0);
+  if (totalAmount > 0) {
+    process.stdout.write(`\nSelected total: ¥${totalAmount.toFixed(2)}\n`);
+  }
+}
+
+function truncate(s: string, n: number): string {
+  if (!s) return '(no title)';
+  return s.length <= n ? s : s.slice(0, n - 1) + '…';
+}

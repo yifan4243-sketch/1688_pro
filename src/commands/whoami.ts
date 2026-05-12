@@ -1,0 +1,78 @@
+import type { BrowserContext } from 'playwright';
+import { dispatch } from '../session/dispatch.js';
+import { parseIdentity } from '../auth/cookies.js';
+import { verifyOnline } from '../auth/verify.js';
+import { readState, writeState } from '../session/state.js';
+import { emit, info } from '../io/output.js';
+import { CliError } from '../io/errors.js';
+import { nowIso, relative } from '../util/time.js';
+
+export interface WhoamiOpts {
+  verify?: boolean;
+  profile?: string;
+}
+
+export interface WhoamiArgs {
+  verify?: boolean;
+}
+
+export interface WhoamiResult {
+  loggedIn: boolean;
+  memberId?: string;
+  nick?: string | null;
+  lastVerifiedAt?: string | null;
+}
+
+export async function execute(
+  ctx: BrowserContext,
+  args: WhoamiArgs,
+): Promise<WhoamiResult> {
+  const cookies = await ctx.cookies();
+  const id = parseIdentity(cookies);
+  if (!id) return { loggedIn: false };
+  if (args.verify) {
+    const ok = await verifyOnline(ctx);
+    if (!ok) return { loggedIn: false };
+  }
+  const state = await readState();
+  const lastVerifiedAt = args.verify ? nowIso() : state.lastVerifiedAt;
+  await writeState({
+    ...state,
+    memberId: id.memberId,
+    nick: id.nick ?? undefined,
+    lastVerifiedAt,
+  });
+  return {
+    loggedIn: true,
+    memberId: id.memberId,
+    nick: id.nick,
+    lastVerifiedAt: lastVerifiedAt ?? null,
+  };
+}
+
+export async function run(opts: WhoamiOpts): Promise<void> {
+  const data = await dispatch<WhoamiArgs, WhoamiResult>(
+    'whoami',
+    { verify: opts.verify },
+    { profile: opts.profile },
+  );
+
+  if (!data.loggedIn) {
+    emit({
+      human: () => info('Not logged in. Run `1688 login` to sign in.'),
+      data: { loggedIn: false },
+    });
+    throw new CliError(3, 'NOT_LOGGED_IN', '');
+  }
+
+  emit({
+    human: () => {
+      const name = data.nick ?? data.memberId!;
+      const tail = data.lastVerifiedAt
+        ? ` (verified ${relative(data.lastVerifiedAt)})`
+        : '';
+      process.stdout.write(`${name} (memberId: ${data.memberId})${tail}\n`);
+    },
+    data,
+  });
+}

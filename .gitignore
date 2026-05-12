@@ -1,0 +1,34 @@
+# Node / build
+node_modules/
+dist/
+*.tgz
+*.log
+.vitest-cache/
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local runtime data (never in repo)
+.1688/
+*.pid
+*.sock
+
+# Dev probe scripts — contain real orderIds / private test data.
+# Keep locally; do not publish.
+scripts/probe-*.mjs
+scripts/check-chat.mjs
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
