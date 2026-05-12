@@ -194,39 +194,63 @@ async function isBlocked(page: Page, retries = 3): Promise<boolean> {
 
 /**
  * Returns true once the page is past any risk-control gate.
- * Event-driven via waitForSelector — fires the moment cards render.
- * Headless: short timeout, fail fast. Headed: long timeout, user solves.
+ *
+ * Detection strategy — be liberal: 1688 reshuffles result-card class names
+ * periodically, so we don't bind to specific selectors. We poll for two
+ * resilient signals instead:
+ *   (1) the page URL is NOT on a punish / verification host
+ *   (2) the page has a lot of anchor tags (>= 30) — punish / slider pages
+ *       have a few; loaded result pages have dozens to hundreds.
+ *
+ * Headless: 8s budget. Headed: 3min so the user has time to solve the slider.
  */
 async function waitPastBlocking(
   page: Page,
   headed: boolean,
 ): Promise<boolean> {
-  const cardSelector = [
-    '.search-offer-item',
-    '.offer-list-row-offer',
-    '[data-spm*="offer"]',
-    'a[href*="detail.1688.com/offer/"]',
-    'a[href*="detail.m.1688.com"]',
-  ].join(', ');
-
-  // Early WAF check — if we hit the punish page, fail fast (headless) or
-  // prompt user (headed) without waiting for the selector timeout.
   if (await isBlocked(page, 1)) {
     if (!headed) return false;
     info('Verification page detected — drag the slider in the window.');
   }
 
-  try {
-    await page.waitForSelector(cardSelector, {
-      state: 'attached',
-      timeout: headed ? 180000 : 8000,
-    });
-    return true;
-  } catch {
-    // Selector never appeared. Recheck WAF (slow render or late punish).
-    if (!headed && (await isBlocked(page, 1))) return false;
-    return false;
+  const deadline = Date.now() + (headed ? 180000 : 8000);
+  let lastProgressAt = Date.now();
+  while (Date.now() < deadline) {
+    if (page.isClosed()) {
+      throw new CliError(130, 'CANCELED', 'Browser closed.');
+    }
+
+    const state = await page
+      .evaluate(() => ({
+        url: location.href,
+        anchorCount: document.querySelectorAll('a').length,
+        bodyLen: (document.body?.innerText ?? '').length,
+      }))
+      .catch(() => null);
+
+    if (state) {
+      const onPunish = /\/punish|x5secdata=|punish\.1688\.com/.test(state.url);
+      if (
+        !onPunish &&
+        state.anchorCount >= 30 &&
+        state.bodyLen >= 2000
+      ) {
+        return true;
+      }
+    }
+
+    if (headed && Date.now() - lastProgressAt > 10000) {
+      info(
+        `Still waiting for results page (${Math.round(
+          (deadline - Date.now()) / 1000,
+        )}s left)...`,
+      );
+      lastProgressAt = Date.now();
+    }
+
+    await new Promise((r) => setTimeout(r, 500));
   }
+  return false;
 }
 
 function riskControlError(triedHeaded: boolean): CliError {

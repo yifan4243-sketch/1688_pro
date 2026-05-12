@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.11] - 2026-05-13
+
+### Fixed
+- `search`: result-page detection no longer binds to specific card class
+  names (which 1688 reshuffles every few months). Now uses two resilient
+  signals — page URL not on a punish host, plus a large anchor count and
+  body length. Previously the command would hang after a user solved the
+  slider in `--headed` mode because none of the hardcoded selectors matched
+  the current markup.
+
 ## [0.1.10] - 2026-05-13
 
 ### Changed
