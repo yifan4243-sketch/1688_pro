@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.15] - 2026-05-13
+
+### Fixed
+- Auto-clean stale `.lock.lock` directory when no daemon is alive. Previously,
+  killing a `--headed` flow with Ctrl+C left a lock that blocked every
+  subsequent command with `LOCK_BUSY` until manually `rm -rf`'d. The probe
+  is safe: if a daemon process actually holds the lock, the original
+  "Another 1688 command is running" error is preserved.
+
 ## [0.1.14] - 2026-05-13
 
 ### Changed
