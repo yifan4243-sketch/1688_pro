@@ -6,9 +6,14 @@
 [![node](https://img.shields.io/node/v/1688-cli.svg)](https://nodejs.org/)
 
 **1688.com CLI for humans, Codex, and Claude Code.**
-Search, browse, cart, place orders, track logistics, and talk to sellers — all
-from your terminal. Outputs human text on a TTY and JSON when piped, so AI
-agents can drive it without parsing.
+
+Two core flows from the terminal:
+
+- **Sourcing** — search / image-search / product detail / pre-sale inquiry
+- **Orders** — list / detail / logistics tracking / post-sale chat with sellers
+
+Outputs human text on a TTY and JSON when piped, so AI agents can drive it
+without parsing.
 
 ```bash
 npm i -g 1688-cli
@@ -43,6 +48,14 @@ agent's tooling. `1688-cli` is a single command:
 - **JSON-or-text dual mode** — `1688 order list | jq` works; `1688 order list`
   in your terminal pretty-prints.
 - **Designed for AI agents.** See [AGENTS.md](./AGENTS.md) for the contract.
+
+### Not in scope
+
+This is not a marketing / scraping tool for bulk-listing the whole site, and
+not a checkout automation farm. It mirrors what a buyer does manually: pick
+a product, ask the seller a question, place an order, track shipping. Place
+order (`checkout confirm`) is gated behind TTY prompts or an explicit
+`--agent` flag so agents can't move money silently.
 
 ---
 
