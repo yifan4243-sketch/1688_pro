@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.13] - 2026-05-13
+
+### Added
+- `seller messages --offer <offerId>`: read pre-sale inquiry replies scoped
+  by offerId, symmetric to `seller inquire`. Previously you had to
+  remember the seller's name and pass it in sidebar mode.
+
 ## [0.1.12] - 2026-05-13
 
 ### Changed

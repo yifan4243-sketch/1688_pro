@@ -88,7 +88,8 @@ seller
 seller
   .command('messages')
   .description('Read recent messages from a seller conversation')
-  .argument('<target>', 'orderId (digits) OR seller loginId/name')
+  .argument('[target]', 'orderId (digits) OR seller loginId/name (omit if --offer)')
+  .option('--offer <offerId>', 'Read pre-sale inquiry replies for this offerId')
   .option('--limit <n>', 'Max messages to return (default 20, max 200)', '20')
   .option(
     '--since <iso>',

@@ -6,7 +6,8 @@ import { execute as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
 
 export interface SellerMessagesOpts {
-  target: string;
+  target?: string;
+  offer?: string;
   limit?: string;
   since?: string;
   profile?: string;
@@ -17,6 +18,7 @@ export interface SellerMessagesArgs {
   searchNames: string[];
   sellerLoginId?: string;
   orderId?: string;
+  offerId?: string;
   myLoginId: string;
   limit: number;
 }
@@ -45,7 +47,7 @@ export async function execute(
   const page = await ctx.newPage();
   try {
     let url: string;
-    if (args.sellerLoginId && args.orderId) {
+    if (args.sellerLoginId && (args.orderId || args.offerId)) {
       url =
         `${IM_BASE}?` +
         `touid=cnalichn${encodeURIComponent(args.sellerLoginId)}` +
@@ -53,11 +55,14 @@ export async function execute(
         `&status=1` +
         `&portalId=` +
         `&gid=` +
-        `&offerId=` +
+        `&offerId=${args.offerId ? encodeURIComponent(args.offerId) : ''}` +
         `&itemsId=` +
-        `&orderId=${encodeURIComponent(args.orderId)}` +
+        `&orderId=${args.orderId ? encodeURIComponent(args.orderId) : ''}` +
         `#/`;
-      info(`Opening 旺旺 (order-scoped: orderId=${args.orderId})...`);
+      const scope = args.orderId
+        ? `orderId=${args.orderId}`
+        : `offerId=${args.offerId}`;
+      info(`Opening 旺旺 (scoped: ${scope})...`);
     } else {
       url = `${IM_BASE}?fromid=cnalichn${encodeURIComponent(args.myLoginId)}`;
       info('Opening 旺旺 IM (sidebar mode)...');
@@ -88,7 +93,7 @@ export async function execute(
 
     // If sidebar mode: find + click the seller
     let matched: string | null = null;
-    if (!args.sellerLoginId || !args.orderId) {
+    if (!args.sellerLoginId || (!args.orderId && !args.offerId)) {
       for (const name of args.searchNames) {
         if (!name) continue;
         const item = imFrame.locator(`text=${name}`).first();
@@ -183,8 +188,12 @@ export async function execute(
 }
 
 export async function run(opts: SellerMessagesOpts): Promise<void> {
-  if (!opts.target) {
-    throw new CliError(2, 'BAD_INPUT', 'target required (orderId or seller name).');
+  if (!opts.target && !opts.offer) {
+    throw new CliError(
+      2,
+      'BAD_INPUT',
+      'Provide <target> (orderId / seller name) or --offer <offerId>.',
+    );
   }
   const limit = Math.min(200, Math.max(1, parseInt(opts.limit ?? '20', 10)));
   const sinceMs = opts.since ? Date.parse(opts.since) : 0;
@@ -199,14 +208,42 @@ export async function run(opts: SellerMessagesOpts): Promise<void> {
   }
 
   let args: SellerMessagesArgs;
-  if (/^\d+$/.test(opts.target)) {
+  if (opts.offer) {
+    // Pre-sale inquiry path: scope conversation by offerId.
+    if (!/^\d+$/.test(opts.offer)) {
+      throw new CliError(2, 'BAD_INPUT', `Invalid --offer: ${opts.offer}`);
+    }
+    info(`Looking up seller for offer ${opts.offer}...`);
+    const fe = await dispatch<
+      { offerId: string },
+      { offerLoginId: string | null }
+    >(
+      'detail-feglobals',
+      { offerId: opts.offer },
+      { headed: opts.headed, profile: opts.profile },
+    );
+    if (!fe.offerLoginId) {
+      throw new CliError(
+        30,
+        'SELLER_UNKNOWN',
+        `Cannot find seller for offer ${opts.offer}.`,
+      );
+    }
+    args = {
+      searchNames: [fe.offerLoginId],
+      sellerLoginId: fe.offerLoginId,
+      offerId: opts.offer,
+      myLoginId: state.nick,
+      limit,
+    };
+  } else if (/^\d+$/.test(opts.target!)) {
     info(`Looking up seller for order ${opts.target}...`);
     const order = await dispatch<
       { orderId: string; maxScanPages: number },
       Awaited<ReturnType<typeof orderGetExecute>>
     >(
       'order-get',
-      { orderId: opts.target, maxScanPages: 5 },
+      { orderId: opts.target!, maxScanPages: 5 },
       { headed: opts.headed, profile: opts.profile },
     );
     args = {
@@ -214,13 +251,13 @@ export async function run(opts: SellerMessagesOpts): Promise<void> {
         Boolean,
       ) as string[],
       sellerLoginId: order.seller.loginId ?? undefined,
-      orderId: opts.target,
+      orderId: opts.target!,
       myLoginId: state.nick,
       limit,
     };
   } else {
     args = {
-      searchNames: [opts.target],
+      searchNames: [opts.target!],
       myLoginId: state.nick,
       limit,
     };
