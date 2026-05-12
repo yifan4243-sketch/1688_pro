@@ -215,6 +215,8 @@ async function waitPastBlocking(
 
   const deadline = Date.now() + (headed ? 180000 : 8000);
   let lastProgressAt = Date.now();
+  let lastDebugAt = 0;
+  const debug = process.env.BB1688_DEBUG === '1';
   while (Date.now() < deadline) {
     if (page.isClosed()) {
       throw new CliError(130, 'CANCELED', 'Browser closed.');
@@ -223,17 +225,28 @@ async function waitPastBlocking(
     const state = await page
       .evaluate(() => ({
         url: location.href,
+        title: document.title ?? '',
         anchorCount: document.querySelectorAll('a').length,
         bodyLen: (document.body?.innerText ?? '').length,
       }))
       .catch(() => null);
 
+    if (debug && state && Date.now() - lastDebugAt > 1000) {
+      info(
+        `[poll] url=${state.url.slice(0, 80)} title="${state.title.slice(0, 40)}" anchors=${state.anchorCount} bodyLen=${state.bodyLen}`,
+      );
+      lastDebugAt = Date.now();
+    }
+
     if (state) {
       const onPunish = /\/punish|x5secdata=|punish\.1688\.com/.test(state.url);
+      // Lowered thresholds — first paint may have fewer anchors/text than
+      // the fully-hydrated SPA. 10 anchors + 500 chars beats 1688's loading
+      // skeleton (a handful of nav anchors + boilerplate).
       if (
         !onPunish &&
-        state.anchorCount >= 30 &&
-        state.bodyLen >= 2000
+        state.anchorCount >= 15 &&
+        state.bodyLen >= 800
       ) {
         return true;
       }

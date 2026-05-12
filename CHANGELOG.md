@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.16] - 2026-05-13
+
+### Changed
+- `search`: lowered detection thresholds (anchors 30→15, bodyLen 2000→800) so
+  partially-hydrated SPA results pages clear faster.
+- `search`: `BB1688_DEBUG=1` now prints `url / title / anchorCount / bodyLen`
+  every second during the wait — makes it visible whether the page is
+  loading, on a slider, or our detection just under-triggered.
+
 ## [0.1.15] - 2026-05-13
 
 ### Fixed
