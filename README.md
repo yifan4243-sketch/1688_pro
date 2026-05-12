@@ -20,16 +20,18 @@ npm i -g 1688-cli
 1688 login                                       # scan QR with the 1688 app
 
 # Sourcing
-1688 search "机械键盘" --max 10                   # keyword search
-1688 image-search ./sample.jpg                   # search by image
-1688 offer 628196518518                          # product detail (price / SKUs / seller)
-1688 seller inquire 628196518518 "支持定制 logo 吗？"   # pre-sale inquiry
+1688 search "佛龛柜" --max 10                                 # keyword search
+1688 image-search ./sample.jpg                                # search by image
+1688 offer 628196518518                                       # product detail
+1688 seller inquire 628196518518 "支持定制 logo 吗？"          # ask seller
+1688 seller messages --offer 628196518518                     # read seller's reply
 
 # Orders
-1688 order list --status waitsellersend          # list orders
-1688 order get   <orderId>                       # one order's detail
-1688 order logistics <orderId>                   # tracking + trace
-1688 seller chat <orderId> "麻烦尽快发货谢谢"      # post-sale inquiry (auto-attaches order card)
+1688 order list --status waitsellersend                       # list orders
+1688 order get      <orderId>                                 # one order detail
+1688 order logistics <orderId>                                # tracking + trace
+1688 seller chat    <orderId> "麻烦尽快发货谢谢"               # chase shipment
+1688 seller messages <orderId>                                # read seller's reply
 ```
 
 ---
@@ -131,12 +133,20 @@ npm i -g 1688-cli
 
 ### Seller IM (旺旺)
 
+Send + receive are symmetric — pre-sale is scoped by `offerId`, post-sale by
+`orderId`.
+
 ```bash
-1688 seller inquire <offerId> "支持定制 logo 吗？"     # pre-sale (auto-finds seller)
-1688 seller chat    <orderId> "麻烦尽快发货谢谢"        # post-sale (auto-attaches order card)
-1688 seller chat    <orderId> "..." --no-card          # follow-up reply, no card
-1688 seller messages <orderId> --limit 20
-1688 seller messages <orderId> --since 2026-05-01T00:00:00+08:00
+# Pre-sale
+1688 seller inquire 628196518518 "支持定制 logo 吗？"            # send
+1688 seller messages --offer 628196518518                       # read replies
+1688 seller messages --offer 628196518518 --since 2026-05-13T10:00:00+08:00
+
+# Post-sale
+1688 seller chat <orderId> "麻烦尽快发货谢谢"                     # send (auto-attaches order card)
+1688 seller chat <orderId> "请问什么时候发货" --no-card           # follow-up, no card
+1688 seller messages <orderId>                                  # read replies
+1688 seller messages <orderId> --limit 50 --since 2026-05-01T00:00:00+08:00
 ```
 
 ### Workflow shortcuts
