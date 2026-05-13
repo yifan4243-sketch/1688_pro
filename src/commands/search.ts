@@ -103,20 +103,52 @@ async function fetchSearch(
     }
   }
 
-  // Diagnostic: log every mtop call fired during search. Set BB1688_PROBE=1
-  // to see which mtop endpoints 1688's search page actually hits — needed to
-  // migrate search from DOM scraping to proper API interception.
+  // Diagnostic: log every plausible data-bearing call fired during search,
+  // plus inline-JSON markers in the HTML response. Used to migrate search
+  // from DOM scraping to proper data interception. Set BB1688_PROBE=1.
   if (process.env.BB1688_PROBE === '1') {
-    page.on('response', (resp) => {
+    page.on('response', async (resp) => {
       const u = resp.url();
-      if (/mtop\.|\.mtop\./.test(u)) {
-        try {
-          const path = new URL(u).pathname;
-          const api = path.split('/').find((s) => s.startsWith('mtop.'));
-          info(`[mtop] ${api ?? path}`);
-        } catch {
-          info(`[mtop] ${u.slice(0, 100)}`);
+      const ct = resp.headers()['content-type'] ?? '';
+      if (/\.(png|jpg|jpeg|gif|webp|css|woff|svg|ico|mp4)/i.test(u)) return;
+      try {
+        const path = new URL(u).pathname;
+        // mtop API
+        const m = path.match(/mtop[.\/][^/?&]+/);
+        if (m) {
+          info(`[mtop] ${m[0]}`);
+          return;
         }
+        // Other XHR/JSON
+        if (/json/i.test(ct) || /h5api|api\.|\.json|\/api\//i.test(path)) {
+          info(`[xhr ] ${path.slice(0, 80)}`);
+          return;
+        }
+        // Search-page HTML — scan for inline JSON markers (SSR data).
+        if (
+          /offer_search\.htm|sou\/index\.htm/i.test(u) &&
+          /text\/html/i.test(ct)
+        ) {
+          const body = await resp.text();
+          const markers = [
+            'window.__INITIAL_STATE__',
+            'window.SS_DATA',
+            'window.__SSR_DATA__',
+            'window.__PRELOAD_STATE__',
+            'window.pageData',
+            'window.dataLayer',
+            'window.aliPangu',
+            'window.cuPgcCache',
+            'application/json',
+            'type="application/ld+json"',
+          ];
+          const hits = markers.filter((k) => body.includes(k));
+          info(
+            `[html] ${path.slice(0, 60)} length=${body.length} markers=[${hits.join(', ')}]`,
+          );
+        }
+      } catch {
+        /* swallow */
       }
     });
   }

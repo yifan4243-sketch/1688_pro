@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.23] - 2026-05-13
+
+### Changed
+- `BB1688_PROBE=1` now also logs non-mtop XHR calls and scans the SSR HTML
+  response for inline JSON markers (`window.__INITIAL_STATE__`, etc.). If
+  search doesn't fire any mtop, the SSR HTML is the real data source.
+
 ## [0.1.22] - 2026-05-13
 
 ### Added
