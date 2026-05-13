@@ -4,6 +4,7 @@
 import type { BrowserContext } from 'playwright';
 import { withSession } from './context.js';
 import { isDaemonReachable, daemonCall } from '../daemon/client.js';
+import { info } from '../io/output.js';
 
 export interface DispatchOpts {
   headed?: boolean;
@@ -107,8 +108,39 @@ export async function dispatch<TArgs, TData>(
     }
   }
 
-  const fn = await loadExecutor<TArgs, TData>(name);
-  return withSession({ headless: !opts.headed, profile: opts.profile }, (ctx) =>
-    fn(ctx, args),
-  );
+  // Inline path. If a daemon is alive, it holds the lock — we must pause it
+  // for the duration so this inline call can grab the lock and open its own
+  // browser context on the shared profile. Restart on exit.
+  const daemonMgr = await maybePauseDaemon();
+  try {
+    const fn = await loadExecutor<TArgs, TData>(name);
+    return await withSession(
+      { headless: !opts.headed, profile: opts.profile },
+      (ctx) => fn(ctx, args),
+    );
+  } finally {
+    await daemonMgr.resume();
+  }
+}
+
+async function maybePauseDaemon(): Promise<{ resume: () => Promise<void> }> {
+  try {
+    const { status, stop, start } = await import('../daemon/manager.js');
+    const st = await status();
+    if (!st.running) return { resume: async () => {} };
+    info('Pausing daemon for inline run...');
+    await stop();
+    return {
+      resume: async () => {
+        try {
+          info('Resuming daemon...');
+          await start();
+        } catch (e) {
+          info(`(Daemon resume failed: ${(e as Error).message})`);
+        }
+      },
+    };
+  } catch {
+    return { resume: async () => {} };
+  }
 }

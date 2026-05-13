@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.18] - 2026-05-13
+
+### Fixed
+- Any inline-mode command (`--headed`, `--profile`, `BB1688_NO_DAEMON=1`) no
+  longer fails with `LOCK_BUSY` when the daemon is running. Dispatch now
+  pauses the daemon for the duration of the inline call and resumes it
+  after, mirroring what `checkout confirm` already did. Affects `search
+  --headed`, `image-search --headed`, etc.
+
 ## [0.1.17] - 2026-05-13
 
 ### Fixed
