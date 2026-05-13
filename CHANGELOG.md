@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.17] - 2026-05-13
+
+### Fixed
+- `login`: idempotent — running `1688 login` a second time while the daemon
+  is alive no longer fails with `LOCK_BUSY`. The already-logged-in check
+  now reads cached identity from `state.json` first (no browser, no lock)
+  and only falls back to a browser cookie peek if the cache is missing.
+
 ## [0.1.16] - 2026-05-13
 
 ### Changed

@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from 'playwright';
 import QRCode from 'qrcode';
 import { withSession } from '../session/context.js';
 import { parseIdentity, type Identity } from '../auth/cookies.js';
-import { writeState } from '../session/state.js';
+import { writeState, readState } from '../session/state.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { nowIso } from '../util/time.js';
@@ -42,7 +42,11 @@ export async function run(opts: LoginOpts): Promise<void> {
   const headed = opts.headed === true;
 
   if (!opts.force) {
-    const existing = await peekIdentity(opts.profile);
+    // Try the cached identity first — no browser needed, so this works even
+    // while the daemon holds the lock. Falls back to a browser cookie peek
+    // only if state.json doesn't have a usable identity.
+    const cached = !opts.profile ? await peekFromState() : null;
+    const existing = cached ?? (await peekIdentity(opts.profile));
     if (existing) {
       const name = existing.nick ?? existing.memberId;
       emit({
@@ -120,6 +124,20 @@ async function peekIdentity(profile?: string): Promise<Identity | null> {
   return withSession({ headless: true, profile }, async (ctx) =>
     parseIdentity(await ctx.cookies()),
   );
+}
+
+/**
+ * Quick already-logged-in check that doesn't touch the browser, so it works
+ * while the daemon holds the lock. Reads only the cached state.json.
+ */
+async function peekFromState(): Promise<Identity | null> {
+  try {
+    const s = await readState();
+    if (!s.memberId || !s.nick) return null;
+    return { memberId: s.memberId, nick: s.nick };
+  } catch {
+    return null;
+  }
 }
 
 async function clearAlibabaCookies(ctx: BrowserContext): Promise<void> {
