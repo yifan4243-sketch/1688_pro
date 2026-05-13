@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.28] - 2026-05-13
+
+### Documentation
+- README: document the `--json` / `--pretty` / `--get` / `--pick` flags in
+  the "JSON for agents" section with copy-pasteable examples.
+- AGENTS.md: add an "Output flags" section so agents can discover the
+  zero-`jq` workflows.
+
 ## [0.1.27] - 2026-05-13
 
 ### Added

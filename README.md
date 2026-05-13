@@ -249,7 +249,31 @@ Every command auto-switches to JSON when stdout is piped:
 1688 search 雨伞                       | jq '.offers[0:5]'
 ```
 
-Force JSON on a TTY:
+### Built-in JSON flags (no `jq` required)
+
+Every command supports four output-shaping flags. Useful on Windows or any
+environment where `jq` isn't installed — and for agents that want concise
+output without parsing the full payload.
+
+```bash
+1688 offer <id> --json                       # force JSON even in a TTY
+1688 offer <id> --json --pretty              # JSON with 2-space indent
+
+1688 offer <id> --get supplier.name          # one scalar field, raw line
+1688 offer <id> --get supplier               # sub-object as JSON
+1688 offer <id> --get 'skus[0].skuId'        # array index
+1688 offer <id> --get 'skus[*].price'        # wildcard — one line per element
+
+1688 offer <id> --pick price,supplier.name,'skus[0].skuId'
+# {"price":1.25,"supplier.name":"...","skus[0].skuId":"..."}
+```
+
+Path syntax: `field.sub`, `arr[N].field`, `arr[*].field`. Wildcards stream
+one line per element; scalars print as a raw line (no quotes), objects and
+arrays as JSON. The full payload still goes through when no `--get`/`--pick`
+is given, so existing `| jq` pipelines keep working unchanged.
+
+Force JSON in a TTY (alternative to `--json`):
 
 ```bash
 BB1688_JSON=1 1688 doctor

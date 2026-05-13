@@ -199,6 +199,33 @@ To get the cartId reliably in a pipeline:
 id=$(1688 cart add <offerId> --sku <skuId> --qty 1 | jq -r '.added.cartId')
 ```
 
+## Output flags (every command)
+
+In addition to `BB1688_JSON=1`, every command accepts:
+
+```
+--json            Force JSON output even in a TTY.
+--pretty          Indent JSON by 2 spaces.
+--get <path>      Print one field by dot-path. Scalar → raw line,
+                  object/array → JSON. Wildcards stream one element per line.
+                  Syntax: field.sub, arr[N].field, arr[*].field
+--pick <paths>    Comma-separated dot-paths → emit a JSON object with each
+                  path as a key. Useful for trimming output for downstream agents.
+```
+
+Examples:
+```bash
+1688 offer X --get supplier.name              # 深圳... (raw)
+1688 offer X --get supplier                   # {"name":"...","loginId":"..."}
+1688 offer X --get 'skus[*].price'            # 49 \n 68 \n 98.75 ...
+1688 offer X --pick price,supplier.name       # {"price":1.25,"supplier.name":"..."}
+1688 offer X --json --pretty                  # full payload, indented
+```
+
+When `--get`/`--pick` is given, the human renderer is skipped; the resolved
+value(s) go to stdout. The full payload still flows through when neither
+flag is set, so existing `| jq` pipelines keep working.
+
 ## Discovery
 
 Run `1688 --help` and `1688 <command> --help` for the latest flags.
