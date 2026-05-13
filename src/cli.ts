@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { CliError } from './io/errors.js';
-import { setOutputFlags } from './io/output.js';
+import { setOutputFlags, isJson } from './io/output.js';
 import updateNotifier from 'update-notifier';
 import pkg from '../package.json' with { type: 'json' };
 
-// Background check (once/day) — prints a banner on next command run if a
-// newer version is on npm. Non-blocking; ignored in CI / non-TTY pipes.
-updateNotifier({ pkg, updateCheckInterval: 1000 * 60 * 60 * 24 }).notify({
-  defer: false,
-  isGlobal: true,
+// Background check (once/day). On a TTY this prints a human banner.
+// In JSON mode we surface a structured `_notice` line on stderr (see the
+// preAction hook below) so agents can detect updates without parsing the
+// banner.
+const _notifier = updateNotifier({
+  pkg,
+  updateCheckInterval: 1000 * 60 * 60 * 24,
 });
+_notifier.notify({ defer: false, isGlobal: true });
 
 const program = new Command();
 
@@ -487,6 +490,22 @@ program.hook('preAction', (_thisCmd, actionCmd) => {
     get: opts.get,
     pick: opts.pick,
   });
+
+  // Agent-friendly update notice: in JSON mode, the human banner is
+  // suppressed by update-notifier. Surface the same info as one line of
+  // structured JSON on stderr so agents can detect updates programmatically.
+  // See AGENTS.md → Update awareness.
+  if (isJson() && _notifier.update) {
+    const u = _notifier.update;
+    process.stderr.write(
+      JSON.stringify({
+        _notice: 'updateAvailable',
+        current: u.current,
+        latest: u.latest,
+        updateCommand: `npm i -g ${pkg.name}@latest`,
+      }) + '\n',
+    );
+  }
 });
 
 try {

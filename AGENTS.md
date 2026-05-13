@@ -226,6 +226,50 @@ When `--get`/`--pick` is given, the human renderer is skipped; the resolved
 value(s) go to stdout. The full payload still flows through when neither
 flag is set, so existing `| jq` pipelines keep working.
 
+## Update awareness
+
+At the start of a session that runs multiple 1688 commands, run
+`1688 doctor`. Its JSON output includes a `version` block:
+
+```json
+{
+  "version": {
+    "current": "0.1.27",
+    "latest":  "0.1.29",
+    "updateAvailable": true,
+    "updateCommand":   "npm i -g 1688-cli@latest",
+    "error": null
+  }
+}
+```
+
+You can also detect updates from any command: in JSON mode (piped / `--json`
+/ `BB1688_JSON=1`), a single line of structured JSON appears on stderr
+when a newer version is cached:
+
+```
+{"_notice":"updateAvailable","current":"0.1.27","latest":"0.1.29","updateCommand":"npm i -g 1688-cli@latest"}
+```
+
+### Rules for upgrades
+
+- **Interactive session** (TTY, the user is watching the conversation):
+  ask the user once whether to upgrade now. Show the current → latest
+  versions and the install command. If the user agrees, run
+  `updateCommand`, then `1688 daemon reload` to pick up the new code.
+
+- **Non-interactive** (CI, cron, scripted agent loop with no human in
+  the loop): do NOT upgrade on your own. Log the notice to stderr and
+  continue. Pinning is intentional in those contexts.
+
+- Never run the install command without explicit user authorization in
+  the CURRENT turn. The CLI version is part of the user's global
+  environment; treat it the same way you treat any `sudo` or
+  "modify global state" action.
+
+- Ask at most once per session. If the user declines or postpones,
+  don't ask again in the same session.
+
 ## Discovery
 
 Run `1688 --help` and `1688 <command> --help` for the latest flags.

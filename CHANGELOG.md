@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.29] - 2026-05-13
+
+### Added
+- **Agent-friendly update awareness.** Two new signals so AI agents can
+  detect new versions without parsing the human update banner:
+  - `1688 doctor` JSON output now includes a `version` block with
+    `current`, `latest`, `updateAvailable`, `updateCommand`, and `error`
+    (when the registry check fails).
+  - In JSON mode (piped output / `--json` / `BB1688_JSON=1`), any
+    command emits a single structured line on stderr when a newer
+    version is cached:
+    `{"_notice":"updateAvailable","current":"0.1.x","latest":"0.1.y","updateCommand":"npm i -g 1688-cli@latest"}`
+  - AGENTS.md gains an "Update awareness" section documenting both
+    signals and the rules: ask the user before upgrading in interactive
+    sessions; do nothing in non-interactive (CI / cron) ones; never
+    run the install command without explicit current-turn authorization.
+
 ## [0.1.28] - 2026-05-13
 
 ### Documentation
