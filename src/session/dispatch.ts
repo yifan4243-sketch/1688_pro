@@ -98,13 +98,26 @@ export async function dispatch<TArgs, TData>(
     opts.noDaemon === true ||
     process.env.BB1688_NO_DAEMON === '1';
 
-  if (!skipDaemon && (await isDaemonReachable())) {
-    try {
-      return await daemonCall<TData>(name, args);
-    } catch (e) {
-      // Network/protocol errors fall through to inline. Real CliErrors propagate.
-      const code = (e as { code?: string }).code;
-      if (code && code !== 'ECONNREFUSED' && code !== 'ENOENT') throw e;
+  if (!skipDaemon) {
+    // Auto-start daemon if not running. Keeps the "warm browser" promise
+    // after `npm i -g` (postinstall kills the daemon) without requiring the
+    // user to re-run `1688 login` or `daemon start` manually.
+    if (!(await isDaemonReachable())) {
+      try {
+        const { start } = await import('../daemon/manager.js');
+        info('Starting daemon (one-time)...');
+        await start();
+      } catch {
+        // Couldn't start — fall through to inline.
+      }
+    }
+    if (await isDaemonReachable()) {
+      try {
+        return await daemonCall<TData>(name, args);
+      } catch (e) {
+        const code = (e as { code?: string }).code;
+        if (code && code !== 'ECONNREFUSED' && code !== 'ENOENT') throw e;
+      }
     }
   }
 

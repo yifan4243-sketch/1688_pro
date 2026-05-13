@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.20] - 2026-05-13
+
+### Fixed
+- Daemon auto-starts on any command that wants to use it, not just `login`.
+  After `npm i -g 1688-cli` the postinstall stops the previous daemon (since
+  0.1.3); previously you had to manually run `1688 daemon start` or `1688
+  login` to bring it back. Now `1688 search ...` etc. will start the daemon
+  transparently if it's not running.
+
 ## [0.1.19] - 2026-05-13
 
 ### Fixed
