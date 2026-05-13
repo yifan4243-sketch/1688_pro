@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.19] - 2026-05-13
+
+### Fixed
+- `search`: removed a second hardcoded `waitForSelector('.search-offer-item ...')`
+  that ran AFTER `waitPastBlocking`. The class name is gone from current
+  1688 markup, so the wait timed out — 15s on headless, 180s on `--headed`.
+  `waitPastBlocking` already confirmed the page loaded; the extra gate was
+  redundant.
+- `extractOffers` rewritten to be class-agnostic: seed from offer-detail
+  anchor hrefs (URL pattern stable for years), walk up to find the card-like
+  ancestor, extract title/price/image. Survives 1688 markup reshuffles.
+
 ## [0.1.18] - 2026-05-13
 
 ### Fixed

@@ -131,14 +131,10 @@ async function fetchSearch(
 
   await detectLoginRedirect(page);
 
-  try {
-    await page.waitForSelector(
-      '.search-offer-item a[href*="detail.m.1688.com"]',
-      { timeout: headed ? 180000 : 15000 },
-    );
-  } catch {
-    if (await isBlocked(page)) throw riskControlError(headed);
-  }
+  // waitPastBlocking already confirmed the page loaded (anchor count + body
+  // length). No need for a second class-bound waitForSelector — 1688
+  // periodically reshuffles card class names and the old `.search-offer-item`
+  // gate would hang for 15s (headless) / 180s (headed) on every search.
 
   // Scroll to trigger lazy-loaded cards.
   await page.evaluate(() => window.scrollBy(0, 2000));
@@ -288,74 +284,81 @@ async function detectLoginRedirect(page: Page): Promise<void> {
 
 export async function extractOffers(page: Page): Promise<Offer[]> {
   return page.evaluate(() => {
-    const cards = document.querySelectorAll('.search-offer-item');
+    // Class-agnostic extractor: seed from offer-detail anchor links (these
+    // patterns have been stable for years), then walk up to a card-like
+    // ancestor (one that contains a price + image).
+    const anchorSel =
+      'a[href*="detail.1688.com/offer/"], a[href*="detail.m.1688.com"], a[href*="m.1688.com/offer"]';
+    const anchors = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>(anchorSel),
+    );
     const seen = new Set<string>();
     const out: Offer[] = [];
 
-    for (const card of Array.from(cards)) {
-      let link =
-        (card.closest(
-          'a[href*="detail.m.1688.com"]',
-        ) as HTMLAnchorElement | null) ??
-        (card.querySelector(
-          'a[href*="detail.m.1688.com"]',
-        ) as HTMLAnchorElement | null);
-      if (!link) continue;
-      const m = link.href.match(/[?&]offerId=(\d+)/);
+    for (const a of anchors) {
+      const href = a.href ?? '';
+      const m =
+        href.match(/[?&]offerId=(\d+)/) ?? href.match(/\/offer\/(\d+)\.html/);
       if (!m) continue;
       const offerId = m[1]!;
       if (seen.has(offerId)) continue;
       seen.add(offerId);
 
-      const titleEl =
-        card.querySelector('.offer-title-row .title-text') ??
-        card.querySelector('.offer-title-row');
-      const title = (titleEl?.textContent ?? '').replace(/\s+/g, ' ').trim();
+      // Walk up to find a "card-sized" ancestor: contains both a price marker
+      // and an image. Cap depth so we don't escalate to <body>.
+      let card: HTMLElement = a;
+      for (let depth = 0; depth < 8; depth++) {
+        const parent = card.parentElement;
+        if (!parent || parent === document.body) break;
+        const text = parent.textContent ?? '';
+        const hasPrice = /[¥￥]\s*\d/.test(text);
+        const hasImg = !!parent.querySelector('img');
+        if (hasPrice && hasImg) {
+          card = parent;
+          break;
+        }
+        card = parent;
+      }
 
-      const priceItem = card.querySelector('.price-item');
-      const priceText = priceItem
-        ? (priceItem.textContent ?? '').replace(/\s+/g, '')
-        : '';
-      const pm = priceText.match(
-        /([¥￥])?\s*([\d.]+)(?:\s*[~\-–]\s*([\d.]+))?/,
+      const cardText = (card.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+      const title = (
+        a.getAttribute('title') ??
+        a.querySelector('img')?.getAttribute('alt') ??
+        a.textContent ??
+        ''
+      )
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 200);
+
+      const pm = cardText.match(
+        /[¥￥]\s*([\d.]+)(?:\s*[~\-–]\s*([\d.]+))?/,
       );
-      const priceMin = pm ? parseFloat(pm[2]!) : null;
-      const priceMax = pm && pm[3] ? parseFloat(pm[3]) : priceMin;
+      const priceMin = pm ? parseFloat(pm[1]!) : null;
+      const priceMax = pm && pm[2] ? parseFloat(pm[2]) : priceMin;
+      const priceText = pm ? pm[0].replace(/[¥￥]/g, '¥') : '';
 
-      const img =
-        (card.querySelector('img.main-img') as HTMLImageElement | null) ??
-        (card.querySelector('img') as HTMLImageElement | null);
+      const img = card.querySelector('img') as HTMLImageElement | null;
       const image =
-        img?.getAttribute('src') ??
-        img?.getAttribute('data-src') ??
-        null;
+        img?.getAttribute('src') ?? img?.getAttribute('data-src') ?? null;
 
-      const shopRow = card.querySelector('.offer-shop-row');
-      const supplierLink = shopRow?.querySelector(
-        'a[href*=".1688.com"]',
+      const supplierLink = card.querySelector(
+        'a[href*="1688.com"][href*="shop"]',
       ) as HTMLAnchorElement | null;
-      const supplierName =
-        shopRow?.querySelector('.desc-text')?.textContent?.trim() ?? null;
-      const shopUrl = supplierLink?.href ?? null;
-
-      const cardText = (card.textContent ?? '').replace(/\s+/g, ' ');
       const yearMatch = cardText.match(/(\d{1,2})\s*年/);
       const years = yearMatch ? parseInt(yearMatch[1]!, 10) : null;
-
-      const turnover =
-        card.querySelector('.col-desc_after .desc-text')?.textContent?.trim() ??
-        null;
 
       out.push({
         offerId,
         title,
-        price: {
-          text: priceText.replace(/[¥￥]/g, '¥'),
-          min: priceMin,
-          max: priceMax,
+        price: { text: priceText, min: priceMin, max: priceMax },
+        supplier: {
+          name: supplierLink?.textContent?.trim() ?? null,
+          shopUrl: supplierLink?.href ?? null,
+          years,
         },
-        supplier: { name: supplierName, shopUrl, years },
-        turnover,
+        turnover: null,
         url: `https://detail.m.1688.com/page/index.html?offerId=${offerId}`,
         image,
       });
