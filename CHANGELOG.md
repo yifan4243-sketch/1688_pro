@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.22] - 2026-05-13
+
+### Added
+- `BB1688_PROBE=1` diagnostic: when set, `search` prints every mtop API call
+  fired during the page load. Used to identify the right endpoint for
+  migrating `search` / `image-search` from DOM scraping to mtop interception
+  (which is what `order` / `cart` already use).
+
 ## [0.1.21] - 2026-05-13
 
 ### Fixed

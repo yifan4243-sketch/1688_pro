@@ -103,6 +103,24 @@ async function fetchSearch(
     }
   }
 
+  // Diagnostic: log every mtop call fired during search. Set BB1688_PROBE=1
+  // to see which mtop endpoints 1688's search page actually hits — needed to
+  // migrate search from DOM scraping to proper API interception.
+  if (process.env.BB1688_PROBE === '1') {
+    page.on('response', (resp) => {
+      const u = resp.url();
+      if (/mtop\.|\.mtop\./.test(u)) {
+        try {
+          const path = new URL(u).pathname;
+          const api = path.split('/').find((s) => s.startsWith('mtop.'));
+          info(`[mtop] ${api ?? path}`);
+        } catch {
+          info(`[mtop] ${u.slice(0, 100)}`);
+        }
+      }
+    });
+  }
+
   // Stable strategy: always warm up before search. Cookie-presence checks
   // can't tell whether the WAF has invalidated the session, so we pay a
   // small constant overhead instead of betting on stale cookies.
