@@ -226,6 +226,40 @@ When `--get`/`--pick` is given, the human renderer is skipped; the resolved
 value(s) go to stdout. The full payload still flows through when neither
 flag is set, so existing `| jq` pipelines keep working.
 
+## Login in non-interactive sessions (Codex / Claude Code / scripted)
+
+`1688 login` displays a QR code on stderr. ASCII rendering only works on
+a real TTY — when invoked from an agent, stderr is usually piped and the
+ASCII art either does not render or appears garbled.
+
+The login command always **also** saves the QR as a PNG to
+`~/.1688/login-qr.png` (`%USERPROFILE%\.1688\login-qr.png` on Windows)
+and writes `QR saved as PNG: <path>` on stderr. The agent should:
+
+1. Watch stderr for the `QR saved as PNG:` line.
+2. Surface that file to the user (display the image inline, or tell the
+   user the exact path so they can open it).
+3. Wait for the command to exit naturally — the user must scan the QR
+   with their 1688 mobile app within the timeout (default 300 s).
+
+Do not attempt to "open" the raw QR URL in a browser — it is a token URL
+that only the 1688 app can consume, not a human-readable page.
+
+## Feedback / bug reports
+
+```
+1688 feedback "<message>"            Open a pre-filled GitHub issue (TTY browser).
+1688 feedback --bug "<details>"      Tag the issue as a bug.
+1688 feedback --no-open "<msg>"      Just print the URL — useful for agents to
+                                     show the user without opening a browser
+                                     on the agent's machine.
+```
+
+The CLI auto-attaches anonymized environment info (version, Node, OS) and
+the last error from `daemon.log` if present. Nothing about the user's
+1688 account is sent. The actual submission still requires the user to
+click "Submit new issue" in the browser — the CLI only prepares the URL.
+
 ## Update awareness
 
 At the start of a session that runs multiple 1688 commands, run

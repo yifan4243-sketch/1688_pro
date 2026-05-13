@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.30] - 2026-05-13
+
+### Fixed
+- **`1688 login` now works under Codex / Claude Code / any agent**.
+  The QR code was rendered as terminal ASCII only when stderr was a
+  real TTY; agents typically pipe stderr, so the QR never displayed.
+  Login now always also saves the QR as a PNG to
+  `~/.1688/login-qr.png` (`%USERPROFILE%\.1688\login-qr.png` on
+  Windows) and prints `QR saved as PNG: <path>` on stderr, so an agent
+  can surface the image to the user.
+
+### Added
+- **`1688 feedback <message>`** — submit feedback or report a bug via a
+  pre-filled GitHub issue. Auto-attaches anonymized environment info
+  (version, Node, OS) and the last error from `daemon.log` if present.
+  On a TTY, opens the issue page in the user's browser. With
+  `--no-open` or in JSON mode, prints the URL so an agent can show it
+  to the user without opening the agent's own browser.
+  ```
+  1688 feedback "the slider verification looped on day 3"
+  1688 feedback --bug "cart-add failed for SKUs with X attribute"
+  ```
+  AGENTS.md gains "Login in non-interactive sessions" and "Feedback /
+  bug reports" sections.
+
 ## [0.1.29] - 2026-05-13
 
 ### Added

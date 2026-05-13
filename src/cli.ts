@@ -448,6 +448,17 @@ daemon
     });
   });
 
+program
+  .command('feedback')
+  .description('Submit feedback or a bug report (opens a pre-filled GitHub issue)')
+  .argument('<message>', 'Your feedback or bug description (quote if multi-word)')
+  .option('--bug', 'Tag the issue as a bug report')
+  .option('--no-open', 'Print the URL only; do not open a browser window')
+  .action(async (message, opts) => {
+    const { run } = await import('./commands/feedback.js');
+    await run({ ...opts, message });
+  });
+
 // Register the four output-shaping flags on every (sub)command so users
 // don't have to remember a parent-command qualifier:
 //   --json            Force JSON output even when stdout is a TTY.
