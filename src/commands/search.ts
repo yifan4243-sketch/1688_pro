@@ -284,80 +284,146 @@ async function detectLoginRedirect(page: Page): Promise<void> {
 
 export async function extractOffers(page: Page): Promise<Offer[]> {
   return page.evaluate(() => {
-    // Class-agnostic extractor: seed from offer-detail anchor links (these
-    // patterns have been stable for years), then walk up to a card-like
-    // ancestor (one that contains a price + image).
-    const anchorSel =
+    // Selector list for offer-detail anchors. URL patterns are far more
+    // stable than DOM class names.
+    const ANCHOR_SEL =
       'a[href*="detail.1688.com/offer/"], a[href*="detail.m.1688.com"], a[href*="m.1688.com/offer"]';
+
+    function getOfferId(href: string): string | null {
+      const m =
+        href.match(/[?&]offerId=(\d+)/) ?? href.match(/\/offer\/(\d+)\.html/);
+      return m ? m[1] ?? null : null;
+    }
+
+    function findCardForAnchor(a: HTMLAnchorElement): HTMLElement {
+      // Walk up until the parent contains MORE THAN ONE distinct offerId —
+      // that means we've crossed into the card list container and the
+      // current `card` is the correct per-card boundary.
+      let card: HTMLElement = a;
+      for (let depth = 0; depth < 15; depth++) {
+        const parent = card.parentElement;
+        if (!parent || parent === document.body) break;
+        const otherAnchors = parent.querySelectorAll<HTMLAnchorElement>(
+          ANCHOR_SEL,
+        );
+        const ids = new Set<string>();
+        for (const oa of Array.from(otherAnchors)) {
+          const id = getOfferId(oa.href);
+          if (id) ids.add(id);
+        }
+        if (ids.size > 1) return card; // over-walking — keep previous card
+        card = parent;
+      }
+      return card;
+    }
+
+    function extractTitle(
+      card: HTMLElement,
+      anchor: HTMLAnchorElement,
+    ): string {
+      const aTitle = anchor.getAttribute('title');
+      if (aTitle && aTitle.length >= 4 && aTitle.length <= 200) {
+        return aTitle.trim();
+      }
+      const imgInA = anchor.querySelector<HTMLImageElement>('img');
+      const altA = imgInA?.getAttribute('alt');
+      if (altA && altA.length >= 4 && altA.length <= 200) return altA.trim();
+
+      // Look for the most-title-like element inside the card.
+      const candidates = card.querySelectorAll<HTMLElement>(
+        '[class*="title" i], [class*="Title"], [class*="name" i], h1, h2, h3, h4',
+      );
+      for (const el of Array.from(candidates)) {
+        const t = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (t.length >= 6 && t.length <= 200 && !/^[¥￥\d]/.test(t)) {
+          return t;
+        }
+      }
+      // Last resort: any <img> alt anywhere in the card.
+      const altAny = card.querySelector('img')?.getAttribute('alt');
+      if (altAny && altAny.length >= 4) return altAny.trim().slice(0, 200);
+      // Give up: return empty rather than the giant card-text blob.
+      return '';
+    }
+
+    function extractPrice(card: HTMLElement): {
+      text: string;
+      min: number | null;
+      max: number | null;
+    } {
+      // Look for leaf elements whose ENTIRE text is a price — avoids the
+      // problem of innerText concatenating "¥0.01" with "1000000~4999999 起订量"
+      // into a single regex-bait string.
+      const leaves = Array.from(card.querySelectorAll<HTMLElement>('*')).filter(
+        (el) => el.children.length === 0,
+      );
+      for (const el of leaves) {
+        const raw = (el.textContent ?? '').replace(/\s+/g, '');
+        const m = raw.match(/^[¥￥]?([\d.]+)(?:[~\-–]([\d.]+))?$/);
+        if (!m) continue;
+        const min = parseFloat(m[1]!);
+        if (!Number.isFinite(min) || min <= 0 || min > 1e5) continue;
+        const max = m[2] ? parseFloat(m[2]) : min;
+        if (max !== null && (max > 1e5 || max < min)) continue;
+        return {
+          text: `¥${m[1]}${m[2] ? `~${m[2]}` : ''}`,
+          min,
+          max,
+        };
+      }
+      return { text: '', min: null, max: null };
+    }
+
+    function extractSupplier(card: HTMLElement): {
+      name: string | null;
+      shopUrl: string | null;
+      years: number | null;
+    } {
+      // 1688 supplier shops use subdomains like shop4c1183j536987.1688.com,
+      // winportXXXX.1688.com, or qm.1688.com/winport/...
+      const links = Array.from(
+        card.querySelectorAll<HTMLAnchorElement>('a[href*="1688.com"]'),
+      ).filter((a) => {
+        const h = a.href ?? '';
+        if (/detail\.1688\.com|detail\.m\.1688\.com|m\.1688\.com\/offer/.test(h))
+          return false;
+        return /shop\w*\.1688\.com|winport|1688\.com\/page\/c/.test(h);
+      });
+      const link = links[0] ?? null;
+      const name = link?.textContent?.trim().slice(0, 80) ?? null;
+      const shopUrl = link?.href ?? null;
+      const text = card.textContent ?? '';
+      const ym = text.match(/(\d{1,2})\s*年/);
+      const years = ym ? parseInt(ym[1]!, 10) : null;
+      return { name, shopUrl, years };
+    }
+
     const anchors = Array.from(
-      document.querySelectorAll<HTMLAnchorElement>(anchorSel),
+      document.querySelectorAll<HTMLAnchorElement>(ANCHOR_SEL),
     );
     const seen = new Set<string>();
     const out: Offer[] = [];
 
     for (const a of anchors) {
-      const href = a.href ?? '';
-      const m =
-        href.match(/[?&]offerId=(\d+)/) ?? href.match(/\/offer\/(\d+)\.html/);
-      if (!m) continue;
-      const offerId = m[1]!;
-      if (seen.has(offerId)) continue;
+      const offerId = getOfferId(a.href ?? '');
+      if (!offerId || seen.has(offerId)) continue;
       seen.add(offerId);
 
-      // Walk up to find a "card-sized" ancestor: contains both a price marker
-      // and an image. Cap depth so we don't escalate to <body>.
-      let card: HTMLElement = a;
-      for (let depth = 0; depth < 8; depth++) {
-        const parent = card.parentElement;
-        if (!parent || parent === document.body) break;
-        const text = parent.textContent ?? '';
-        const hasPrice = /[¥￥]\s*\d/.test(text);
-        const hasImg = !!parent.querySelector('img');
-        if (hasPrice && hasImg) {
-          card = parent;
-          break;
-        }
-        card = parent;
-      }
-
-      const cardText = (card.textContent ?? '').replace(/\s+/g, ' ').trim();
-
-      const title = (
-        a.getAttribute('title') ??
-        a.querySelector('img')?.getAttribute('alt') ??
-        a.textContent ??
-        ''
-      )
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 200);
-
-      const pm = cardText.match(
-        /[¥￥]\s*([\d.]+)(?:\s*[~\-–]\s*([\d.]+))?/,
-      );
-      const priceMin = pm ? parseFloat(pm[1]!) : null;
-      const priceMax = pm && pm[2] ? parseFloat(pm[2]) : priceMin;
-      const priceText = pm ? pm[0].replace(/[¥￥]/g, '¥') : '';
-
-      const img = card.querySelector('img') as HTMLImageElement | null;
+      const card = findCardForAnchor(a);
+      const title = extractTitle(card, a);
+      const price = extractPrice(card);
+      const supplier = extractSupplier(card);
+      const img =
+        a.querySelector<HTMLImageElement>('img') ??
+        card.querySelector<HTMLImageElement>('img');
       const image =
         img?.getAttribute('src') ?? img?.getAttribute('data-src') ?? null;
-
-      const supplierLink = card.querySelector(
-        'a[href*="1688.com"][href*="shop"]',
-      ) as HTMLAnchorElement | null;
-      const yearMatch = cardText.match(/(\d{1,2})\s*年/);
-      const years = yearMatch ? parseInt(yearMatch[1]!, 10) : null;
 
       out.push({
         offerId,
         title,
-        price: { text: priceText, min: priceMin, max: priceMax },
-        supplier: {
-          name: supplierLink?.textContent?.trim() ?? null,
-          shopUrl: supplierLink?.href ?? null,
-          years,
-        },
+        price,
+        supplier,
         turnover: null,
         url: `https://detail.m.1688.com/page/index.html?offerId=${offerId}`,
         image,

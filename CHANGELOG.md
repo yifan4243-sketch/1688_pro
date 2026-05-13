@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.21] - 2026-05-13
+
+### Fixed
+- `search` / `image-search` result extraction was returning garbage fields:
+  the title held the entire card's concatenated text, the price was a
+  bulk-order tier (`¥0.011000000~4999999`), and every row showed the same
+  supplier. Three independent bugs:
+  - Card boundary "walk up until parent has price + img" over-walked into
+    the results container, so all rows shared one ancestor.
+  - Title fallback used `anchor.textContent`; when the anchor wraps the
+    whole card that's the whole card text.
+  - Price regex ran on concatenated innerText where neighbour numbers had
+    no whitespace separator.
+
+  Replaced with: walk up until parent contains more than one offerId; title
+  from `[class*=title]` / `img[alt]` / `<a title>` only; price from leaf
+  elements whose total text matches a price pattern (with sanity bounds);
+  supplier from `shop*.1688.com` / `winport` subdomain links only.
+
 ## [0.1.20] - 2026-05-13
 
 ### Fixed
