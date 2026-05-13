@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.24] - 2026-05-13
+
+### Fixed
+- `BB1688_PROBE=1` output was silent when stdout was piped because `info()`
+  is suppressed under JSON mode. The probe now writes directly to stderr,
+  and prints `[probe] active` on start so you can confirm it's running.
+- Broader JSON markers (`window.runParams`, `"offerList"`, `"offerId":`).
+
 ## [0.1.23] - 2026-05-13
 
 ### Changed

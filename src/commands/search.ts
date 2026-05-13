@@ -104,29 +104,28 @@ async function fetchSearch(
   }
 
   // Diagnostic: log every plausible data-bearing call fired during search,
-  // plus inline-JSON markers in the HTML response. Used to migrate search
-  // from DOM scraping to proper data interception. Set BB1688_PROBE=1.
+  // plus inline-JSON markers in the HTML response. Set BB1688_PROBE=1.
+  // Writes directly to stderr — `info()` is silenced in piped/JSON mode.
   if (process.env.BB1688_PROBE === '1') {
+    const log = (line: string) => process.stderr.write(line + '\n');
+    log('[probe] active');
     page.on('response', async (resp) => {
       const u = resp.url();
       const ct = resp.headers()['content-type'] ?? '';
       if (/\.(png|jpg|jpeg|gif|webp|css|woff|svg|ico|mp4)/i.test(u)) return;
       try {
         const path = new URL(u).pathname;
-        // mtop API
         const m = path.match(/mtop[.\/][^/?&]+/);
         if (m) {
-          info(`[mtop] ${m[0]}`);
+          log(`[mtop] ${m[0]}`);
           return;
         }
-        // Other XHR/JSON
         if (/json/i.test(ct) || /h5api|api\.|\.json|\/api\//i.test(path)) {
-          info(`[xhr ] ${path.slice(0, 80)}`);
+          log(`[xhr ] ${path.slice(0, 80)} ct=${ct.slice(0, 30)}`);
           return;
         }
-        // Search-page HTML — scan for inline JSON markers (SSR data).
         if (
-          /offer_search\.htm|sou\/index\.htm/i.test(u) &&
+          /offer_search\.htm|sou\/index\.htm|s\.1688\.com/i.test(u) &&
           /text\/html/i.test(ct)
         ) {
           const body = await resp.text();
@@ -139,11 +138,15 @@ async function fetchSearch(
             'window.dataLayer',
             'window.aliPangu',
             'window.cuPgcCache',
+            'window.runParams',
+            'window.context',
             'application/json',
             'type="application/ld+json"',
+            '"offerList"',
+            '"offerId":',
           ];
           const hits = markers.filter((k) => body.includes(k));
-          info(
+          log(
             `[html] ${path.slice(0, 60)} length=${body.length} markers=[${hits.join(', ')}]`,
           );
         }
