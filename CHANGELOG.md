@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.26] - 2026-05-13
+
+### Fixed
+- **Windows daemon never started** (`EACCES: permission denied` on
+  `daemon.sock`). Node's `net.listen()` can't bind a filesystem path on
+  Windows — it needs a named pipe (`\\.\pipe\...`). The daemon now uses
+  `\\.\pipe\1688-cli-daemon` on Windows and skips the `fs.unlink` of the
+  socket path (named pipes auto-clean). Unix behavior is unchanged.
+- `isDaemonReachable()` on Windows no longer fails the existence check
+  before connecting — named pipes don't appear in the filesystem.
+
 ## [0.1.25] - 2026-05-13
 
 ### Added

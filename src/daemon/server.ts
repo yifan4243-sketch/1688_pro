@@ -47,10 +47,13 @@ export async function start(opts: ServerOpts = {}): Promise<void> {
 
   // Clean any stale socket. If pidfile points to a live process, refuse.
   await refuseIfAlive();
-  try {
-    await fs.unlink(socketPath());
-  } catch {
-    /* not present, fine */
+  // Windows named pipes have no filesystem entry — skip the unlink.
+  if (process.platform !== 'win32') {
+    try {
+      await fs.unlink(socketPath());
+    } catch {
+      /* not present, fine */
+    }
   }
 
   await fs.writeFile(pidFile(), String(process.pid));
@@ -210,10 +213,12 @@ async function shutdown(): Promise<void> {
     await new Promise<void>((r) => server!.close(() => r()));
   }
   await releaseSharedContext();
-  try {
-    await fs.unlink(socketPath());
-  } catch {
-    /* ignore */
+  if (process.platform !== 'win32') {
+    try {
+      await fs.unlink(socketPath());
+    } catch {
+      /* ignore */
+    }
   }
   try {
     await fs.unlink(pidFile());

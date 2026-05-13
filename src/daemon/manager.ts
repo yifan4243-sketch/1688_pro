@@ -116,7 +116,10 @@ export async function stop(): Promise<{ stopped: boolean }> {
 }
 
 async function cleanupArtifacts(): Promise<void> {
-  for (const p of [socketPath(), pidFile()]) {
+  // Windows named pipes have no filesystem entry — skip the socket path.
+  const targets =
+    process.platform === 'win32' ? [pidFile()] : [socketPath(), pidFile()];
+  for (const p of targets) {
     try {
       await fs.unlink(p);
     } catch {

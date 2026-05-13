@@ -8,10 +8,15 @@ const PING_TIMEOUT_MS = 800;
 const CALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export async function isDaemonReachable(): Promise<boolean> {
-  try {
-    await fs.access(socketPath());
-  } catch {
-    return false;
+  // On Unix the socket is a file we can stat; on Windows the named pipe
+  // (`\\.\pipe\...`) has no filesystem entry, so skip the existence check
+  // and just try to connect.
+  if (process.platform !== 'win32') {
+    try {
+      await fs.access(socketPath());
+    } catch {
+      return false;
+    }
   }
   return new Promise((resolve) => {
     const sock = net.createConnection(socketPath());

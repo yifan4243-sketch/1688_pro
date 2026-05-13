@@ -19,6 +19,11 @@ export function lockFile(): string {
 }
 
 export function socketPath(): string {
+  // Windows: Node's net.listen()/createConnection() can't bind a Unix-style
+  // filesystem path on win32 (EACCES). Use a named pipe instead.
+  if (process.platform === 'win32') {
+    return '\\\\.\\pipe\\1688-cli-daemon';
+  }
   return path.join(root(), 'daemon.sock');
 }
 
