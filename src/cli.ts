@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { CliError } from './io/errors.js';
+import { setOutputFlags } from './io/output.js';
 import updateNotifier from 'update-notifier';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -443,6 +444,50 @@ daemon
       data: s,
     });
   });
+
+// Register the four output-shaping flags on every (sub)command so users
+// don't have to remember a parent-command qualifier:
+//   --json            Force JSON output even when stdout is a TTY.
+//   --pretty          Pretty-print JSON (2-space indent).
+//   --get <path>      Print one field by dot-path. Scalar → raw line,
+//                     object/array → JSON. Supports a.b[0].c, arr[*].x
+//                     (wildcards stream one line per element).
+//   --pick <paths>    Comma-separated dot-paths → emit a JSON object with
+//                     each path as a key.
+//
+// A preAction hook reads them via optsWithGlobals() and pushes into the
+// output module before the command's run() calls emit().
+function addOutputFlagsToAll(p: Command): void {
+  for (const cmd of p.commands) {
+    addOutputFlagsToAll(cmd);
+    cmd.option('--json', 'Force JSON output even when stdout is a TTY');
+    cmd.option('--pretty', 'Pretty-print JSON output (use with --json or pipe)');
+    cmd.option(
+      '--get <path>',
+      'Print one field by dot-path (a.b[0].c, arr[*].x). Scalar → raw line, object/array → JSON',
+    );
+    cmd.option(
+      '--pick <paths>',
+      'Comma-separated dot-paths → emit a JSON object with each as a key',
+    );
+  }
+}
+addOutputFlagsToAll(program);
+
+program.hook('preAction', (_thisCmd, actionCmd) => {
+  const opts = actionCmd.optsWithGlobals() as {
+    json?: boolean;
+    pretty?: boolean;
+    get?: string;
+    pick?: string;
+  };
+  setOutputFlags({
+    json: opts.json,
+    pretty: opts.pretty,
+    get: opts.get,
+    pick: opts.pick,
+  });
+});
 
 try {
   await program.parseAsync();

@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.27] - 2026-05-13
+
+### Added
+- **Four output-shaping flags on every command**, no `jq` needed:
+  - `--json` — force JSON output even when stdout is a TTY.
+  - `--pretty` — indent JSON by 2 spaces.
+  - `--get <path>` — print one field by dot-path. Syntax:
+    `field.sub`, `arr[0].field`, `arr[*].field` (wildcards stream one
+    line per element). Scalars print raw; objects/arrays print JSON.
+  - `--pick <paths>` — comma-separated dot-paths → emit a JSON object
+    with each path as a key. Good for trimming output for agents.
+
+  Examples:
+  ```
+  1688 offer X --get supplier.name             # 深圳狼途实业科技有限公司
+  1688 offer X --get supplier                  # {"name":"...","loginId":"..."}
+  1688 offer X --get 'skus[*].price'           # 49 \n 68 \n 98.75 ...
+  1688 offer X --pick price,supplier.name      # {"price":1.25,"supplier.name":"..."}
+  1688 offer X --json --pretty                 # full pretty-printed JSON in TTY
+  ```
+
+  Implemented in `src/io/output.ts`; flags are added to every command
+  through a recursive walk of commander's command tree plus a `preAction`
+  hook that pushes the values into the output module before `emit()` runs.
+
 ## [0.1.26] - 2026-05-13
 
 ### Fixed
