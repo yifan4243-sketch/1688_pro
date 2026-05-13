@@ -450,13 +450,24 @@ daemon
 
 program
   .command('feedback')
-  .description('Submit feedback or a bug report (opens a pre-filled GitHub issue)')
-  .argument('<message>', 'Your feedback or bug description (quote if multi-word)')
+  .description(
+    'Submit feedback or a bug report. Default: opens a pre-filled GitHub issue. With --submit: posts directly via the `gh` CLI.',
+  )
+  // Variadic so macOS "smart quotes" can't truncate the message — words
+  // are joined back together regardless of where the shell split them.
+  .argument(
+    '<message...>',
+    'Your feedback or bug description (multiple words OK, quotes optional)',
+  )
   .option('--bug', 'Tag the issue as a bug report')
+  .option(
+    '--submit',
+    'Post the issue directly via the GitHub CLI (`gh`) — requires `gh auth login`',
+  )
   .option('--no-open', 'Print the URL only; do not open a browser window')
-  .action(async (message, opts) => {
+  .action(async (messageParts: string[], opts) => {
     const { run } = await import('./commands/feedback.js');
-    await run({ ...opts, message });
+    await run({ ...opts, message: messageParts.join(' ') });
   });
 
 // Register the four output-shaping flags on every (sub)command so users

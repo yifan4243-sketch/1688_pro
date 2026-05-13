@@ -253,7 +253,16 @@ that only the 1688 app can consume, not a human-readable page.
 1688 feedback --no-open "<msg>"      Just print the URL — useful for agents to
                                      show the user without opening a browser
                                      on the agent's machine.
+1688 feedback "<msg>" --submit       Post the issue DIRECTLY via the `gh` CLI
+                                     (requires `gh auth login`). Skips the
+                                     "Submit new issue" click in the browser.
 ```
+
+**Agent rule for `--submit`**: do NOT add `--submit` on the agent's own
+initiative. Always run without `--submit` first, show the user the
+generated URL, and only re-run with `--submit` if the user explicitly
+asks ("submit it" / "直接发吧" / "post the issue"). Posting an issue is
+a public write action.
 
 The CLI auto-attaches anonymized environment info (version, Node, OS) and
 the last error from `daemon.log` if present. Nothing about the user's

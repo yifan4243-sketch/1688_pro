@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.31] - 2026-05-14
+
+### Added
+- **`1688 feedback --submit`** — post the issue directly via the GitHub
+  CLI (`gh`). Checks `gh --version` and `gh auth status` first, then
+  runs `gh issue create --repo superjack2050/1688-cli ...`. The flag is
+  opt-in by design: agents and users still get the safer browser flow
+  by default, and only escalate to direct submission when explicitly
+  asked.
+
+### Fixed
+- `1688 feedback "<message>"` swallowed almost all of the message on
+  macOS when the user's shell auto-replaced straight `"` with smart
+  quotes (`“ ”`) — the shell saw them as literal characters, split the
+  argument list, and only the first piece reached the CLI. The
+  `<message>` argument is now variadic; all remaining args are joined
+  with a space, so the message survives regardless of how the shell
+  parses quotes. Leading/trailing smart quotes are also stripped from
+  the joined result.
+- Reject feedback messages shorter than 5 characters with a hint about
+  using single quotes on macOS.
+
 ## [0.1.30] - 2026-05-13
 
 ### Fixed
