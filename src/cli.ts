@@ -66,6 +66,20 @@ program
     await run({ ...opts, offerId });
   });
 
+program
+  .command('similar')
+  .description(
+    'Find similar / 找同款 offers for a given offerId (compare suppliers, sorted by price)',
+  )
+  .argument('<offerId>', 'Offer ID (digits)')
+  .option('--max <n>', 'Maximum number of similar offers', '20')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (fallback for risk control)')
+  .action(async (offerId, opts) => {
+    const { run } = await import('./commands/similar.js');
+    await run({ ...opts, offerId });
+  });
+
 const seller = program
   .command('seller')
   .description('Seller communication (旺旺 IM)');
@@ -94,6 +108,12 @@ seller
   .option(
     '--since <iso>',
     'Only show messages after this ISO timestamp (e.g. 2026-05-12T16:44:00+08:00)',
+  )
+  .option('--watch', 'Poll continuously and print new messages as they arrive')
+  .option(
+    '--interval <seconds>',
+    'Polling interval in seconds for --watch (default 30, min 10)',
+    '30',
   )
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a window (debug visibility)')

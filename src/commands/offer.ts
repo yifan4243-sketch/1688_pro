@@ -20,16 +20,64 @@ export interface OfferResult {
   priceRange: string | null;
   priceMin: number | null;
   priceMax: number | null;
+  /** Display unit ("件" / "个" / "米" ...) */
   unitName: string | null;
-  supplier: { name: string | null; userId: string | null };
+  /** 起订量 — minimum order quantity for a single SKU buy. */
+  minOrderQty: number | null;
+  /** 混批起订量 — minimum quantity when mixing SKUs in one order. */
+  mixOrderQty: number | null;
+  /** Bulk-discount tiers, e.g. [{minQty: 1, price: 4.16}, {minQty: 100, price: 3.50}]. */
+  priceTiers: PriceTier[];
+  /** Long-form detail page URL (rich images / text). */
+  detailUrl: string | null;
+  /** Product attributes (材质 / 规格 / 产地 ...). Empty when the seller
+   *  didn't fill them in. */
+  attributes: ProductAttribute[];
+  /** Per-SKU package dimensions (件重尺) when the seller filled them in.
+   *  Empty array for small items (clothes, etc.) where 1688 omits this. */
+  packageInfo: SkuPackage[];
+  supplier: {
+    name: string | null;
+    loginId: string | null;
+    memberId: string | null;
+    userId: string | null;
+  };
   freight: {
     receiveAddress: string | null;
     sendArea: string | null;
+    province: string | null;
+    city: string | null;
     unitWeight: number | null;
   };
+  saledCount: number | null;
+  categoryId: string | null;
   options: SkuOption[];
   skus: SkuVariant[];
   mainImage: string | null;
+  images: string[];
+}
+
+export interface PriceTier {
+  minQty: number;
+  price: number;
+}
+
+export interface ProductAttribute {
+  name: string;
+  value: string;
+}
+
+export interface SkuPackage {
+  skuId: string;
+  spec: string;
+  /** cm */
+  length: number | null;
+  width: number | null;
+  height: number | null;
+  /** Stated weight (raw value — 1688 sometimes uses grams or kg per offer). */
+  weight: number | null;
+  /** Volume (cm³). */
+  volume: number | null;
 }
 
 export interface SkuOption {
@@ -41,10 +89,16 @@ export interface SkuVariant {
   skuId: string;
   specs: string;
   price: number | null;
+  /** Bulk-tier price when 1688 surfaces a separate multi-piece price. */
+  multiPrice: number | null;
   stock: number | null;
+  saleCount: number;
+  /** Best-effort image URL derived from the first option (颜色/款式) match. */
+  image: string | null;
 }
 
 const SKU_API_RE = /wosc\.queryofferskuselectormodel/i;
+let DETAIL_SEQ = 0;
 
 export async function execute(
   ctx: BrowserContext,
@@ -60,18 +114,139 @@ export async function execute(
     resolveSku = r;
   });
   const onResp = async (resp: PWResponse) => {
-    if (!SKU_API_RE.test(resp.url())) return;
-    try {
-      const text = await resp.text();
-      const json = parseMtop(text) as {
-        data?: { skuSelectorBizModel?: unknown };
-      };
-      if (json?.data?.skuSelectorBizModel) resolveSku(json.data.skuSelectorBizModel);
-    } catch {
-      /* ignore parse errors */
+    if (SKU_API_RE.test(resp.url())) {
+      try {
+        const text = await resp.text();
+        if (process.env.BB1688_PROBE === '1') {
+          try {
+            const fs = await import('node:fs/promises');
+            await fs.writeFile('/tmp/1688-sku-raw.json', text);
+            process.stderr.write(
+              `[probe] saved sku → /tmp/1688-sku-raw.json (${text.length} bytes)\n`,
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        const json = parseMtop(text) as {
+          data?: { skuSelectorBizModel?: unknown };
+        };
+        if (json?.data?.skuSelectorBizModel)
+          resolveSku(json.data.skuSelectorBizModel);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    // Probe: save every offerdetail.service response so we can see which
+    // call carries productAttributes.
+    if (
+      process.env.BB1688_PROBE === '1' &&
+      /mmga\.offerdetail\.service/i.test(resp.url())
+    ) {
+      try {
+        const text = await resp.text();
+        const fs = await import('node:fs/promises');
+        DETAIL_SEQ++;
+        const file = `/tmp/1688-offerdetail-${String(DETAIL_SEQ).padStart(2, '0')}.json`;
+        await fs.writeFile(file, text);
+        process.stderr.write(
+          `[probe] saved offerdetail → ${file} (${text.length} bytes)\n`,
+        );
+      } catch {
+        /* ignore */
+      }
     }
   };
   page.on('response', onResp);
+
+  if (process.env.BB1688_PROBE === '1') {
+    const log = (line: string) => process.stderr.write(line + '\n');
+    log('[probe] active (offer)');
+    let mtopSeq = 0;
+    let htmlSeq = 0;
+    page.on('response', async (resp) => {
+      const u = resp.url();
+      const ct = resp.headers()['content-type'] ?? '';
+      if (
+        /\.(png|jpg|jpeg|gif|webp|css|woff2?|svg|ico|mp4|ttf|otf|js|map)(\?|$)/i.test(
+          u,
+        )
+      )
+        return;
+      if (/mmstat\.com|google-analytics|alicdn\.com\/sufei/.test(u)) return;
+      try {
+        const path = new URL(u).pathname;
+        // mtop OR any non-mtop XHR-style endpoint (wosc.*, *.json, etc.)
+        const isApi =
+          /mtop[.\/]|wosc\.|h5api|\/api\/|\/ajax\/|\.json/i.test(path) ||
+          /json/i.test(ct);
+        if (isApi) {
+          let body = '';
+          try {
+            body = await resp.text();
+          } catch {
+            /* ignore */
+          }
+          const offerHits = (body.match(/"offerId|offerId":/g) ?? []).length;
+          const titleHits = (body.match(/"subject"|"title"/g) ?? []).length;
+          const priceHits = (body.match(/"price"|priceInfo|priceRange/g) ?? [])
+            .length;
+          log(
+            `[api ] ${path.slice(0, 80)} ct=${ct.slice(0, 25)} bodyLen=${body.length} offerId×${offerHits} title×${titleHits} price×${priceHits}`,
+          );
+          if (body.length > 3000 && (offerHits > 0 || titleHits > 0)) {
+            try {
+              const fs = await import('node:fs/promises');
+              const seq = (++mtopSeq).toString().padStart(2, '0');
+              const tag = path.split('/').filter(Boolean).pop() ?? 'api';
+              const file = `/tmp/1688-offer-mtop-${seq}-${tag.slice(0, 40)}.json`;
+              await fs.writeFile(file, body);
+              log(`[api ] saved → ${file}`);
+            } catch {
+              /* ignore */
+            }
+          }
+          return;
+        }
+        // HTML responses on detail.1688.com — likely SSR shell with inline data
+        if (
+          /detail\.1688\.com|detail\.m\.1688\.com/.test(u) &&
+          /text\/html/i.test(ct)
+        ) {
+          const body = await resp.text();
+          try {
+            const fs = await import('node:fs/promises');
+            const seq = (++htmlSeq).toString().padStart(2, '0');
+            const file = `/tmp/1688-offer-page-${seq}.html`;
+            await fs.writeFile(file, body);
+            // Probe for known inline-JSON variables.
+            const markers = [
+              'window.runParams',
+              'window.detailData',
+              'window.context',
+              'window.offerDetail',
+              'window.__INITIAL_DATA__',
+              'window.__detail__',
+              'window.__VITA_DATA__',
+              'window.dataLayer',
+              '"offerId":',
+              '"subject":',
+              '"sellerLoginId":',
+            ];
+            const hits = markers.filter((k) => body.includes(k));
+            log(
+              `[html] saved → ${file} (${body.length} bytes) markers=[${hits.join(', ')}]`,
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+  }
 
   const url = `https://detail.1688.com/offer/${args.offerId}.html`;
   info(`Fetching offer ${args.offerId}...`);
@@ -98,8 +273,8 @@ export async function execute(
   ])) as SkuBizModel | null;
   page.off('response', onResp);
 
-  const dom = await scrapeDom(page);
-  return assemble(args.offerId, url, sku, dom);
+  const pageInfo = await readPageInfo(page);
+  return assemble(args.offerId, url, sku, pageInfo);
 }
 
 function parseMtop(text: string): unknown {
@@ -117,27 +292,315 @@ interface SkuBizModel {
       specAttrs?: string;
       price?: string;
       discountPrice?: string;
+      multiPrice?: string;
       canBookCount?: string;
+      saleCount?: string | number;
     }
   >;
   skuPriceScale?: string;
+  skuSelectorModel?: {
+    tradeModel?: {
+      beginAmount?: number | string;
+      saleCount?: number | string;
+      unit?: string;
+      mixModel?: { mixAmount?: number | string };
+      offerPriceModel?: {
+        currentPrices?: { beginAmount?: number | string; price?: number | string }[];
+      };
+    };
+  };
   extraInfo?: {
     freightInfo?: {
       unitWeight?: number;
       receiveAddress?: string;
       sendAddressCode?: string;
+      sellerUserId?: number | string;
     };
   };
 }
 
-interface DomInfo {
+interface PageInfo {
   title: string;
   supplierName: string | null;
+  sellerLoginId: string | null;
+  sellerMemberId: string | null;
+  sellerUserId: string | null;
+  saledCount: number | null;
   mainImage: string | null;
+  images: string[];
   sendArea: string | null;
+  province: string | null;
+  city: string | null;
+  categoryId: string | null;
+  detailUrl: string | null;
+  attributes: ProductAttribute[];
+  packageInfo: SkuPackage[];
 }
 
-async function scrapeDom(page: Page): Promise<DomInfo> {
+/**
+ * Extract product info from the inline `window.context.result.data` JS
+ * object that 1688 ships in the SSR HTML response. Bypasses fragile DOM
+ * selectors by letting Playwright serialize the parsed JS object back to
+ * Node over the wire.
+ *
+ * Falls back to DOM scraping if the inline data isn't available for some
+ * reason (e.g. server rendered a fallback view).
+ */
+async function readPageInfo(page: Page): Promise<PageInfo> {
+  const debug = process.env.BB1688_DEBUG === '1';
+  if (debug) {
+    page.on('console', (msg) => {
+      const t = msg.text();
+      if (t.includes('[bb1688-probe]') || t.includes('[bb1688]'))
+        process.stderr.write(t + '\n');
+    });
+  }
+
+  try {
+    await page.waitForFunction(
+      () => {
+        const w = window as unknown as {
+          context?: {
+            result?: { data?: { productTitle?: { fields?: object } } };
+          };
+        };
+        return !!w.context?.result?.data?.productTitle?.fields;
+      },
+      { timeout: 8000 },
+    );
+  } catch {
+    return scrapeDomFallback(page);
+  }
+  // Modest scroll to trigger lazy modules near the SKU + 参数 section.
+  // Avoid scrolling to bottom — 1688 detail pages infinite-scroll related
+  // products there, which can hang the renderer.
+  try {
+    await page.evaluate(() => window.scrollTo(0, 1500));
+    await new Promise((r) => setTimeout(r, 1000));
+    await page.evaluate(() => window.scrollTo(0, 3000));
+    await new Promise((r) => setTimeout(r, 1000));
+  } catch {
+    /* best-effort */
+  }
+
+  const fromContext = await page
+    .evaluate((debugMode: boolean) => {
+      type ImageEntry =
+        | string
+        | {
+            fullPathImageURI?: string;
+            imageURI?: string;
+            size310x310ImageURI?: string;
+          };
+      type TempModel = {
+        companyName?: string;
+        sellerLoginId?: string;
+        sellerMemberId?: string;
+        sellerUserId?: number | string;
+        saledCount?: number | string;
+        postCategoryId?: number | string;
+        topCategoryId?: number | string;
+      };
+      type OfferData = {
+        subject?: string;
+        images?: ImageEntry[];
+        freightInfo?: {
+          sendAddress?: string;
+          sendCityText?: string;
+          sendProvinceText?: string;
+          sendArea?: string;
+        };
+        tempModel?: TempModel;
+      };
+      const w = window as unknown as {
+        context?: { result?: { data?: OfferData } };
+        FE_GLOBALS?: {
+          offerLoginId?: string;
+          loginId?: string;
+          memberId?: string;
+        };
+      };
+      const d = w.context?.result?.data as Record<string, unknown> | undefined;
+      if (!d) return null;
+      const feg = w.FE_GLOBALS ?? {};
+
+      // description module — has detailUrl + leafCategoryId.
+      const descFields = (d.description as {
+        fields?: {
+          detailUrl?: string;
+          leafCategoryId?: number | string;
+          detailVideoId?: string;
+        };
+      })?.fields ?? {};
+
+      // Product attributes live in a deeply-nested branch (1688 typically
+      // serializes them under `globalData.model.offerDetail.featureAttributes`,
+      // but the wrapping path varies). Walk the entire window.context tree
+      // (bounded depth) looking for the canonical featureAttributes array.
+      const attributes: { name: string; value: string }[] = [];
+      const root = (w.context ?? d) as Record<string, unknown>;
+      const stack: { v: unknown; depth: number }[] = [{ v: root, depth: 0 }];
+      while (stack.length && attributes.length === 0) {
+        const { v, depth } = stack.shift()!;
+        if (depth > 12) continue;
+        if (!v || typeof v !== 'object') continue;
+        if (Array.isArray(v)) {
+          // Detect attribute-list array shape.
+          if (v.length > 0 && typeof v[0] === 'object' && v[0] !== null) {
+            const first = v[0] as Record<string, unknown>;
+            if (
+              typeof first.name === 'string' &&
+              ('value' in first || 'values' in first)
+            ) {
+              for (const item of v) {
+                if (!item || typeof item !== 'object') continue;
+                const it = item as Record<string, unknown>;
+                const name =
+                  typeof it.name === 'string' ? it.name.trim() : '';
+                let value = '';
+                if (typeof it.value === 'string') value = it.value;
+                else if (Array.isArray(it.values))
+                  value = (it.values as unknown[])
+                    .filter((x) => typeof x === 'string')
+                    .join(',');
+                if (name && value) attributes.push({ name, value });
+              }
+            }
+          }
+          for (const item of v) stack.push({ v: item, depth: depth + 1 });
+        } else {
+          // Prioritize keys that hint at attribute containers.
+          const obj = v as Record<string, unknown>;
+          // Direct hit
+          const direct =
+            obj.featureAttributes ?? obj.productAttributes ?? obj.attributes;
+          if (Array.isArray(direct))
+            stack.unshift({ v: direct, depth: depth + 1 });
+          for (const k of Object.keys(obj))
+            stack.push({ v: obj[k], depth: depth + 1 });
+        }
+      }
+
+      // Package info — per-SKU dimensions/weight (件重尺).
+      const packRaw = (
+        d.productPackInfo as {
+          fields?: { pieceWeightScale?: { pieceWeightScaleInfo?: unknown[] } };
+        }
+      )?.fields?.pieceWeightScale?.pieceWeightScaleInfo;
+      const packageInfo: {
+        skuId: string;
+        spec: string;
+        length: number | null;
+        width: number | null;
+        height: number | null;
+        weight: number | null;
+        volume: number | null;
+      }[] = [];
+      if (Array.isArray(packRaw)) {
+        for (const p of packRaw) {
+          if (!p || typeof p !== 'object') continue;
+          const o = p as {
+            skuId?: number | string;
+            sku1?: string;
+            length?: number;
+            width?: number;
+            height?: number;
+            weight?: number;
+            volume?: number;
+          };
+          packageInfo.push({
+            skuId: o.skuId != null ? String(o.skuId) : '',
+            spec: o.sku1 ?? '',
+            length: o.length ?? null,
+            width: o.width ?? null,
+            height: o.height ?? null,
+            weight: o.weight ?? null,
+            volume: o.volume ?? null,
+          });
+        }
+      }
+
+      // Page is organized by widget modules; real data lives in `<mod>.fields`.
+      const productTitle = (d.productTitle as {
+        fields?: {
+          title?: string;
+          shopInfo?: {
+            companyName?: string;
+            authCompanyName?: string;
+            sellerSlrServiceScore?: string;
+          };
+          newSaleCount?: string;
+          unit?: string;
+        };
+      })?.fields ?? {};
+      const gallery = (d.gallery as {
+        fields?: {
+          mainImage?: unknown;
+          offerId?: number | string;
+          subject?: string;
+          video?: { coverUrl?: string; videoId?: string };
+        };
+      })?.fields ?? {};
+      const shop = productTitle.shopInfo ?? {};
+
+      const imgs: string[] = [];
+      const rawImgs = gallery.mainImage;
+      if (Array.isArray(rawImgs)) {
+        for (const img of rawImgs) {
+          if (typeof img === 'string') imgs.push(img);
+          else if (img && typeof img === 'object') {
+            const o = img as {
+              fullPathImageURI?: string;
+              size310x310ImageURI?: string;
+              imageURI?: string;
+            };
+            const url =
+              o.fullPathImageURI ?? o.size310x310ImageURI ?? o.imageURI ?? '';
+            if (url) {
+              imgs.push(
+                url.startsWith('http') ? url : `https://cbu01.alicdn.com/${url}`,
+              );
+            }
+          }
+        }
+      }
+      const catId =
+        descFields.leafCategoryId != null
+          ? String(descFields.leafCategoryId)
+          : null;
+      return {
+        detailUrl: descFields.detailUrl ?? null,
+        attributes,
+        packageInfo,
+        title: productTitle.title ?? gallery.subject ?? '',
+        supplierName:
+          shop.companyName ?? shop.authCompanyName ?? null,
+        sellerLoginId: feg.offerLoginId ?? feg.loginId ?? null,
+        sellerMemberId: feg.memberId ?? null,
+        sellerUserId: null,
+        saledCount: null,
+        mainImage: imgs[0] ?? null,
+        images: imgs,
+        sendArea: null,
+        province: null,
+        city: null,
+        categoryId: catId,
+      };
+    }, debug)
+    .catch(() => null);
+
+  if (!fromContext) return scrapeDomFallback(page);
+
+  // Title from <title> as backup when subject empty.
+  let title = fromContext.title;
+  if (!title) {
+    const raw = await page.title();
+    title = raw.replace(/\s*-\s*阿里巴巴\s*$/, '').trim();
+  }
+  return { ...fromContext, title };
+}
+
+async function scrapeDomFallback(page: Page): Promise<PageInfo> {
   const raw = await page.title();
   const title = raw.replace(/\s*-\s*阿里巴巴\s*$/, '').trim();
   const info = await page.evaluate(() => {
@@ -151,22 +614,36 @@ async function scrapeDom(page: Page): Promise<DomInfo> {
     }
     return {
       supplierName: txt('h1') ?? null,
-      // Try common image carousel selectors
       mainImage:
         imgSrc('.v-image-wrap img') ??
         imgSrc('.ant-image-img') ??
         imgSrc('img[alt*="主图"]'),
-      sendArea: null as string | null,
     };
   });
-  return { title, ...info };
+  return {
+    title,
+    supplierName: info.supplierName,
+    sellerLoginId: null,
+    sellerMemberId: null,
+    sellerUserId: null,
+    saledCount: null,
+    mainImage: info.mainImage,
+    images: info.mainImage ? [info.mainImage] : [],
+    sendArea: null,
+    province: null,
+    city: null,
+    categoryId: null,
+    detailUrl: null,
+    attributes: [],
+    packageInfo: [],
+  };
 }
 
 function assemble(
   offerId: string,
   url: string,
   sku: SkuBizModel | null,
-  dom: DomInfo,
+  info: PageInfo,
 ): OfferResult {
   const priceRange = sku?.skuPriceScale ?? null;
   const { min: priceMin, max: priceMax } = parseRange(priceRange);
@@ -179,37 +656,102 @@ function assemble(
     })),
   }));
 
+  // Build a map: option value name → image (e.g. "22管径长方头" → cbu URL).
+  // Used to derive a per-SKU image since the SKU itself doesn't carry one.
+  const valueImage = new Map<string, string>();
+  for (const opt of options) {
+    for (const v of opt.values) {
+      if (v.imageUrl) valueImage.set(v.name, v.imageUrl);
+    }
+  }
+  // SKU specs is HTML-encoded ("&gt;" = ">"). Split by either, take first part.
+  // Falls back to the offer's main image when the seller didn't upload
+  // per-spec thumbnails — keeps every SKU with a usable preview URL.
+  const fallbackSkuImage =
+    info.mainImage ?? options[0]?.values[0]?.imageUrl ?? null;
+  function deriveSkuImage(spec: string): string | null {
+    const firstPart = spec.split(/&gt;|>/)[0]?.trim() ?? '';
+    return valueImage.get(firstPart) ?? fallbackSkuImage;
+  }
+
   const skus: SkuVariant[] = Object.entries(sku?.skuInfoMap ?? {}).map(
-    ([k, v]) => ({
-      skuId: v.skuId ?? '',
-      specs: v.specAttrs ?? k,
-      price: parseFloatOrNull(v.discountPrice ?? v.price),
-      stock: parseIntOrNull(v.canBookCount),
-    }),
+    ([k, v]) => {
+      const specs = v.specAttrs ?? k;
+      return {
+        skuId: v.skuId ?? '',
+        specs,
+        price: parseFloatOrNull(v.discountPrice ?? v.price),
+        multiPrice: parseFloatOrNull(v.multiPrice),
+        stock: parseIntOrNull(v.canBookCount),
+        saleCount:
+          typeof v.saleCount === 'number'
+            ? v.saleCount
+            : parseIntOrNull(v.saleCount) ?? 0,
+        image: deriveSkuImage(specs),
+      };
+    },
   );
 
   const freight = {
     receiveAddress: sku?.extraInfo?.freightInfo?.receiveAddress ?? null,
-    sendArea: dom.sendArea,
+    sendArea: info.sendArea,
+    province: info.province,
+    city: info.city,
     unitWeight: sku?.extraInfo?.freightInfo?.unitWeight ?? null,
   };
 
   const fallbackImage =
-    options[0]?.values[0]?.imageUrl ?? dom.mainImage ?? null;
+    info.mainImage ?? options[0]?.values[0]?.imageUrl ?? null;
+
+  const trade = sku?.skuSelectorModel?.tradeModel;
+  const priceTiers: PriceTier[] = (trade?.offerPriceModel?.currentPrices ?? [])
+    .map((t) => ({
+      minQty: parseIntOrNull(String(t.beginAmount ?? '')) ?? 0,
+      price: parseFloatOrNull(String(t.price ?? '')) ?? 0,
+    }))
+    .filter((t) => t.minQty > 0 && t.price > 0);
+  const tradeSaleCount =
+    typeof trade?.saleCount === 'number'
+      ? trade.saleCount
+      : parseIntOrNull(trade?.saleCount as string | undefined);
 
   return {
     offerId,
-    title: dom.title,
+    title: info.title,
     url,
     priceRange,
     priceMin,
     priceMax,
-    unitName: null,
-    supplier: { name: dom.supplierName, userId: null },
+    unitName: trade?.unit ?? null,
+    minOrderQty: parseIntOrNull(String(trade?.beginAmount ?? '')),
+    mixOrderQty: parseIntOrNull(String(trade?.mixModel?.mixAmount ?? '')),
+    priceTiers,
+    detailUrl: info.detailUrl,
+    attributes: info.attributes,
+    packageInfo: info.packageInfo,
+    supplier: {
+      name: info.supplierName,
+      loginId: info.sellerLoginId,
+      memberId: info.sellerMemberId,
+      // sellerUserId is exposed via SKU mtop freightInfo; window.context omits it.
+      userId:
+        info.sellerUserId ??
+        (sku?.extraInfo?.freightInfo?.sellerUserId != null
+          ? String(sku.extraInfo.freightInfo.sellerUserId)
+          : null),
+    },
     freight,
+    saledCount:
+      tradeSaleCount ??
+      info.saledCount ??
+      (skus.length > 0
+        ? skus.reduce((s, x) => s + (x.saleCount || 0), 0)
+        : null),
+    categoryId: info.categoryId,
     options,
     skus,
     mainImage: fallbackImage,
+    images: info.images,
   };
 }
 

@@ -77,6 +77,10 @@ const REGISTRY: Record<string, () => Promise<Executor<unknown, unknown>>> = {
     import('../commands/seller-inquire.js').then(
       (m) => m.scrapeFeGlobals as Executor<unknown, unknown>,
     ),
+  similar: () =>
+    import('../commands/similar.js').then(
+      (m) => m.execute as Executor<unknown, unknown>,
+    ),
 };
 
 export async function loadExecutor<TArgs, TData>(

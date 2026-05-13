@@ -1,19 +1,23 @@
-# 1688-cli
+# 1688-cli: Alibaba 1688.com CLI - Product Search, Inquiry, Cart, Checkout, Order Tracking & Seller Chat for AI Agents & Humans
 
 [![npm version](https://img.shields.io/npm/v/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
 [![npm downloads](https://img.shields.io/npm/dm/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
 [![license](https://img.shields.io/npm/l/1688-cli.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/1688-cli.svg)](https://nodejs.org/)
 
-**1688.com CLI for humans, Codex, and Claude Code.**
+Command-line tool for Alibaba 1688.com wholesale: keyword & image search,
+supplier inquiry, cart, checkout, order tracking, and seller chat. Outputs
+JSON when piped (for Codex / Claude Code / other AI agents) and pretty TTY
+text for humans.
 
-Two core flows from the terminal:
+The 6 things you can do from the terminal:
 
-- **Sourcing** — search / image-search / product detail / pre-sale inquiry
-- **Orders** — list / detail / logistics tracking / post-sale chat with sellers
-
-Outputs human text on a TTY and JSON when piped, so AI agents can drive it
-without parsing.
+1. **Sourcing** — search / similar / image-search / product detail
+2. **Pre-sale inquiry** — ask the supplier, watch replies live
+3. **Cart** — collect SKUs (with diff-based add confirmation)
+4. **Checkout** — preview + place the order
+5. **Order tracking** — list / detail / logistics / overdue detection
+6. **Post-sale chat** — chase shipment, read replies as JSON stream
 
 ```bash
 npm i -g 1688-cli
@@ -21,12 +25,16 @@ npm i -g 1688-cli
 
 # Sourcing
 1688 search "佛龛柜" --max 10                                 # keyword search
+1688 similar 628196518518 --max 10                            # find similar offers, sorted by price
 1688 image-search ./sample.jpg                                # search by image
 1688 offer 628196518518                                       # product detail
-1688 seller inquire 628196518518 "支持定制 logo 吗？"          # ask seller
-1688 seller messages --offer 628196518518                     # read seller's reply
 
-# Orders
+# Pre-sale inquiry (with live watch for AI agents)
+1688 seller inquire 628196518518 "支持定制 logo 吗？"          # ask seller
+1688 seller messages --offer 628196518518                     # one-shot read
+1688 seller messages --offer 628196518518 --watch             # live-tail new replies (JSON when piped)
+
+# Order tracking & post-sale chat
 1688 order list --status waitsellersend                       # list orders
 1688 order get      <orderId>                                 # one order detail
 1688 order logistics <orderId>                                # tracking + trace
@@ -42,8 +50,8 @@ Existing 1688 automation options are heavy: Selenium glue you maintain, browser
 extensions you can't pipe into a shell, MCP servers that fight with your
 agent's tooling. `1688-cli` is a single command:
 
-- **Real Chrome under the hood** (`channel:'chrome'` + stealth). Reduced
-  risk-control hits compared to bundled Chromium.
+- **Real Chrome under the hood** (`channel:'chrome'`). Same browser you'd
+  use manually — your session is real, not a synthetic Chromium.
 - **Persistent profile** at `~/.1688/`. One login lasts for weeks.
 - **Long-running daemon** — first command warms the browser, subsequent
   commands reuse it (no relaunch per call).
@@ -77,7 +85,93 @@ npm i -g 1688-cli
 
 ## Commands
 
-### Account
+Organized by the buyer journey: discover → ask → decide → buy → track →
+follow up.
+
+### 1. Sourcing — find the right supplier
+
+```bash
+1688 search 机械键盘 --max 20                    # keyword search
+1688 similar 628196518518 --max 20               # "找同款" — same product, other suppliers, sorted by price
+1688 image-search ./shoe.jpg                     # search by local image
+1688 image-search https://.../img.png            # search by http(s) URL
+1688 offer 628196518518                          # product detail (priceTiers, attributes, packageInfo, SKUs)
+```
+
+### 2. Pre-sale inquiry — ask the supplier
+
+> Uses the same `seller messages` / `seller chat` tooling as §6, scoped by
+> `--offer <offerId>` instead of an orderId.
+
+```bash
+1688 seller inquire 628196518518 "支持定制 logo 吗？"               # send a product link + question
+1688 seller messages --offer 628196518518                          # read replies (one-shot)
+1688 seller messages --offer 628196518518 --since 2026-05-13T10:00:00+08:00
+1688 seller messages --offer 628196518518 --watch --interval 30    # live-tail new replies
+```
+
+**Watch mode** prints only newly-arrived messages as line-delimited JSON
+when stdout is piped — pipe into any agent. Dedup is by server-side
+`messageId`. Min interval 10 s.
+
+### 3. Cart — collect SKUs
+
+```bash
+1688 cart list
+1688 cart add    <offerId> --sku <skuId> --qty 2
+1688 cart remove <cartId>
+```
+
+`cart add` returns `{added: CartItem, isNewRow, addedQuantity}` so pipelines
+can pick up the new cartId reliably even when the same SKU is already in cart
+(server merges into the existing row in that case):
+
+```bash
+id=$(1688 cart add 628196518518 --sku 6070845665229 --qty 1 | jq -r '.added.cartId')
+1688 cart remove "$id"
+```
+
+### 4. Checkout — place the order
+
+```bash
+1688 checkout prepare <cartIds...>           # preview total/address/items — safe, read-only
+1688 checkout confirm <cartIds...>           # default: TTY prompt y/N
+1688 checkout confirm <cartIds...> -y        # skip prompt (TTY still required)
+1688 checkout confirm <cartIds...> --agent   # AI-agent mode: no prompts (explicit autonomy opt-in)
+```
+
+### 5. Order tracking — follow the shipment
+
+```bash
+1688 order list                                       # all statuses (with actions, services, badges)
+1688 order list --status waitsellersend               # paid, awaiting shipment
+1688 order list --status waitbuyerreceive             # shipped, awaiting delivery
+1688 order get   <orderId>                            # one order detail
+1688 order logistics <orderId>                        # tracking number + trace
+1688 order get  <orderId> --status waitbuyerreceive   # narrow the scan on heavy accounts
+
+# Convenience views
+1688 shipped <orderId>                  # order detail + logistics merged
+1688 stuck --days 3                     # paid but not shipped > N days
+1688 fake-shipped --days 1              # marked shipped but courier never collected (虚假发货)
+1688 fake-shipped --debug               # show each candidate's status + remark
+1688 seller-history <sellerName>        # all orders + avg ship days + on-time rate
+```
+
+### 6. Post-sale chat — chase delivery / claims
+
+> Same tooling as §2, scoped by `<orderId>` so messages auto-attach the
+> order card and replies thread under the right conversation.
+
+```bash
+1688 seller chat <orderId> "麻烦尽快发货谢谢"                     # send (auto-attaches order card)
+1688 seller chat <orderId> "请问什么时候发货" --no-card           # follow-up, no card
+1688 seller messages <orderId>                                  # read replies
+1688 seller messages <orderId> --limit 50 --since 2026-05-01T00:00:00+08:00
+1688 seller messages <orderId> --watch                          # live-tail
+```
+
+### Account & daemon
 
 ```bash
 1688 login                              # scan QR; auto-starts daemon
@@ -86,78 +180,62 @@ npm i -g 1688-cli
 1688 logout                             # clear cookies
 1688 whoami                             # current nick + memberId
 1688 doctor                             # environment check
-```
 
-### Daemon
-
-```bash
 1688 daemon start | stop | status | reload
 ```
 
-### Search & browse
+---
 
-```bash
-1688 search 机械键盘 --max 20
-1688 image-search ./shoe.jpg            # local file
-1688 image-search https://.../img.png   # http(s) URL
-1688 offer 628196518518                 # product detail
-```
+## FAQ
 
-### Orders
+### Compared to alternatives
 
-```bash
-1688 order list                                       # all statuses
-1688 order list --status waitsellersend               # paid, awaiting shipment
-1688 order list --status waitbuyerreceive             # shipped, awaiting delivery
-1688 order get   <orderId>
-1688 order logistics <orderId>                        # tracking number + trace
-1688 order get  <orderId> --status waitbuyerreceive   # speeds up scan on heavy accounts
-```
+#### How does 1688-cli compare to MCP servers and Selenium scripts?
 
-### Cart
+1688-cli runs as a regular shell command, not an MCP server. Agents call it
+via `child_process` or shell pipes instead of the MCP protocol — easier to
+compose with `jq`, `xargs`, and CI scripts. Compared to writing low-level
+browser automation directly, 1688-cli ships with structured JSON output,
+session persistence, and a daemon for warm context, so you don't reinvent
+that per project.
 
-```bash
-1688 cart list
-1688 cart add    <offerId> --sku <skuId> --qty 2
-1688 cart remove <cartId>
-```
+#### Does 1688 have an official API I should use instead?
 
-### Checkout (writes!)
+Alibaba offers a 1688 Open API at `open.1688.com`, but it's gated to
+enterprise ISV partners with a sales contract and per-app authorization.
+Individual buyers, small businesses, and AI agents typically can't get
+access. 1688-cli uses your normal logged-in buyer account via a one-time
+QR scan, mirroring what you can do manually in a browser — no developer
+keys required.
 
-```bash
-1688 checkout prepare <cartIds...>      # preview only — safe
-1688 checkout confirm <cartIds...>      # default: TTY prompt y/N
-1688 checkout confirm <cartIds...> -y   # skip prompt (TTY still required)
-1688 checkout confirm <cartIds...> --agent   # AI-agent mode: no prompts
-```
+### Account & verification
 
-### Seller IM (旺旺)
+#### Does this tool require any 1688 developer account or API keys?
 
-Send + receive are symmetric — pre-sale is scoped by `offerId`, post-sale by
-`orderId`.
+No. Login is a one-time QR scan with your normal 1688 mobile app — the
+same flow as logging into 1688 on a fresh browser. The session is stored
+in your local profile (`~/.1688/profiles/default/`) and reused across
+commands, so you only re-scan when 1688 invalidates it.
 
-```bash
-# Pre-sale
-1688 seller inquire 628196518518 "支持定制 logo 吗？"            # send
-1688 seller messages --offer 628196518518                       # read replies
-1688 seller messages --offer 628196518518 --since 2026-05-13T10:00:00+08:00
+#### What happens if 1688 shows a verification challenge (滑块)?
 
-# Post-sale
-1688 seller chat <orderId> "麻烦尽快发货谢谢"                     # send (auto-attaches order card)
-1688 seller chat <orderId> "请问什么时候发货" --no-card           # follow-up, no card
-1688 seller messages <orderId>                                  # read replies
-1688 seller messages <orderId> --limit 50 --since 2026-05-01T00:00:00+08:00
-```
+1688 occasionally shows a slider verification on unfamiliar sessions or
+after long inactivity — the same one you'd see when logging in from a new
+device manually. If a command fails because of this, run it once with
+`--headed` (e.g. `1688 search 雨伞 --headed`); a real window opens, you
+drag the slider yourself, and the verified session is reused for
+subsequent commands. There is no automated solver — it's the same manual
+step a person would take.
 
-### Workflow shortcuts
+#### Is it safe to use? Will my account get rate-limited?
 
-```bash
-1688 shipped <orderId>                  # order detail + logistics merged
-1688 stuck --days 3                     # paid but not shipped > N days
-1688 fake-shipped --days 1              # marked shipped but courier never collected (虚假发货)
-1688 fake-shipped --debug               # show each candidate's status + remark
-1688 seller-history <sellerName>        # all orders + avg ship days + on-time rate
-```
+The tool drives your own logged-in browser session and only performs
+actions you'd do manually — search, read order details, send chat
+messages, place an order you confirmed. Use it at human pace (the default
+`--watch` interval is 30 seconds, minimum 10) for one of your own
+accounts. Aggressive automation, high-frequency scraping, or running it
+across many accounts is outside the tool's design and increases the
+chance of triggering 1688's risk controls.
 
 ---
 
@@ -181,22 +259,21 @@ BB1688_JSON=1 1688 doctor
 
 ## Risk control
 
-1688's WAF triggers a slider challenge on suspicious traffic.
-`1688-cli` already uses real Chrome + stealth + a persistent profile, and the
-`search` command warms up `s.1688.com` before every request. If you still hit
-a slider, solve it once with `--headed`:
+If 1688 shows a slider verification (滑块), solve it once with `--headed`:
 
 ```bash
-1688 search 雨伞 --headed     # window opens; drag the slider once
-1688 search 雨伞              # subsequent headless calls work for hours
+1688 search 雨伞 --headed     # window opens; drag the slider yourself
+1688 search 雨伞              # subsequent calls reuse the verified session
 ```
+
+See also the FAQ entry on [verification challenges](#what-happens-if-1688-shows-a-verification-challenge-滑块).
 
 ---
 
 ## Files & directories
 
 ```
-~/.1688/profiles/default/   Chromium profile (cookies, IndexedDB, fingerprint)
+~/.1688/profiles/default/   Chromium profile (cookies, IndexedDB, session state)
 ~/.1688/state.json          cached identity (nick / memberId / timestamps)
 ~/.1688/daemon.sock         daemon Unix socket
 ~/.1688/daemon.pid          daemon PID

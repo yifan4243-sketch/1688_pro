@@ -1,11 +1,18 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import { extractOffers, type Offer } from './search.js';
+import {
+  type Offer,
+  type RawOfferItem,
+  SEARCH_MTOP_API,
+  SEARCH_APP_ID,
+  parseMtopJsonp,
+  mapOffer,
+} from './search.js';
 
 export interface ImageSearchOpts {
   imagePath: string;
@@ -134,24 +141,53 @@ async function searchByImageId(
   imageId: string,
 ): Promise<Offer[]> {
   const page = await ctx.newPage();
+
+  // Same mtop interception pattern as text `search` — image-search and
+  // keyword-search share the WirelessRecommend.recommend endpoint (appId=32517).
+  let captured: Offer[] = [];
+  const onResp = async (resp: PWResponse) => {
+    const u = resp.url();
+    if (!u.includes(SEARCH_MTOP_API)) return;
+    try {
+      const dataParam =
+        new URLSearchParams(new URL(u).search).get('data') ?? '';
+      const dataObj = JSON.parse(dataParam);
+      if (String(dataObj.appId) !== SEARCH_APP_ID) return;
+    } catch {
+      return;
+    }
+    try {
+      const body = await resp.text();
+      const json = parseMtopJsonp(body) as {
+        data?: { data?: { OFFER?: { items?: RawOfferItem[] } } };
+      };
+      const items = json?.data?.data?.OFFER?.items ?? [];
+      const offers = items
+        .map(mapOffer)
+        .filter((o): o is Offer => o !== null);
+      if (offers.length > captured.length) captured = offers;
+    } catch {
+      /* malformed — skip */
+    }
+  };
+  page.on('response', onResp);
+
   try {
     await page.goto(RESULT_URL(imageId), {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
-    try {
-      await page.waitForSelector(
-        '.search-offer-item a[href*="detail.m.1688.com"]',
-        { timeout: 15000 },
-      );
-    } catch {
-      /* extractor may still find some, or return [] */
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      if (page.isClosed()) {
+        throw new CliError(130, 'CANCELED', 'Browser closed.');
+      }
+      if (captured.length > 0) break;
+      if (/\/punish|x5secdata=/.test(page.url())) break;
+      await new Promise((r) => setTimeout(r, 300));
     }
-    await page.evaluate(() => window.scrollBy(0, 2000));
-    await new Promise((r) => setTimeout(r, 1500));
-    await page.evaluate(() => window.scrollBy(0, 2000));
-    await new Promise((r) => setTimeout(r, 1500));
-    return await extractOffers(page);
+    page.off('response', onResp);
+    return captured;
   } finally {
     await page.close().catch(() => {});
   }

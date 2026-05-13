@@ -115,6 +115,17 @@ async function fetchPageLogistics(
       if (TRACE_API_RE.test(url)) {
         const j = parseMtop(text) as { data?: { result?: RawTraceEntry[] } };
         if (Array.isArray(j?.data?.result)) {
+          if (process.env.BB1688_PROBE === '1' && traceResponseCount === 0) {
+            try {
+              const fs = await import('node:fs/promises');
+              await fs.writeFile('/tmp/1688-logistics-raw.json', text);
+              process.stderr.write(
+                `[probe] saved raw logistics response → /tmp/1688-logistics-raw.json\n`,
+              );
+            } catch {
+              /* ignore */
+            }
+          }
           // Accumulate: 1688 may issue multiple querytrace calls per page
           // (lazy-load / batch). Overwriting drops earlier batches.
           if (traceList === null) traceList = [];

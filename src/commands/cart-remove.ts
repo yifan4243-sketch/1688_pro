@@ -43,8 +43,14 @@ export async function execute(
   }
 
   // 2. Open cart page; check the matching row; click bulk-delete; confirm.
+  //    NOTE: cart-remove stays on UI replay because the underlying API
+  //    (mtop.1688.buycenter.MtopPurchaseAstoreService.async) uses 1688's
+  //    compressed linkage protocol — payload is gzip+base64-encoded inside
+  //    `queryParams`. Hijacking it would require decoding/re-encoding the
+  //    linkage protocol (non-trivial), so we keep the UI flow that works.
   info(`Removing "${target.productTitle.slice(0, 30)}"...`);
   const page = await ctx.newPage();
+
   try {
     await page.goto('https://cart.1688.com/', {
       waitUntil: 'domcontentloaded',

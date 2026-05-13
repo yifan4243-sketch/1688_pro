@@ -3,6 +3,56 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.25] - 2026-05-13
+
+### Added
+- **`1688 similar <offerId>`** — find similar offers ("找同款") via the
+  shared search mtop endpoint. Sorted by price, useful for comparing
+  suppliers of the same product.
+- **`1688 seller messages --watch [--interval <s>]`** — live-tail a
+  conversation. Polls and emits only newly-arrived messages as
+  line-delimited JSON when stdout is piped. Dedup is by server-side
+  `messageId`. Default interval 30 s, minimum 10 s.
+- `seller messages` results now include richer `kind` subtypes:
+  `text` / `offerCard` / `orderCard` / `autoReply` / `assessment` /
+  `image` / `other`, plus a stable `messageId`. Offer/order cards expose
+  `card.url`, and offer cards are enriched with `card.title` / `.price` /
+  `.image` from the IM client's hydrated card.
+- `cart add` JSON response now includes `isNewRow` (bool) and
+  `addedQuantity` (number). Pipelines can pick up the new cartId reliably
+  even when the SKU is merged into an existing row.
+- `offer` returns a much richer payload: `priceTiers[]`, `attributes[]`,
+  `packageInfo[]`, `images[]`, `saleCount`, `categoryId`, and a fuller
+  `supplier` (loginId, memberId, province, city). SKU variants gain
+  `multiPrice`, `saleCount`, and `image`.
+- `order list` returns `actions[]` (buyer-side ops with jump URLs),
+  `services[]` (insurance / refund metadata with payer), `badges[]`,
+  `originalAmount`, `discountAmount`, `adjustment`, and `bizType`.
+
+### Changed
+- **`cart add` now uses mtop hijack (Route B)** instead of full UI replay.
+  Wall time is similar (~6 s) but works uniformly across single-attr and
+  multi-attr SKU layouts, including dropdown-style selectors and hidden
+  rows that previously broke the UI path.
+- **`seller messages` now uses WebSocket / LWP protocol interception
+  (Route C)** instead of DOM scraping. Server-truth timestamps
+  (millisecond `createAt`), stable `messageId`, and URL extraction from
+  offer/order cards. DOM scraping is retained as a fallback when no
+  WebSocket frames are captured.
+- `image-search` reuses the search mtop interception path; shared parser
+  helpers (`parseMtopJsonp`, `mapOffer`, `SEARCH_MTOP_API`) are now
+  exported from `search.ts` for `similar` to consume too.
+
+### Fixed
+- `cart list` returned `amount: 2` for items priced over ¥1,000 because
+  `parseFloat("2,094.00")` stops at the thousand-separator comma. Now
+  uses the integer-cent fields (`unitPriceCent`, `amountCent`) when
+  present, with a comma-stripping string parser as fallback.
+- `cart add` could return the wrong `cartId` when the same SKU was
+  already in the cart (the server merges into the existing row). Now
+  snapshots the cart before/after and diffs to find the affected row,
+  exposing whether it was a new row or a merge plus the delta quantity.
+
 ## [0.1.24] - 2026-05-13
 
 ### Fixed

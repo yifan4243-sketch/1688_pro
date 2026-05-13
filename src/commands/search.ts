@@ -31,7 +31,12 @@ export interface Offer {
     shopUrl: string | null;
     years: number | null;
   };
-  turnover: string | null;
+  location: { province: string | null; city: string | null };
+  bizType: string | null; // 生产加工 / 贸易商 / 经销批发 ...
+  verified: { factory: boolean; business: boolean; superFactory: boolean };
+  tags: string[]; // 服务标签：退货包运费 / 先采后付 / 7天无理由 ...
+  isP4P: boolean; // 是否广告竞价位
+  turnover: string | null; // 已售数 / 订单数（bookedCount）
   url: string;
   image: string | null;
 }
@@ -64,6 +69,92 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
   });
 }
 
+let HTML_SEQ = 0;
+let MTOP_SEQ = 0;
+
+// 1688's main search reuses the WirelessRecommend.recommend mtop API with
+// appId=32517. Same endpoint serves keyword search, image search, and
+// related-product recommendations — appId is the discriminator.
+export const SEARCH_MTOP_API =
+  'mtop.relationrecommend.wirelessrecommend.recommend';
+export const SEARCH_APP_ID = '32517';
+
+export function parseMtopJsonp(raw: string): unknown {
+  const t = raw.trim();
+  const m = t.match(/^\s*mtopjsonp\w+\(([\s\S]*)\)\s*$/);
+  return JSON.parse(m ? m[1]! : t);
+}
+
+export interface RawOfferItem {
+  cellType?: string;
+  data?: {
+    offerId?: string;
+    title?: string;
+    priceInfo?: { price?: string };
+    offerPicUrl?: string;
+    loginId?: string;
+    memberId?: string;
+    province?: string;
+    city?: string;
+    bookedCount?: string;
+    isP4P?: string;
+    bizType?: string;
+    factoryInspection?: string;
+    businessInspection?: string;
+    superFactory?: string;
+    tags?: { text?: string }[];
+    winPortUrl?: string;
+    shop?: { text?: string; tpYear?: string };
+    shopAddition?: { shopLinkUrl?: string };
+  };
+}
+
+function bool(s?: string): boolean {
+  return s === 'true';
+}
+
+export function mapOffer(item: RawOfferItem): Offer | null {
+  const d = item.data;
+  if (!d?.offerId) return null;
+  const title = (d.title ?? '').replace(/<\/?font[^>]*>/g, '').trim();
+  const priceRaw = d.priceInfo?.price;
+  const price = priceRaw ? parseFloat(priceRaw) : null;
+  const yearsRaw = d.shop?.tpYear;
+  const years = yearsRaw ? parseInt(yearsRaw, 10) : null;
+  const tags = (d.tags ?? [])
+    .map((t) => t?.text?.trim() ?? '')
+    .filter((s): s is string => !!s);
+  return {
+    offerId: d.offerId,
+    title,
+    price: {
+      text: priceRaw ? `¥${priceRaw}` : '',
+      min: price,
+      max: price,
+    },
+    supplier: {
+      name: d.shop?.text ?? null,
+      shopUrl: d.shopAddition?.shopLinkUrl ?? d.winPortUrl ?? null,
+      years,
+    },
+    location: {
+      province: d.province ?? null,
+      city: d.city ?? null,
+    },
+    bizType: d.bizType ?? null,
+    verified: {
+      factory: bool(d.factoryInspection),
+      business: bool(d.businessInspection),
+      superFactory: bool(d.superFactory),
+    },
+    tags,
+    isP4P: bool(d.isP4P),
+    turnover: d.bookedCount ?? null,
+    url: `https://detail.1688.com/offer/${d.offerId}.html`,
+    image: d.offerPicUrl ?? null,
+  };
+}
+
 async function fetchSearch(
   ctx: BrowserContext,
   keyword: string,
@@ -78,6 +169,39 @@ async function fetchSearch(
     .map((b) => '%' + b.toString(16).padStart(2, '0').toUpperCase())
     .join('');
   const url = `https://s.1688.com/selloffer/offer_search.htm?keywords=${gbkQs}`;
+
+  // mtop interceptor — captures the main-search response (appId=32517).
+  // The page may fire multiple recommend calls; we keep the one with the
+  // most items (main search has 60; recommendations have fewer).
+  let capturedOffers: Offer[] = [];
+  const onResp = async (resp: import('playwright').Response) => {
+    const respUrl = resp.url();
+    if (!respUrl.includes(SEARCH_MTOP_API)) return;
+    try {
+      const qs = new URL(respUrl).search;
+      const dataParam = new URLSearchParams(qs).get('data') ?? '';
+      const dataObj = JSON.parse(dataParam);
+      if (String(dataObj.appId) !== SEARCH_APP_ID) return;
+    } catch {
+      return;
+    }
+    try {
+      const body = await resp.text();
+      const json = parseMtopJsonp(body) as {
+        data?: { data?: { OFFER?: { items?: RawOfferItem[] } } };
+      };
+      const items = json?.data?.data?.OFFER?.items ?? [];
+      const offers = items
+        .map(mapOffer)
+        .filter((o): o is Offer => o !== null);
+      if (offers.length > capturedOffers.length) {
+        capturedOffers = offers;
+      }
+    } catch {
+      /* malformed response — skip */
+    }
+  };
+  page.on('response', onResp);
 
   async function warmup(delayMs: number): Promise<void> {
     try {
@@ -109,45 +233,130 @@ async function fetchSearch(
   if (process.env.BB1688_PROBE === '1') {
     const log = (line: string) => process.stderr.write(line + '\n');
     log('[probe] active');
+    HTML_SEQ = 0;
+    MTOP_SEQ = 0;
     page.on('response', async (resp) => {
       const u = resp.url();
       const ct = resp.headers()['content-type'] ?? '';
-      if (/\.(png|jpg|jpeg|gif|webp|css|woff|svg|ico|mp4)/i.test(u)) return;
+      if (
+        /\.(png|jpg|jpeg|gif|webp|css|woff2?|svg|ico|mp4|ttf|otf|js|map)(\?|$)/i.test(
+          u,
+        )
+      )
+        return;
+      // Skip well-known analytics noise.
+      if (/google-analytics|baidu\.com\/hm\.js|alicdn\.com\/sufei/i.test(u))
+        return;
       try {
         const path = new URL(u).pathname;
         const m = path.match(/mtop[.\/][^/?&]+/);
         if (m) {
-          log(`[mtop] ${m[0]}`);
+          // For each mtop call, also extract appId (URL param) + response size.
+          // Different appIds in WirelessRecommend.recommend separate
+          // main-search vs related-products vs banner content.
+          const qs = new URL(u).search;
+          const dataParam =
+            new URLSearchParams(qs).get('data') ?? '';
+          let appId = '';
+          try {
+            const dataObj = JSON.parse(dataParam);
+            appId = String(dataObj.appId ?? '');
+          } catch {
+            /* ignore */
+          }
+          let body = '';
+          try {
+            body = await resp.text();
+          } catch {
+            /* ignore */
+          }
+          const offerHitCount = (body.match(/"offerId/g) ?? []).length;
+          log(
+            `[mtop] ${m[0]} appId=${appId} bodyLen=${body.length} offerId×${offerHitCount}`,
+          );
+          if (offerHitCount > 5) {
+            try {
+              const fs = await import('node:fs/promises');
+              const seq = (++MTOP_SEQ).toString().padStart(2, '0');
+              const file = `/tmp/1688-mtop-${seq}-${appId || 'unknown'}.json`;
+              await fs.writeFile(file, body);
+              log(`[mtop] saved → ${file}`);
+            } catch {
+              /* ignore */
+            }
+          }
           return;
         }
+        // Broaden: ANY response after this point gets logged as [other].
+        // 1688 may put search results in a non-mtop endpoint.
+        const len = resp.headers()['content-length'] ?? '?';
+        log(
+          `[other] ${new URL(u).host}${path.slice(0, 60)} ct=${ct.slice(0, 30)} len=${len}`,
+        );
         if (/json/i.test(ct) || /h5api|api\.|\.json|\/api\//i.test(path)) {
-          log(`[xhr ] ${path.slice(0, 80)} ct=${ct.slice(0, 30)}`);
+          // Already logged as [other]; skip the [xhr] line.
           return;
         }
         if (
-          /offer_search\.htm|sou\/index\.htm|s\.1688\.com/i.test(u) &&
+          /offer_search\.htm|sou\/index\.htm/i.test(u) &&
           /text\/html/i.test(ct)
         ) {
           const body = await resp.text();
-          const markers = [
-            'window.__INITIAL_STATE__',
-            'window.SS_DATA',
-            'window.__SSR_DATA__',
-            'window.__PRELOAD_STATE__',
-            'window.pageData',
-            'window.dataLayer',
-            'window.aliPangu',
-            'window.cuPgcCache',
+          // Save each response to a separate file so we don't overwrite
+          // earlier ones (the actual results page may be one of several).
+          try {
+            const fs = await import('node:fs/promises');
+            const seq = (++HTML_SEQ).toString().padStart(2, '0');
+            const tag = /punish/.test(u)
+              ? 'punish'
+              : /\.html\b/.test(u)
+              ? 'html'
+              : 'htm';
+            const tmpPath = `/tmp/1688-search-page-${seq}-${tag}.html`;
+            await fs.writeFile(tmpPath, body);
+            const offerHrefCount = (
+              body.match(/detail\.[m.]*1688\.com\/offer\//g) ?? []
+            ).length;
+            log(
+              `[html] saved → ${tmpPath} (${body.length} bytes, offerHref×${offerHrefCount})`,
+            );
+          } catch {
+            /* ignore */
+          }
+          // Probe key patterns and print context where they appear.
+          const probes = [
+            'offerId":',
+            '"offerId"',
+            'data-offer-id',
+            'data-offerid',
+            '__INITIAL_STATE__',
+            '__SSR_DATA__',
             'window.runParams',
+            'window.cuPgcCache',
+            'window.pageData',
             'window.context',
-            'application/json',
-            'type="application/ld+json"',
-            '"offerList"',
-            '"offerId":',
+            'aliPangu',
+            'i18nMtopApi',
+            '"title":"',
+            '"price":',
+            'fullPathPrice',
+            'priceRange',
           ];
-          const hits = markers.filter((k) => body.includes(k));
+          for (const p of probes) {
+            const idx = body.indexOf(p);
+            if (idx >= 0) {
+              const ctx = body.slice(Math.max(0, idx - 20), idx + 80);
+              log(
+                `[hit ] "${p}" @${idx}  ...${ctx.replace(/\s+/g, ' ')}...`,
+              );
+            }
+          }
+          // Count interesting things.
+          const offerIdCount = (body.match(/offerId/g) ?? []).length;
+          const scriptCount = (body.match(/<script/g) ?? []).length;
+          const dataIdCount = (body.match(/data-offer/gi) ?? []).length;
           log(
-            `[html] ${path.slice(0, 60)} length=${body.length} markers=[${hits.join(', ')}]`,
+            `[stat] offerId×${offerIdCount} script×${scriptCount} data-offer×${dataIdCount}`,
           );
         }
       } catch {
@@ -168,56 +377,35 @@ async function fetchSearch(
   }
   await navigateSearch();
 
-  let passed = await waitPastBlocking(page, headed);
-  if (!passed && !headed) {
-    // Self-heal: warmup may have looked like a bot pattern, or the WAF
-    // flagged this fingerprint once. A second warmup with a longer pause +
-    // single retry recovers most of these cases without manual intervention.
-    info('First attempt blocked. Re-warming and retrying...');
+  // Wait for the search mtop response (appId=32517). Headless: short
+  // timeout; headed: long enough for user to solve any slider.
+  async function waitForOffers(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (page.isClosed()) {
+        throw new CliError(130, 'CANCELED', 'Browser closed.');
+      }
+      if (capturedOffers.length > 0) return true;
+      // Cheap WAF check: if we're stuck on the punish URL, fail fast headless.
+      if (!headed && /\/punish|x5secdata=/.test(page.url())) return false;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    return false;
+  }
+
+  let got = await waitForOffers(headed ? 180000 : 12000);
+  if (!got && !headed) {
+    info('First attempt blocked or empty. Re-warming and retrying...');
     await warmup(3500);
     await navigateSearch();
-    passed = await waitPastBlocking(page, headed);
+    got = await waitForOffers(15000);
   }
-  if (!passed) {
+  page.off('response', onResp);
+  if (!got) {
     throw riskControlError(headed);
   }
-
   await detectLoginRedirect(page);
-
-  // waitPastBlocking already confirmed the page loaded (anchor count + body
-  // length). No need for a second class-bound waitForSelector — 1688
-  // periodically reshuffles card class names and the old `.search-offer-item`
-  // gate would hang for 15s (headless) / 180s (headed) on every search.
-
-  // Scroll to trigger lazy-loaded cards.
-  await page.evaluate(() => window.scrollBy(0, 2000));
-  await new Promise((r) => setTimeout(r, 1500));
-  await page.evaluate(() => window.scrollBy(0, 2000));
-  await new Promise((r) => setTimeout(r, 1500));
-
-  const offers = await extractOffers(page);
-
-  if (process.env.BB1688_DEBUG === '1') {
-    const stats = await page.evaluate(() => ({
-      cards: document.querySelectorAll('.search-offer-item').length,
-      linksToDetail: document.querySelectorAll(
-        '.search-offer-item a[href*="detail.m.1688.com"]',
-      ).length,
-      totalDetailLinks: document.querySelectorAll(
-        'a[href*="detail.m.1688.com"], a[href*="detail.1688.com"]',
-      ).length,
-      title: document.title,
-      bodyHead: (document.body?.innerText ?? '').slice(0, 120),
-    }));
-    process.stderr.write(
-      `[debug] url=${page.url()}\n` +
-        `[debug] title=${stats.title}\n` +
-        `[debug] cards=${stats.cards} linksToDetail=${stats.linksToDetail} totalDetailLinks=${stats.totalDetailLinks} extracted=${offers.length}\n` +
-        `[debug] body=${stats.bodyHead}\n`,
-    );
-  }
-
-  return offers;
+  return capturedOffers;
 }
 
 async function isBlocked(page: Page, retries = 3): Promise<boolean> {
@@ -477,6 +665,11 @@ export async function extractOffers(page: Page): Promise<Offer[]> {
         title,
         price,
         supplier,
+        location: { province: null, city: null },
+        bizType: null,
+        verified: { factory: false, business: false, superFactory: false },
+        tags: [],
+        isP4P: false,
         turnover: null,
         url: `https://detail.m.1688.com/page/index.html?offerId=${offerId}`,
         image,

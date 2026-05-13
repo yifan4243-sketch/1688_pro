@@ -1,3 +1,4 @@
+import { appendFileSync } from 'node:fs';
 import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
@@ -168,6 +169,16 @@ function parseCart(model: RawModel): CartListResult {
     if (!/^item_\d+$/.test(k)) continue;
     const f = comp.fields as RawItemFields | undefined;
     if (!f) continue;
+    if (process.env.BB1688_PROBE === '1') {
+      try {
+        appendFileSync(
+          '/tmp/1688-cart-raw.json',
+          JSON.stringify({ k, fields: f }, null, 2) + '\n',
+        );
+      } catch (e) {
+        process.stderr.write(`[cart-probe] append failed: ${String(e)}\n`);
+      }
+    }
     const offerId = f.offerId !== undefined ? String(f.offerId) : '';
     const sellerId = f.sellerId !== undefined ? String(f.sellerId) : '';
     const group = groupsByOffer.get(offerId);
@@ -180,8 +191,16 @@ function parseCart(model: RawModel): CartListResult {
       skuTitle: f.skuTitle ?? null,
       unit: f.unit ?? null,
       quantity: f.quantity ?? 0,
-      unitPrice: parseFloatOrZero(f.unitPrice),
-      amount: parseFloatOrZero(f.amount),
+      // Prefer the integer `*Cent` fields (server-side authoritative);
+      // fall back to the formatted string for older payloads.
+      unitPrice:
+        f.unitPriceCent !== undefined
+          ? f.unitPriceCent / 100
+          : parseFloatOrZero(f.unitPrice),
+      amount:
+        f.amountCent !== undefined
+          ? f.amountCent / 100
+          : parseFloatOrZero(f.amount),
       minQuantity: f.minQuantity ?? null,
       maxQuantity: f.maxQuantity ?? null,
       image: normalizeImage(f.pic),
@@ -208,7 +227,10 @@ function parseCart(model: RawModel): CartListResult {
 
 function parseFloatOrZero(s: string | number | undefined): number {
   if (s === undefined) return 0;
-  const n = typeof s === 'string' ? parseFloat(s) : s;
+  if (typeof s === 'number') return Number.isFinite(s) ? s : 0;
+  // Strip currency symbols and thousand separators (1688 returns "2,094.00").
+  const cleaned = s.replace(/[¥￥,\s]/g, '');
+  const n = parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
 }
 

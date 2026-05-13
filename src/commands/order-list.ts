@@ -31,6 +31,7 @@ export interface Order {
   orderId: string;
   status: string;
   statusLabel: string;
+  bizType: string | null; // "cb" / "pc" / ...
   createdAt: string;
   paidAt: string | null;
   shippedAt: string | null;
@@ -38,6 +39,9 @@ export interface Order {
   totalAmount: number;
   productAmount: number;
   shipping: number;
+  originalAmount: number; // before any promotions
+  discountAmount: number; // sum of all promotions applied
+  adjustment: number; // seller manual price adjustment (改价)
   seller: {
     name: string;
     loginId: string;
@@ -46,6 +50,12 @@ export interface Order {
   };
   steps: OrderStep[];
   items: OrderItem[];
+  /** Currently-available buyer-side actions (买家可用操作 + 跳转 URL). */
+  actions: OrderAction[];
+  /** Attached after-sale services: 破损包赔, 退款, etc. */
+  services: OrderService[];
+  /** Display badges (实力商家 etc.). */
+  badges: string[];
 }
 
 export interface OrderStep {
@@ -65,6 +75,20 @@ export interface OrderItem {
   amount: number;
   image: string | null;
   productNumber: string | null;
+}
+
+export interface OrderAction {
+  key: string; // permissionKey, e.g. "canBuyerRefund"
+  name: string; // display name, e.g. "申请退款"
+  url: string | null;
+  highlight: boolean;
+}
+
+export interface OrderService {
+  productName: string;
+  category: string; // "insurance" / "refund" / ...
+  payer: string; // "seller" / "buyer"
+  detailLink: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -109,6 +133,17 @@ export async function execute(
       if (!Array.isArray(list)) return;
       const first = list[0] as { id?: unknown } | undefined;
       if (list.length === 0 || (first && (first.id ?? null) !== null)) {
+        if (process.env.BB1688_PROBE === '1') {
+          try {
+            const fs = await import('node:fs/promises');
+            await fs.writeFile('/tmp/1688-order-list-raw.json', text);
+            process.stderr.write(
+              `[probe] saved raw order-list response → /tmp/1688-order-list-raw.json (${text.length} bytes)\n`,
+            );
+          } catch {
+            /* ignore */
+          }
+        }
         resolveCapture(inner);
       }
     } catch {
@@ -187,12 +222,16 @@ interface RawOrder {
   id?: string | number;
   status?: string | number;
   statusLabel?: string;
+  bizType?: string;
   gmtCreate?: string;
   gmtPayment?: number;
   confirmGoodsTime?: number;
   carriage?: string;
   sumPayment?: string;
   sumProductPayment?: string;
+  originalSumPayment?: string;
+  allPromotionFee?: string;
+  adjustFee?: string;
   sellerInfo?: {
     companyName?: string;
     loginId?: string;
@@ -201,6 +240,19 @@ interface RawOrder {
   };
   newStepOrders?: RawStep[];
   orderEntries?: RawEntry[];
+  orderPermissions?: {
+    permissionKey?: string;
+    name?: string;
+    actionUrl?: string;
+    highlight?: boolean;
+  }[];
+  serviceOrderList?: {
+    productName?: string;
+    category?: string;
+    payer?: string;
+    detailLink?: string;
+  }[];
+  orderLogos?: { tips?: string }[];
 }
 
 interface RawStep {
@@ -230,6 +282,7 @@ function parseOrder(o: RawOrder): Order {
     orderId: o.idStr ?? String(o.id ?? ''),
     status: firstStep?.stepStatus ?? String(o.status ?? ''),
     statusLabel: o.statusLabel ?? '',
+    bizType: o.bizType ?? null,
     createdAt: o.gmtCreate ?? '',
     paidAt: o.gmtPayment ? new Date(o.gmtPayment).toISOString() : null,
     shippedAt: firstStep?.gmtShip
@@ -241,6 +294,9 @@ function parseOrder(o: RawOrder): Order {
     totalAmount: cents(o.sumPayment),
     productAmount: cents(o.sumProductPayment),
     shipping: cents(o.carriage),
+    originalAmount: cents(o.originalSumPayment),
+    discountAmount: cents(o.allPromotionFee),
+    adjustment: cents(o.adjustFee),
     seller: {
       name: o.sellerInfo?.companyName ?? '',
       loginId: o.sellerInfo?.loginId ?? '',
@@ -249,6 +305,21 @@ function parseOrder(o: RawOrder): Order {
     },
     steps: (o.newStepOrders ?? []).map(parseStep),
     items: (o.orderEntries ?? []).map(parseEntry),
+    actions: (o.orderPermissions ?? []).map((p) => ({
+      key: p.permissionKey ?? '',
+      name: p.name ?? '',
+      url: p.actionUrl ?? null,
+      highlight: !!p.highlight,
+    })),
+    services: (o.serviceOrderList ?? []).map((s) => ({
+      productName: s.productName ?? '',
+      category: s.category ?? '',
+      payer: s.payer ?? '',
+      detailLink: s.detailLink ?? null,
+    })),
+    badges: (o.orderLogos ?? [])
+      .map((l) => l.tips?.trim() ?? '')
+      .filter((s): s is string => !!s),
   };
 }
 
