@@ -209,7 +209,11 @@ async function fetchSearch(
       /* malformed response — skip */
     }
   };
-  page.on('response', onResp);
+  // NOTE: `onResp` is intentionally NOT attached here. It must only listen
+  // AFTER the warmup navigation — `https://s.1688.com/` (the warmup target)
+  // fires its own WirelessRecommend.recommend with appId=32517 for the
+  // homepage recommendation feed. Attaching early captures that feed instead
+  // of the actual keyword-search results.
 
   async function warmup(delayMs: number): Promise<void> {
     try {
@@ -379,6 +383,10 @@ async function fetchSearch(
   info('Warming up s.1688.com...');
   await warmup(1500);
 
+  // Attach the capture listener ONLY now — after warmup — so the homepage's
+  // own recommendation feed (same appId=32517) can't poison capturedOffers.
+  page.on('response', onResp);
+
   info(`Searching 1688 for "${keyword}"...`);
   if (headed) {
     info('A Chrome window has opened — switch focus to it now.');
@@ -404,7 +412,13 @@ async function fetchSearch(
   let got = await waitForOffers(headed ? 180000 : 12000);
   if (!got && !headed) {
     info('First attempt blocked or empty. Re-warming and retrying...');
+    // Detach + reset around the re-warmup: the re-warmup hits the homepage
+    // again, which would otherwise re-poison capturedOffers with the
+    // recommendation feed.
+    page.off('response', onResp);
+    capturedOffers = [];
     await warmup(3500);
+    page.on('response', onResp);
     await navigateSearch();
     got = await waitForOffers(15000);
   }

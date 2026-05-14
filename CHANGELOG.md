@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.34] - 2026-05-14
+
+### Fixed
+- **`search` returned the homepage recommendation feed instead of actual
+  keyword results.** The mtop response listener was attached *before* the
+  `s.1688.com` warmup navigation — and the homepage fires its own
+  `WirelessRecommend.recommend` call with the same `appId=32517`, so the
+  homepage's recommendation feed was captured first. The "keep the
+  response with the most items" heuristic then never replaced it (homepage
+  feed and search results both return ~60 items, and `60 > 60` is false).
+  The listener is now attached only *after* warmup, and the retry path
+  detaches + resets `capturedOffers` around its re-warmup so the homepage
+  feed can't re-poison the capture.
+
+## [0.1.33] - 2026-05-14
+
+### Changed
+- Unified browser failure handling across commands (`src/session/recovery.ts`,
+  `page-state.ts`, `artifacts.ts`): consistent classification, retry, and
+  debug-artifact capture for browser-backed command failures.
+
 ## [0.1.32] - 2026-05-14
 
 ### Added
