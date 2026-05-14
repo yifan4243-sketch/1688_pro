@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.35] - 2026-05-14
+
+### Added
+- **`search` now auto-paginates to satisfy `--max`.** Previously `search`
+  returned only the first 60 offers and `--max` above 60 just truncated
+  that single page. Now `--max 150` fetches three pages, `--max 600`
+  fetches ten, etc. (capped at `MAX_PAGES = 10` → 600 results).
+
+  Mechanism: pages 2+ are fetched by clicking the in-page next-arrow
+  (`.fui-arrow.fui-next`), which advances `beginPage` within the *same*
+  search-context `pageId`. Re-navigating with `&beginPage=N` does not
+  work — each fresh navigation mints a new `pageId`, and `beginPage=2`
+  against a fresh pageId returns ~75% the same offers as page 1.
+
+  The mtop interceptor now matches each response to the exact page being
+  fetched (`method === "getOfferList"` and `beginPage` equal to the
+  current page), replacing the previous "keep the response with the most
+  items" heuristic. Cross-page dedup is by `offerId`. Page-2+ failures
+  return partial results instead of throwing; human-like jitter
+  (1.5–3.5 s) is inserted between page clicks.
+
 ## [0.1.34] - 2026-05-14
 
 ### Fixed
