@@ -6,6 +6,7 @@ import { writeState, readState } from '../session/state.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { nowIso } from '../util/time.js';
+import { loginQrFile, ensureRoot } from '../session/paths.js';
 
 export interface LoginOpts {
   force?: boolean;
@@ -233,6 +234,10 @@ async function renderQrToTerminal(
   } else {
     out.write('Scan with your 1688 or Taobao app:\n\n');
   }
+  // ASCII render only works in a real terminal. Agents (Codex / Claude
+  // Code) usually run the CLI without a TTY for stderr, so the ASCII art
+  // would not display correctly. Always also save a PNG copy that the
+  // agent can surface to the user as an image attachment.
   if (out.isTTY) {
     try {
       const ascii = await QRCode.toString(content, {
@@ -243,12 +248,22 @@ async function renderQrToTerminal(
     } catch (e) {
       out.write(`(QR render failed: ${(e as Error).message})\n`);
     }
-  } else {
-    out.write('(non-TTY — open the URL below on your phone)\n');
   }
-  out.write('\nOr open on your phone: ');
-  out.write(content);
-  out.write('\n\nWaiting for scan + confirmation...\n');
+  try {
+    await ensureRoot();
+    const pngPath = loginQrFile();
+    await QRCode.toFile(pngPath, content, { width: 400, margin: 2 });
+    if (!out.isTTY) {
+      out.write(
+        `(non-TTY — agent: show the PNG below to the user; user: open it on a screen the phone can see, then scan with the 1688 app)\n`,
+      );
+    }
+    out.write(`QR saved as PNG: ${pngPath}\n`);
+  } catch (e) {
+    out.write(`(QR PNG save failed: ${(e as Error).message})\n`);
+  }
+  out.write(`Raw QR content: ${content}\n`);
+  out.write('\nWaiting for scan + confirmation...\n');
 }
 
 function printInteractive(msg: string): void {

@@ -11,6 +11,76 @@ import {
 import { readState } from '../session/state.js';
 import { emit } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import pkg from '../../package.json' with { type: 'json' };
+
+export interface VersionInfo {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  updateCommand: string | null;
+  error: string | null;
+}
+
+function isNewerSemver(latest: string, current: string): boolean {
+  // Plain x.y.z compare. Pre-release tags (e.g. "-beta.1") are not used by
+  // this project; if they appear, treat anything different from current as
+  // not-newer to avoid recommending downgrade.
+  const parse = (v: string): number[] | null => {
+    const m = v.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    return m ? [m[1]!, m[2]!, m[3]!].map((n) => parseInt(n, 10)) : null;
+  };
+  const lp = parse(latest);
+  const cp = parse(current);
+  if (!lp || !cp) return false;
+  for (let i = 0; i < 3; i++) {
+    if (lp[i]! !== cp[i]!) return lp[i]! > cp[i]!;
+  }
+  return false;
+}
+
+async function checkUpdate(): Promise<{ check: Check; version: VersionInfo }> {
+  const current = pkg.version;
+  let latest: string | null = null;
+  let error: string | null = null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    const res = await fetch(
+      `https://registry.npmjs.org/${pkg.name}/latest`,
+      { signal: ctrl.signal },
+    );
+    clearTimeout(t);
+    if (res.ok) {
+      const j = (await res.json()) as { version?: string };
+      latest = j.version ?? null;
+    } else {
+      error = `registry ${res.status}`;
+    }
+  } catch (e) {
+    error = (e as Error).message;
+  }
+  const updateAvailable = latest !== null && isNewerSemver(latest, current);
+  const check: Check = {
+    name: 'Version',
+    status: error ? 'warn' : updateAvailable ? 'warn' : 'ok',
+    message: error
+      ? `current ${current} (update check failed: ${error})`
+      : updateAvailable
+        ? `${current} → ${latest} available`
+        : `${current} (latest)`,
+    fix: updateAvailable ? `npm i -g ${pkg.name}@latest` : undefined,
+  };
+  return {
+    check,
+    version: {
+      current,
+      latest,
+      updateAvailable,
+      updateCommand: updateAvailable ? `npm i -g ${pkg.name}@latest` : null,
+      error,
+    },
+  };
+}
 
 export interface DoctorOpts {
   launch?: boolean;
@@ -38,12 +108,16 @@ export async function run(opts: DoctorOpts): Promise<void> {
     checks.push(await checkChromiumLaunch());
   }
   checks.push(await checkSession());
+  const upd = await checkUpdate();
+  checks.push(upd.check);
 
   const failed = checks.some((c) => c.status === 'fail');
 
   emit({
     human: () => printHuman(checks),
-    data: { ok: !failed, checks },
+    // `version` is surfaced at top-level so agents can read it without
+    // having to scan `checks[]`. See AGENTS.md → Update awareness.
+    data: { ok: !failed, checks, version: upd.version },
   });
 
   if (failed) throw new CliError(6, 'DOCTOR_FAILED', '');

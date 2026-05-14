@@ -199,6 +199,120 @@ To get the cartId reliably in a pipeline:
 id=$(1688 cart add <offerId> --sku <skuId> --qty 1 | jq -r '.added.cartId')
 ```
 
+## Output flags (every command)
+
+In addition to `BB1688_JSON=1`, every command accepts:
+
+```
+--json            Force JSON output even in a TTY.
+--pretty          Indent JSON by 2 spaces.
+--get <path>      Print one field by dot-path. Scalar → raw line,
+                  object/array → JSON. Wildcards stream one element per line.
+                  Syntax: field.sub, arr[N].field, arr[*].field
+--pick <paths>    Comma-separated dot-paths → emit a JSON object with each
+                  path as a key. Useful for trimming output for downstream agents.
+```
+
+Examples:
+```bash
+1688 offer X --get supplier.name              # 深圳... (raw)
+1688 offer X --get supplier                   # {"name":"...","loginId":"..."}
+1688 offer X --get 'skus[*].price'            # 49 \n 68 \n 98.75 ...
+1688 offer X --pick price,supplier.name       # {"price":1.25,"supplier.name":"..."}
+1688 offer X --json --pretty                  # full payload, indented
+```
+
+When `--get`/`--pick` is given, the human renderer is skipped; the resolved
+value(s) go to stdout. The full payload still flows through when neither
+flag is set, so existing `| jq` pipelines keep working.
+
+## Login in non-interactive sessions (Codex / Claude Code / scripted)
+
+`1688 login` displays a QR code on stderr. ASCII rendering only works on
+a real TTY — when invoked from an agent, stderr is usually piped and the
+ASCII art either does not render or appears garbled.
+
+The login command always **also** saves the QR as a PNG to
+`~/.1688/login-qr.png` (`%USERPROFILE%\.1688\login-qr.png` on Windows)
+and writes `QR saved as PNG: <path>` on stderr. The agent should:
+
+1. Watch stderr for the `QR saved as PNG:` line.
+2. Surface that file to the user (display the image inline, or tell the
+   user the exact path so they can open it).
+3. Wait for the command to exit naturally — the user must scan the QR
+   with their 1688 mobile app within the timeout (default 300 s).
+
+Do not attempt to "open" the raw QR URL in a browser — it is a token URL
+that only the 1688 app can consume, not a human-readable page.
+
+## Feedback / bug reports
+
+```
+1688 feedback "<message>"            Open a pre-filled GitHub issue (TTY browser).
+1688 feedback --bug "<details>"      Tag the issue as a bug.
+1688 feedback --no-open "<msg>"      Just print the URL — useful for agents to
+                                     show the user without opening a browser
+                                     on the agent's machine.
+1688 feedback "<msg>" --submit       Post the issue DIRECTLY via the `gh` CLI
+                                     (requires `gh auth login`). Skips the
+                                     "Submit new issue" click in the browser.
+```
+
+**Agent rule for `--submit`**: do NOT add `--submit` on the agent's own
+initiative. Always run without `--submit` first, show the user the
+generated URL, and only re-run with `--submit` if the user explicitly
+asks ("submit it" / "直接发吧" / "post the issue"). Posting an issue is
+a public write action.
+
+The CLI auto-attaches anonymized environment info (version, Node, OS) and
+the last error from `daemon.log` if present. Nothing about the user's
+1688 account is sent. The actual submission still requires the user to
+click "Submit new issue" in the browser — the CLI only prepares the URL.
+
+## Update awareness
+
+At the start of a session that runs multiple 1688 commands, run
+`1688 doctor`. Its JSON output includes a `version` block:
+
+```json
+{
+  "version": {
+    "current": "0.1.27",
+    "latest":  "0.1.29",
+    "updateAvailable": true,
+    "updateCommand":   "npm i -g 1688-cli@latest",
+    "error": null
+  }
+}
+```
+
+You can also detect updates from any command: in JSON mode (piped / `--json`
+/ `BB1688_JSON=1`), a single line of structured JSON appears on stderr
+when a newer version is cached:
+
+```
+{"_notice":"updateAvailable","current":"0.1.27","latest":"0.1.29","updateCommand":"npm i -g 1688-cli@latest"}
+```
+
+### Rules for upgrades
+
+- **Interactive session** (TTY, the user is watching the conversation):
+  ask the user once whether to upgrade now. Show the current → latest
+  versions and the install command. If the user agrees, run
+  `updateCommand`, then `1688 daemon reload` to pick up the new code.
+
+- **Non-interactive** (CI, cron, scripted agent loop with no human in
+  the loop): do NOT upgrade on your own. Log the notice to stderr and
+  continue. Pinning is intentional in those contexts.
+
+- Never run the install command without explicit user authorization in
+  the CURRENT turn. The CLI version is part of the user's global
+  environment; treat it the same way you treat any `sudo` or
+  "modify global state" action.
+
+- Ask at most once per session. If the user declines or postpones,
+  don't ask again in the same session.
+
 ## Discovery
 
 Run `1688 --help` and `1688 <command> --help` for the latest flags.

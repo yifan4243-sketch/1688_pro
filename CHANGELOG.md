@@ -3,6 +3,103 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.31] - 2026-05-14
+
+### Added
+- **`1688 feedback --submit`** — post the issue directly via the GitHub
+  CLI (`gh`). Checks `gh --version` and `gh auth status` first, then
+  runs `gh issue create --repo superjack2050/1688-cli ...`. The flag is
+  opt-in by design: agents and users still get the safer browser flow
+  by default, and only escalate to direct submission when explicitly
+  asked.
+
+### Fixed
+- `1688 feedback "<message>"` swallowed almost all of the message on
+  macOS when the user's shell auto-replaced straight `"` with smart
+  quotes (`“ ”`) — the shell saw them as literal characters, split the
+  argument list, and only the first piece reached the CLI. The
+  `<message>` argument is now variadic; all remaining args are joined
+  with a space, so the message survives regardless of how the shell
+  parses quotes. Leading/trailing smart quotes are also stripped from
+  the joined result.
+- Reject feedback messages shorter than 5 characters with a hint about
+  using single quotes on macOS.
+
+## [0.1.30] - 2026-05-13
+
+### Fixed
+- **`1688 login` now works under Codex / Claude Code / any agent**.
+  The QR code was rendered as terminal ASCII only when stderr was a
+  real TTY; agents typically pipe stderr, so the QR never displayed.
+  Login now always also saves the QR as a PNG to
+  `~/.1688/login-qr.png` (`%USERPROFILE%\.1688\login-qr.png` on
+  Windows) and prints `QR saved as PNG: <path>` on stderr, so an agent
+  can surface the image to the user.
+
+### Added
+- **`1688 feedback <message>`** — submit feedback or report a bug via a
+  pre-filled GitHub issue. Auto-attaches anonymized environment info
+  (version, Node, OS) and the last error from `daemon.log` if present.
+  On a TTY, opens the issue page in the user's browser. With
+  `--no-open` or in JSON mode, prints the URL so an agent can show it
+  to the user without opening the agent's own browser.
+  ```
+  1688 feedback "the slider verification looped on day 3"
+  1688 feedback --bug "cart-add failed for SKUs with X attribute"
+  ```
+  AGENTS.md gains "Login in non-interactive sessions" and "Feedback /
+  bug reports" sections.
+
+## [0.1.29] - 2026-05-13
+
+### Added
+- **Agent-friendly update awareness.** Two new signals so AI agents can
+  detect new versions without parsing the human update banner:
+  - `1688 doctor` JSON output now includes a `version` block with
+    `current`, `latest`, `updateAvailable`, `updateCommand`, and `error`
+    (when the registry check fails).
+  - In JSON mode (piped output / `--json` / `BB1688_JSON=1`), any
+    command emits a single structured line on stderr when a newer
+    version is cached:
+    `{"_notice":"updateAvailable","current":"0.1.x","latest":"0.1.y","updateCommand":"npm i -g 1688-cli@latest"}`
+  - AGENTS.md gains an "Update awareness" section documenting both
+    signals and the rules: ask the user before upgrading in interactive
+    sessions; do nothing in non-interactive (CI / cron) ones; never
+    run the install command without explicit current-turn authorization.
+
+## [0.1.28] - 2026-05-13
+
+### Documentation
+- README: document the `--json` / `--pretty` / `--get` / `--pick` flags in
+  the "JSON for agents" section with copy-pasteable examples.
+- AGENTS.md: add an "Output flags" section so agents can discover the
+  zero-`jq` workflows.
+
+## [0.1.27] - 2026-05-13
+
+### Added
+- **Four output-shaping flags on every command**, no `jq` needed:
+  - `--json` — force JSON output even when stdout is a TTY.
+  - `--pretty` — indent JSON by 2 spaces.
+  - `--get <path>` — print one field by dot-path. Syntax:
+    `field.sub`, `arr[0].field`, `arr[*].field` (wildcards stream one
+    line per element). Scalars print raw; objects/arrays print JSON.
+  - `--pick <paths>` — comma-separated dot-paths → emit a JSON object
+    with each path as a key. Good for trimming output for agents.
+
+  Examples:
+  ```
+  1688 offer X --get supplier.name             # 深圳狼途实业科技有限公司
+  1688 offer X --get supplier                  # {"name":"...","loginId":"..."}
+  1688 offer X --get 'skus[*].price'           # 49 \n 68 \n 98.75 ...
+  1688 offer X --pick price,supplier.name      # {"price":1.25,"supplier.name":"..."}
+  1688 offer X --json --pretty                 # full pretty-printed JSON in TTY
+  ```
+
+  Implemented in `src/io/output.ts`; flags are added to every command
+  through a recursive walk of commander's command tree plus a `preAction`
+  hook that pushes the values into the output module before `emit()` runs.
+
 ## [0.1.26] - 2026-05-13
 
 ### Fixed

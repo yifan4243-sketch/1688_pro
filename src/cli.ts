@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { CliError } from './io/errors.js';
+import { setOutputFlags, isJson } from './io/output.js';
 import updateNotifier from 'update-notifier';
 import pkg from '../package.json' with { type: 'json' };
 
-// Background check (once/day) — prints a banner on next command run if a
-// newer version is on npm. Non-blocking; ignored in CI / non-TTY pipes.
-updateNotifier({ pkg, updateCheckInterval: 1000 * 60 * 60 * 24 }).notify({
-  defer: false,
-  isGlobal: true,
+// Background check (once/day). On a TTY this prints a human banner.
+// In JSON mode we surface a structured `_notice` line on stderr (see the
+// preAction hook below) so agents can detect updates without parsing the
+// banner.
+const _notifier = updateNotifier({
+  pkg,
+  updateCheckInterval: 1000 * 60 * 60 * 24,
 });
+_notifier.notify({ defer: false, isGlobal: true });
 
 const program = new Command();
 
@@ -443,6 +447,88 @@ daemon
       data: s,
     });
   });
+
+program
+  .command('feedback')
+  .description(
+    'Submit feedback or a bug report. Default: opens a pre-filled GitHub issue. With --submit: posts directly via the `gh` CLI.',
+  )
+  // Variadic so macOS "smart quotes" can't truncate the message — words
+  // are joined back together regardless of where the shell split them.
+  .argument(
+    '<message...>',
+    'Your feedback or bug description (multiple words OK, quotes optional)',
+  )
+  .option('--bug', 'Tag the issue as a bug report')
+  .option(
+    '--submit',
+    'Post the issue directly via the GitHub CLI (`gh`) — requires `gh auth login`',
+  )
+  .option('--no-open', 'Print the URL only; do not open a browser window')
+  .action(async (messageParts: string[], opts) => {
+    const { run } = await import('./commands/feedback.js');
+    await run({ ...opts, message: messageParts.join(' ') });
+  });
+
+// Register the four output-shaping flags on every (sub)command so users
+// don't have to remember a parent-command qualifier:
+//   --json            Force JSON output even when stdout is a TTY.
+//   --pretty          Pretty-print JSON (2-space indent).
+//   --get <path>      Print one field by dot-path. Scalar → raw line,
+//                     object/array → JSON. Supports a.b[0].c, arr[*].x
+//                     (wildcards stream one line per element).
+//   --pick <paths>    Comma-separated dot-paths → emit a JSON object with
+//                     each path as a key.
+//
+// A preAction hook reads them via optsWithGlobals() and pushes into the
+// output module before the command's run() calls emit().
+function addOutputFlagsToAll(p: Command): void {
+  for (const cmd of p.commands) {
+    addOutputFlagsToAll(cmd);
+    cmd.option('--json', 'Force JSON output even when stdout is a TTY');
+    cmd.option('--pretty', 'Pretty-print JSON output (use with --json or pipe)');
+    cmd.option(
+      '--get <path>',
+      'Print one field by dot-path (a.b[0].c, arr[*].x). Scalar → raw line, object/array → JSON',
+    );
+    cmd.option(
+      '--pick <paths>',
+      'Comma-separated dot-paths → emit a JSON object with each as a key',
+    );
+  }
+}
+addOutputFlagsToAll(program);
+
+program.hook('preAction', (_thisCmd, actionCmd) => {
+  const opts = actionCmd.optsWithGlobals() as {
+    json?: boolean;
+    pretty?: boolean;
+    get?: string;
+    pick?: string;
+  };
+  setOutputFlags({
+    json: opts.json,
+    pretty: opts.pretty,
+    get: opts.get,
+    pick: opts.pick,
+  });
+
+  // Agent-friendly update notice: in JSON mode, the human banner is
+  // suppressed by update-notifier. Surface the same info as one line of
+  // structured JSON on stderr so agents can detect updates programmatically.
+  // See AGENTS.md → Update awareness.
+  if (isJson() && _notifier.update) {
+    const u = _notifier.update;
+    process.stderr.write(
+      JSON.stringify({
+        _notice: 'updateAvailable',
+        current: u.current,
+        latest: u.latest,
+        updateCommand: `npm i -g ${pkg.name}@latest`,
+      }) + '\n',
+    );
+  }
+});
 
 try {
   await program.parseAsync();

@@ -35,6 +35,10 @@ export function daemonLogFile(): string {
   return path.join(root(), 'daemon.log');
 }
 
+export function loginQrFile(): string {
+  return path.join(root(), 'login-qr.png');
+}
+
 export function profilePath(name = 'default'): string {
   return path.join(profilesDir(), name);
 }
