@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 import {
   clickCartCheckoutButton,
   clickCartRowCheckbox,
@@ -117,15 +118,15 @@ async function executeCheckoutPrepare(
       );
     }
     await waitForCartItems(page);
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
 
     await uncheckAllCartRows(page);
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
 
     for (const cartId of args.cartIds) {
       const item = cart.items.find((i) => i.cartId === cartId)!;
       await clickCartRowCheckbox(page, item);
-      await new Promise((r) => setTimeout(r, 800));
+      await sleep(800);
     }
 
     await waitForAnyCartRowChecked(page);
@@ -141,7 +142,7 @@ async function executeCheckoutPrepare(
     ]);
     if (!/smart_make_order/i.test(page.url())) {
       // Sometimes the page renders inline rather than navigating.
-      await new Promise((r) => setTimeout(r, 3000));
+      await sleep(3000);
     }
     if (!/order\.1688\.com/i.test(page.url())) {
       throw new CliError(
@@ -151,7 +152,7 @@ async function executeCheckoutPrepare(
       );
     }
     info('Reading order preview...');
-    await new Promise((r) => setTimeout(r, 5000));
+    await sleep(5000);
 
     const html = await page.content();
     return parsePreview(html, page.url());

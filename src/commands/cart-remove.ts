@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 import {
   clickCartDeleteButton,
   clickCartRowCheckbox,
@@ -84,18 +85,18 @@ async function executeCartRemove(
       );
     }
     await waitForCartItems(page);
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
     await clickCartRowCheckbox(page, target);
 
     // Give server time to ack the selection.
-    await new Promise((r) => setTimeout(r, 2000));
+    await sleep(2000);
 
     await clickCartDeleteButton(page);
 
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
     await clickConfirmDialogButton(page);
     // Allow the server to process.
-    await new Promise((r) => setTimeout(r, 3000));
+    await sleep(3000);
   } finally {
     await page.close().catch(() => {});
   }

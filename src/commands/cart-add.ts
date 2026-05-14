@@ -17,6 +17,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep, waitUntil } from '../session/wait.js';
 import { clickConfirmDialogButton } from '../session/cart-locators.js';
 import {
   clickAddCartButton,
@@ -291,7 +292,7 @@ async function executeCartAdd(
     // the actual specId, so which input we fill doesn't matter.
     info('Setting trigger qty...');
     await fillFirstSkuQuantityInput(page, 1);
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
 
     info('Clicking 加采购车...');
 
@@ -317,14 +318,13 @@ async function executeCartAdd(
 
     await clickAddCartButton(page);
 
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     await clickConfirmDialogButton(page).catch(() => undefined);
 
-    // Wait actively for the addCargo response.
-    const deadline = Date.now() + 10000;
-    while (Date.now() < deadline && addCargoResult === null) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
+    await waitUntil(() => addCargoResult !== null, {
+      timeoutMs: 10000,
+      intervalMs: 200,
+    });
     page.off('response', onResp);
 
     // Also check that our hijack actually fired (sanity).

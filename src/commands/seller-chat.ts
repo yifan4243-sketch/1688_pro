@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 import {
   clickConversationByName,
   clickImSendButton,
@@ -116,7 +117,7 @@ export async function executeRaw(
     }
 
     const input = await findImInput(page);
-    await new Promise((r) => setTimeout(r, 3000));
+    await sleep(3000);
 
     // If scoped URL (order/offer) was used, conversation should auto-activate.
     // Otherwise (sidebar mode), find + click the seller in sidebar.
@@ -140,14 +141,14 @@ export async function executeRaw(
     }
 
     await waitForConversationActivated(page, matchedName, args);
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
 
     // 4. Type the message and send.
     info(`Typing message (${args.message.length} chars)...`);
     await input.click({ force: true });
     await input.fill('');
     await page.keyboard.type(args.message, { delay: 20 });
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
 
     info('Sending...');
     await clickImSendButton(page);
@@ -246,7 +247,7 @@ export async function run(opts: SellerChatOpts): Promise<void> {
       { ...baseArgs, message: orderUrl, headed: opts.headed },
       { headed: opts.headed, profile: opts.profile },
     );
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
     info(`Sending message 2/2: question`);
   }
 

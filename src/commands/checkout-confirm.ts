@@ -5,6 +5,7 @@ import { isDaemonReachable } from '../daemon/client.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 import { clickSubmitOrderButton } from '../session/checkout-locators.js';
 import {
   clickCartCheckoutButton,
@@ -239,15 +240,15 @@ async function navigateToPreview(
     throw new CliError(3, 'NOT_LOGGED_IN', 'Session expired. Run `1688 login`.');
   }
   await waitForCartItems(page);
-  await new Promise((r) => setTimeout(r, 1500));
+  await sleep(1500);
 
   await uncheckAllCartRows(page);
-  await new Promise((r) => setTimeout(r, 1000));
+  await sleep(1000);
 
   for (const cartId of cartIds) {
     const item = cart.items.find((i) => i.cartId === cartId)!;
     await clickCartRowCheckbox(page, item);
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
   }
 
   await waitForAnyCartRowChecked(page);
@@ -269,9 +270,9 @@ async function navigateToPreview(
         `Did not reach checkout preview after ${attempt} attempts. URL: ${page.url()}`,
       );
     }
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
   }
-  await new Promise((r) => setTimeout(r, 2500));
+  await sleep(2500);
 }
 
 async function parsePreview(page: Page): Promise<CheckoutPrepareResult> {
@@ -441,7 +442,7 @@ async function submitOrder(page: Page): Promise<{
 }> {
   const beforeUrl = page.url();
 
-  await new Promise((r) => setTimeout(r, 1500));
+  await sleep(1500);
   await clickSubmitOrderButton(page);
 
   // Wait for nav to cashier/order/pay, or success text in body.
@@ -459,7 +460,7 @@ async function submitOrder(page: Page): Promise<{
       .evaluate(() => (document.body?.innerText ?? '').slice(0, 800))
       .catch(() => '');
     if (/下单成功|订单提交成功|请在.*分钟内付款|订单号/.test(txt)) break;
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
   }
 
   // URL may have orderId nested in a URL-encoded returnURL parameter, so
