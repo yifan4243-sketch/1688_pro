@@ -403,6 +403,6 @@ function printPreview(r: CheckoutPrepareResult): void {
     }
   });
   process.stdout.write(
-    '\nThis is a PREVIEW only. To actually place the order, you must do it manually in 1688 or via `1688 checkout confirm` (not yet implemented).\n',
+    '\nThis is a PREVIEW only. To actually place the order, run `1688 checkout confirm` after reviewing the details.\n',
   );
 }

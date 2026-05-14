@@ -36,6 +36,8 @@ const stats: ServerStats = {
   lastError: null,
 };
 
+const DAEMON_BLOCKED_COMMANDS = new Set(['checkout-confirm']);
+
 let activeClients = 0;
 let lastActivityMs = Date.now();
 let server: net.Server | null = null;
@@ -157,6 +159,13 @@ async function handleRequest(req: Request): Promise<Response> {
     if (req.cmd === 'shutdown') {
       setTimeout(() => void shutdown(), 50);
       return { id: req.id, ok: true, data: { stopping: true } };
+    }
+    if (DAEMON_BLOCKED_COMMANDS.has(req.cmd)) {
+      throw new CliError(
+        20,
+        'DAEMON_COMMAND_DISABLED',
+        `${req.cmd} must run through the CLI confirmation path, not the daemon socket.`,
+      );
     }
     await throttle(req.cmd);
     const fn = await loadExecutor<unknown, unknown>(req.cmd);

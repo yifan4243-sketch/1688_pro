@@ -1,7 +1,6 @@
 import readline from 'node:readline/promises';
 import type { BrowserContext, Page } from 'playwright';
 import { withSession } from '../session/context.js';
-import { dispatch } from '../session/dispatch.js';
 import { isDaemonReachable } from '../daemon/client.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
@@ -31,8 +30,8 @@ export interface CheckoutConfirmResult {
 const CART_URL = 'https://cart.1688.com/';
 
 /**
- * Daemon-safe execute: navigate, parse preview, click 提交订单, return result.
- * No prompts. Caller is responsible for confirming intent before calling this.
+ * Low-level executor: navigate, parse preview, click 提交订单, return result.
+ * No prompts. Keep this behind CLI-level confirmation gates.
  */
 export async function execute(
   ctx: BrowserContext,
@@ -77,7 +76,7 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
     throw new CliError(2, 'BAD_INPUT', 'At least one cartId is required.');
   }
 
-  // ── Non-interactive paths: --agent or --yes → daemon route, no prompt ──
+  // ── Non-interactive paths: --agent or --yes → inline route, no prompt ──
   //    Difference: --yes still requires TTY (real user fast-tracking);
   //    --agent skips TTY check (agent who already got user authorization).
   if (opts.agent || opts.yes) {
@@ -94,11 +93,7 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
         ? '[agent mode] No prompt; user authorization is the caller\'s responsibility.'
         : '[--yes] Skipping prompt.',
     );
-    const data = await dispatch<CheckoutConfirmArgs, CheckoutConfirmResult>(
-      'checkout-confirm',
-      { cartIds: opts.cartIds },
-      { profile: opts.profile },
-    );
+    const data = await runConfirmedInline(opts.cartIds, opts.profile);
     emit({
       human: () => printResult(data),
       data,
@@ -117,15 +112,7 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
     );
   }
 
-  let daemonWasRunning = false;
-  if (await isDaemonReachable()) {
-    info('Pausing daemon temporarily (will restart after)...');
-    const { stop } = await import('../daemon/manager.js');
-    await stop();
-    daemonWasRunning = true;
-  }
-
-  try {
+  await withDaemonPaused(async () => {
     await withSession(
       { headless: true, profile: opts.profile },
       async (ctx) => {
@@ -174,6 +161,31 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
         }
       },
     );
+  });
+}
+
+async function runConfirmedInline(
+  cartIds: string[],
+  profile?: string,
+): Promise<CheckoutConfirmResult> {
+  return withDaemonPaused(() =>
+    withSession({ headless: true, profile }, (ctx) =>
+      execute(ctx, { cartIds }),
+    ),
+  );
+}
+
+async function withDaemonPaused<T>(fn: () => Promise<T>): Promise<T> {
+  let daemonWasRunning = false;
+  if (await isDaemonReachable()) {
+    info('Pausing daemon temporarily (will restart after)...');
+    const { stop } = await import('../daemon/manager.js');
+    await stop();
+    daemonWasRunning = true;
+  }
+
+  try {
+    return await fn();
   } finally {
     if (daemonWasRunning) {
       info('Restarting daemon...');

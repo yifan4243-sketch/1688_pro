@@ -34,7 +34,7 @@ Organized by buyer journey: sourcing → inquiry → cart → checkout → track
 # Checkout
 1688 checkout prepare <cartId>...           Preview total/address/items (NO order placement).
 1688 checkout confirm <cartId>...           PLACE order — TTY+prompt by default.
-1688 checkout confirm <cartId>... --agent   Agent mode: no prompt, daemon-OK.
+1688 checkout confirm <cartId>... --agent   Agent mode: no prompt; use only after explicit approval.
                                             MUST be preceded by `prepare` shown to the user AND
                                             explicit user authorization in the current turn.
 

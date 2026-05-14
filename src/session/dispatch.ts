@@ -61,10 +61,6 @@ const REGISTRY: Record<string, () => Promise<Executor<unknown, unknown>>> = {
     import('../commands/checkout-prepare.js').then(
       (m) => m.execute as Executor<unknown, unknown>,
     ),
-  'checkout-confirm': () =>
-    import('../commands/checkout-confirm.js').then(
-      (m) => m.execute as Executor<unknown, unknown>,
-    ),
   'seller-chat': () =>
     import('../commands/seller-chat.js').then(
       (m) => m.execute as Executor<unknown, unknown>,

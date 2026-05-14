@@ -2,25 +2,27 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { stateFile } from '../src/session/paths.js';
 import { readState, writeState, clearState } from '../src/session/state.js';
 
 let tmpHome: string;
-let origYibabaHome: string | undefined;
+let origBb1688Home: string | undefined;
 
 beforeEach(async () => {
   tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), 'yibaba-test-'));
-  origYibabaHome = process.env.YIBABA_HOME;
-  process.env.YIBABA_HOME = tmpHome;
+  origBb1688Home = process.env.BB1688_HOME;
+  process.env.BB1688_HOME = tmpHome;
 });
 
 afterEach(async () => {
-  if (origYibabaHome === undefined) delete process.env.YIBABA_HOME;
-  else process.env.YIBABA_HOME = origYibabaHome;
+  if (origBb1688Home === undefined) delete process.env.BB1688_HOME;
+  else process.env.BB1688_HOME = origBb1688Home;
   await fs.rm(tmpHome, { recursive: true, force: true });
 });
 
 describe('state read/write', () => {
   it('returns empty state when file missing', async () => {
+    expect(stateFile()).toBe(path.join(tmpHome, 'state.json'));
     const s = await readState();
     expect(s).toEqual({ version: 1 });
   });

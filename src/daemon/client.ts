@@ -40,10 +40,26 @@ export async function daemonCall<T>(cmd: string, args: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const sock = net.createConnection(socketPath());
     let buf = '';
+    let settled = false;
     const timer = setTimeout(() => {
-      sock.destroy();
-      reject(new Error('daemon call timed out'));
+      fail(new Error('daemon call timed out'));
     }, CALL_TIMEOUT_MS);
+
+    function succeed(data: T): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      sock.end();
+      resolve(data);
+    }
+
+    function fail(e: Error): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      sock.destroy();
+      reject(e);
+    }
 
     sock.on('connect', () => {
       const req = { id: makeRequestId(), cmd, args };
@@ -59,23 +75,18 @@ export async function daemonCall<T>(cmd: string, args: unknown): Promise<T> {
       try {
         resp = JSON.parse(line);
       } catch (e) {
-        clearTimeout(timer);
-        sock.destroy();
-        reject(new Error('daemon: malformed response'));
+        fail(new Error('daemon: malformed response'));
         return;
       }
-      clearTimeout(timer);
-      sock.end();
       if (resp.ok) {
-        resolve(resp.data as T);
+        succeed(resp.data as T);
       } else {
-        reject(new CliError(resp.exitCode, resp.code, resp.message));
+        fail(new CliError(resp.exitCode, resp.code, resp.message));
       }
     });
 
     sock.on('error', (e) => {
-      clearTimeout(timer);
-      reject(e);
+      fail(e);
     });
   });
 }

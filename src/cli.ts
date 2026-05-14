@@ -151,13 +151,13 @@ const checkout = program
 checkout
   .command('confirm')
   .description(
-    'Place an order for selected cart items. Default: TTY+prompt. --agent: no prompt, daemon-OK.',
+    'Place an order for selected cart items. Default: TTY+prompt. --agent: no prompt after external approval.',
   )
   .argument('<cartIds...>', 'cartIds to checkout (from `1688 cart list`)')
   .option('-y, --yes', 'Skip y/N prompt (TTY still required)')
   .option(
     '--agent',
-    'Agent mode: no prompts, may run via daemon. Use ONLY after user reviewed prepare.',
+    'Agent mode: no prompts. Use ONLY after user reviewed prepare.',
   )
   .option('--profile <name>', 'Profile name (default: default)')
   .action(async (cartIds, opts) => {
