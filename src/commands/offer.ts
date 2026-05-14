@@ -2,6 +2,7 @@ import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 
 export interface OfferOpts {
   offerId: string;
@@ -11,6 +12,7 @@ export interface OfferOpts {
 
 export interface OfferArgs {
   offerId: string;
+  headed?: boolean;
 }
 
 export interface OfferResult {
@@ -107,6 +109,18 @@ export async function execute(
   if (!/^\d+$/.test(args.offerId)) {
     throw new CliError(2, 'BAD_INPUT', `Invalid offerId: ${args.offerId}`);
   }
+  return withRecovery(
+    ctx,
+    { cmd: 'offer', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+export async function executeRaw(
+  ctx: BrowserContext,
+  args: OfferArgs,
+): Promise<OfferResult> {
   const page = await ctx.newPage();
 
   let resolveSku!: (v: unknown) => void;
@@ -783,7 +797,7 @@ export async function run(opts: OfferOpts): Promise<void> {
   }
   const data = await dispatch<OfferArgs, OfferResult>(
     'offer',
-    { offerId: opts.offerId },
+    { offerId: opts.offerId, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

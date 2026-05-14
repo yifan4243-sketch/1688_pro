@@ -4,7 +4,8 @@ import { withSession } from '../session/context.js';
 import { isDaemonReachable } from '../daemon/client.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import { execute as cartListExecute } from './cart-list.js';
+import { withRecovery } from '../session/recovery.js';
+import { executeRaw as cartListExecute } from './cart-list.js';
 import { type CheckoutPrepareResult } from './checkout-prepare.js';
 
 export interface CheckoutConfirmOpts {
@@ -16,6 +17,7 @@ export interface CheckoutConfirmOpts {
 
 export interface CheckoutConfirmArgs {
   cartIds: string[];
+  headed?: boolean;
 }
 
 export interface CheckoutConfirmResult {
@@ -46,8 +48,20 @@ export async function execute(
     }
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'checkout-confirm', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 0 },
+  );
+}
+
+async function executeRaw(
+  ctx: BrowserContext,
+  args: CheckoutConfirmArgs,
+): Promise<CheckoutConfirmResult> {
   info('Verifying cart items...');
-  const cart = await cartListExecute(ctx, {});
+  const cart = await cartListExecute(ctx);
   const missing = args.cartIds.filter(
     (id) => !cart.items.some((i) => i.cartId === id),
   );
@@ -121,7 +135,7 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
           throw new CliError(2, 'BAD_INPUT', 'cartIds required.');
         }
         info('Verifying cart items...');
-        const cart = await cartListExecute(ctx, {});
+        const cart = await cartListExecute(ctx);
         const missing = opts.cartIds.filter(
           (id) => !cart.items.some((i) => i.cartId === id),
         );
@@ -171,7 +185,7 @@ async function runConfirmedInline(
 ): Promise<CheckoutConfirmResult> {
   return withDaemonPaused(() =>
     withSession({ headless: true, profile }, (ctx) =>
-      execute(ctx, { cartIds }),
+      execute(ctx, { cartIds, headed: false }),
       { cmd: 'checkout-confirm', args: { cartIds } },
     ),
   );

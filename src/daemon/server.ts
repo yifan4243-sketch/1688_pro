@@ -23,6 +23,17 @@ interface ServerOpts {
   prewarm?: boolean;
 }
 
+interface DaemonHealth {
+  lastPageState: string | null;
+  lastFailureKind: string | null;
+  lastRecoveryAction: string | null;
+  consecutiveFailures: number;
+  consecutiveRateLimits: number;
+  lastSuccessfulActionAt: string | null;
+  contextRecreatedAt: string | null;
+  pausedUntil: string | null;
+}
+
 interface ServerStats {
   version: string;
   startedAt: string;
@@ -30,6 +41,7 @@ interface ServerStats {
   commandCount: number;
   lastRequestAt: string | null;
   lastError: string | null;
+  health: DaemonHealth;
 }
 
 const stats: ServerStats = {
@@ -39,6 +51,16 @@ const stats: ServerStats = {
   commandCount: 0,
   lastRequestAt: null,
   lastError: null,
+  health: {
+    lastPageState: null,
+    lastFailureKind: null,
+    lastRecoveryAction: null,
+    consecutiveFailures: 0,
+    consecutiveRateLimits: 0,
+    lastSuccessfulActionAt: null,
+    contextRecreatedAt: null,
+    pausedUntil: null,
+  },
 };
 
 const DAEMON_BLOCKED_COMMANDS = new Set(['checkout-confirm']);
@@ -175,6 +197,7 @@ async function handleRequest(req: Request): Promise<Response> {
         `${req.cmd} must run through the CLI confirmation path, not the daemon socket.`,
       );
     }
+    await enforceHealthPause();
     await throttle(req.cmd);
     const fn = await loadExecutor<unknown, unknown>(req.cmd);
     const data = await runOnSharedCtx((ctx) => fn(ctx, req.args), {
@@ -182,9 +205,11 @@ async function handleRequest(req: Request): Promise<Response> {
       cmd: req.cmd,
       args: req.args,
     });
+    recordSuccess();
     return { id: req.id, ok: true, data };
   } catch (e) {
     stats.lastError = (e as Error).message ?? String(e);
+    recordFailure(e);
     if (e instanceof CliError) {
       return {
         id: req.id,
@@ -202,6 +227,69 @@ async function handleRequest(req: Request): Promise<Response> {
       code: 'INTERNAL',
       message: (e as Error).message ?? String(e),
     };
+  }
+}
+
+async function enforceHealthPause(): Promise<void> {
+  const pausedUntil = stats.health.pausedUntil;
+  if (!pausedUntil) return;
+  const until = new Date(pausedUntil).getTime();
+  if (!Number.isFinite(until) || Date.now() >= until) {
+    stats.health.pausedUntil = null;
+    return;
+  }
+  throw new CliError(
+    9,
+    'DAEMON_PAUSED',
+    `Daemon is paused until ${pausedUntil} after repeated 1688 failures.`,
+    {
+      category: 'daemon_health',
+      recoverHint: 'Wait for the pause to expire, or run `1688 daemon reload` after manually resolving login/risk-control issues.',
+      retryable: true,
+      pausedUntil,
+      failureKind: stats.health.lastFailureKind,
+      recoveryAction: stats.health.lastRecoveryAction,
+    },
+  );
+}
+
+function recordSuccess(): void {
+  stats.health.consecutiveFailures = 0;
+  stats.health.consecutiveRateLimits = 0;
+  stats.health.lastSuccessfulActionAt = new Date().toISOString();
+  stats.health.pausedUntil = null;
+}
+
+function detailString(e: unknown, key: string): string | null {
+  if (!(e instanceof CliError)) return null;
+  const v = e.details[key];
+  return typeof v === 'string' ? v : null;
+}
+
+function recordFailure(e: unknown): void {
+  if (e instanceof CliError && e.code === 'DAEMON_PAUSED') return;
+
+  stats.health.consecutiveFailures++;
+  const pageState = detailString(e, 'pageState');
+  const failureKind = detailString(e, 'failureKind');
+  const recoveryAction = detailString(e, 'recoveryAction');
+  if (pageState) stats.health.lastPageState = pageState;
+  if (failureKind) stats.health.lastFailureKind = failureKind;
+  if (recoveryAction) stats.health.lastRecoveryAction = recoveryAction;
+
+  if (failureKind === 'rate_limited' || (e instanceof CliError && e.code === 'RATE_LIMITED')) {
+    stats.health.consecutiveRateLimits++;
+  } else if (failureKind && failureKind !== 'rate_limited') {
+    stats.health.consecutiveRateLimits = 0;
+  }
+
+  const now = Date.now();
+  if (failureKind === 'rate_limited' && stats.health.consecutiveRateLimits >= 2) {
+    stats.health.pausedUntil = new Date(now + 5 * 60_000).toISOString();
+  } else if (failureKind === 'risk_challenge' || failureKind === 'not_logged_in') {
+    stats.health.pausedUntil = new Date(now + 10 * 60_000).toISOString();
+  } else if (stats.health.consecutiveFailures >= 5) {
+    stats.health.pausedUntil = new Date(now + 2 * 60_000).toISOString();
   }
 }
 

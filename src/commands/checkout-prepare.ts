@@ -2,7 +2,8 @@ import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import { execute as cartListExecute } from './cart-list.js';
+import { withRecovery } from '../session/recovery.js';
+import { executeRaw as cartListExecute } from './cart-list.js';
 
 export interface CheckoutPrepareOpts {
   cartIds: string[];
@@ -12,6 +13,7 @@ export interface CheckoutPrepareOpts {
 
 export interface CheckoutPrepareArgs {
   cartIds: string[];
+  headed?: boolean;
 }
 
 export interface CheckoutPrepareResult {
@@ -65,9 +67,21 @@ export async function execute(
     }
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'checkout-prepare', args },
+    () => executeCheckoutPrepare(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+async function executeCheckoutPrepare(
+  ctx: BrowserContext,
+  args: CheckoutPrepareArgs,
+): Promise<CheckoutPrepareResult> {
   // Verify cartIds exist in current cart.
   info('Verifying cart items...');
-  const cart = await cartListExecute(ctx, {});
+  const cart = await cartListExecute(ctx);
   const wanted = new Set(args.cartIds);
   const missing = args.cartIds.filter(
     (id) => !cart.items.some((i) => i.cartId === id),
@@ -356,7 +370,7 @@ export async function run(opts: CheckoutPrepareOpts): Promise<void> {
   }
   const data = await dispatch<CheckoutPrepareArgs, CheckoutPrepareResult>(
     'checkout-prepare',
-    { cartIds: opts.cartIds },
+    { cartIds: opts.cartIds, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

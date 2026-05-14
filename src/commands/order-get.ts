@@ -2,8 +2,9 @@ import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 import {
-  execute as orderListExecute,
+  executeRaw as orderListExecute,
   type Order,
   type OrderListArgs,
 } from './order-list.js';
@@ -22,6 +23,7 @@ export interface OrderGetArgs {
   /** Narrow scan to a specific tradeStatus when known — much faster for
    *  accounts with thousands of orders. */
   statusHint?: string;
+  headed?: boolean;
 }
 
 const SCAN_PAGE_SIZE = 50;
@@ -41,6 +43,18 @@ export async function execute(
   if (!/^\d+$/.test(args.orderId)) {
     throw new CliError(2, 'BAD_INPUT', `Invalid orderId: ${args.orderId}`);
   }
+  return withRecovery(
+    ctx,
+    { cmd: 'order-get', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+export async function executeRaw(
+  ctx: BrowserContext,
+  args: OrderGetArgs,
+): Promise<Order> {
   const status = args.statusHint ?? 'all';
   for (let p = 1; p <= args.maxScanPages; p++) {
     info(`Scanning page ${p} (tradeStatus=${status})...`);
@@ -71,7 +85,7 @@ export async function run(opts: OrderGetOpts): Promise<void> {
   );
   const data = await dispatch<OrderGetArgs, Order>(
     'order-get',
-    { orderId: opts.orderId, maxScanPages, statusHint: opts.status },
+    { orderId: opts.orderId, maxScanPages, statusHint: opts.status, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

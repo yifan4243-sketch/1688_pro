@@ -2,7 +2,7 @@ import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import { execute as cartListExecute } from './cart-list.js';
+import { executeRaw as cartListExecute } from './cart-list.js';
 import { readState } from '../session/state.js';
 import type {
   SellerChatArgs,
@@ -124,9 +124,13 @@ async function tryFindSeller(
   info(`Looking up offer ${offerId} in cart...`);
   try {
     const cart = await dispatch<
-      Record<string, never>,
+      { headed?: boolean },
       Awaited<ReturnType<typeof cartListExecute>>
-    >('cart-list', {}, { headed: opts.headed, profile: opts.profile });
+    >(
+      'cart-list',
+      { headed: opts.headed },
+      { headed: opts.headed, profile: opts.profile },
+    );
     const item = cart.items.find((i) => i.offerId === offerId);
     if (item?.seller.loginId) {
       info(`Found in cart: seller=${item.seller.loginId}`);

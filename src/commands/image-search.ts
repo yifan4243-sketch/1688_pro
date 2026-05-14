@@ -5,6 +5,7 @@ import type { BrowserContext, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 import {
   type Offer,
   type RawOfferItem,
@@ -24,6 +25,7 @@ export interface ImageSearchOpts {
 export interface ImageSearchArgs {
   imagePath: string;
   max: number;
+  headed?: boolean;
 }
 
 export interface ImageSearchResult {
@@ -40,14 +42,24 @@ export async function execute(
   ctx: BrowserContext,
   args: ImageSearchArgs,
 ): Promise<ImageSearchResult> {
-  // The daemon runs on the same host; the imagePath must be an existing
-  // absolute path readable by this process.
   try {
     await fs.access(args.imagePath, fs.constants.R_OK);
   } catch {
     throw new CliError(2, 'BAD_INPUT', `Cannot read image: ${args.imagePath}`);
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'image-search', args },
+    () => executeImageSearch(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+async function executeImageSearch(
+  ctx: BrowserContext,
+  args: ImageSearchArgs,
+): Promise<ImageSearchResult> {
   info('Uploading image to 1688...');
   const imageId = await uploadAndGetImageId(ctx, args.imagePath);
   info(`Image uploaded (imageId=${imageId}). Fetching results...`);
@@ -213,7 +225,7 @@ export async function run(opts: ImageSearchOpts): Promise<void> {
   try {
     const data = await dispatch<ImageSearchArgs, ImageSearchResult>(
       'image-search',
-      { imagePath: abs, max },
+      { imagePath: abs, max, headed: opts.headed },
       { headed: opts.headed, profile: opts.profile },
     );
     emit({

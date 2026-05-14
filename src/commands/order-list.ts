@@ -2,6 +2,7 @@ import type { BrowserContext, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 
 export interface OrderListOpts {
   status?: string;
@@ -106,6 +107,18 @@ const ORDER_LIST_URL =
 const MTOP_API_RE = /mtop\.1688\.trading\.dataline\.service/i;
 
 export async function execute(
+  ctx: BrowserContext,
+  args: OrderListArgs,
+): Promise<OrderListResult> {
+  return withRecovery(
+    ctx,
+    { cmd: 'order-list', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+export async function executeRaw(
   ctx: BrowserContext,
   args: OrderListArgs,
 ): Promise<OrderListResult> {

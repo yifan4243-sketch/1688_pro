@@ -2,6 +2,7 @@ import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 
 export interface OrderLogisticsOpts {
   orderId: string;
@@ -17,6 +18,7 @@ export interface OrderLogisticsArgs {
   /** Narrow the scan to one tradeStatus (e.g. "waitbuyerreceive") when known —
    *  much faster than scanning the full "all" list for heavy accounts. */
   statusHint?: string;
+  headed?: boolean;
 }
 
 export interface LogisticsTrace {
@@ -48,6 +50,18 @@ export async function execute(
     throw new CliError(2, 'BAD_INPUT', `Invalid orderId: ${args.orderId}`);
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'order-logistics', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+export async function executeRaw(
+  ctx: BrowserContext,
+  args: OrderLogisticsArgs,
+): Promise<OrderLogisticsResult> {
   const status = args.statusHint ?? 'all';
   for (let p = 1; p <= args.maxScanPages; p++) {
     info(`Scanning page ${p} (tradeStatus=${status})...`);
@@ -225,7 +239,7 @@ export async function run(opts: OrderLogisticsOpts): Promise<void> {
   );
   const data = await dispatch<OrderLogisticsArgs, OrderLogisticsResult>(
     'order-logistics',
-    { orderId: opts.orderId, maxScanPages, statusHint: opts.status },
+    { orderId: opts.orderId, maxScanPages, statusHint: opts.status, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

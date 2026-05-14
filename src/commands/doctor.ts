@@ -108,6 +108,8 @@ export async function run(opts: DoctorOpts): Promise<void> {
     checks.push(await checkChromiumLaunch());
   }
   checks.push(await checkSession());
+  const daemon = await checkDaemonHealth();
+  checks.push(daemon.check);
   const upd = await checkUpdate();
   checks.push(upd.check);
 
@@ -117,7 +119,7 @@ export async function run(opts: DoctorOpts): Promise<void> {
     human: () => printHuman(checks),
     // `version` is surfaced at top-level so agents can read it without
     // having to scan `checks[]`. See AGENTS.md → Update awareness.
-    data: { ok: !failed, checks, version: upd.version },
+    data: { ok: !failed, checks, version: upd.version, daemon: daemon.status },
   });
 
   if (failed) throw new CliError(6, 'DOCTOR_FAILED', '');
@@ -320,6 +322,107 @@ async function checkChromiumLaunch(): Promise<Check> {
     };
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
+  }
+}
+
+interface DaemonHealthSnapshot {
+  lastPageState?: string | null;
+  lastFailureKind?: string | null;
+  lastRecoveryAction?: string | null;
+  consecutiveFailures?: number;
+  consecutiveRateLimits?: number;
+  lastSuccessfulActionAt?: string | null;
+  pausedUntil?: string | null;
+}
+
+interface DoctorDaemonStatus {
+  running: boolean;
+  reachable?: boolean;
+  pid?: number;
+  version?: string | null;
+  expectedVersion?: string;
+  versionMatches?: boolean;
+  stats?: unknown;
+}
+
+async function checkDaemonHealth(): Promise<{
+  check: Check;
+  status: DoctorDaemonStatus | null;
+}> {
+  try {
+    const { status } = await import('../daemon/manager.js');
+    const st = (await status()) as DoctorDaemonStatus;
+    if (!st.running) {
+      return {
+        status: st,
+        check: { name: 'daemon', status: 'ok', message: 'not running' },
+      };
+    }
+    if (!st.reachable) {
+      return {
+        status: st,
+        check: {
+          name: 'daemon',
+          status: 'warn',
+          message: `pid ${st.pid ?? '?'} not reachable`,
+          fix: '1688 daemon reload',
+        },
+      };
+    }
+    if (st.versionMatches === false) {
+      return {
+        status: st,
+        check: {
+          name: 'daemon',
+          status: 'warn',
+          message: `version ${st.version ?? '?'} != CLI ${st.expectedVersion ?? '?'}`,
+          fix: '1688 daemon reload',
+        },
+      };
+    }
+
+    const stats = st.stats && typeof st.stats === 'object'
+      ? (st.stats as { health?: DaemonHealthSnapshot })
+      : null;
+    const health = stats?.health;
+    if (health?.pausedUntil) {
+      return {
+        status: st,
+        check: {
+          name: 'daemon',
+          status: 'warn',
+          message: `paused until ${health.pausedUntil} (${health.lastFailureKind ?? 'unknown'})`,
+          fix: 'Resolve login/risk-control if needed, or wait for pause to expire.',
+        },
+      };
+    }
+    if ((health?.consecutiveFailures ?? 0) > 0) {
+      return {
+        status: st,
+        check: {
+          name: 'daemon',
+          status: 'warn',
+          message: `running; recent failures=${health?.consecutiveFailures ?? 0}, last=${health?.lastFailureKind ?? 'unknown'}`,
+        },
+      };
+    }
+    return {
+      status: st,
+      check: {
+        name: 'daemon',
+        status: 'ok',
+        message: `running pid ${st.pid ?? '?'}${health?.lastSuccessfulActionAt ? `, last success ${health.lastSuccessfulActionAt}` : ''}`,
+      },
+    };
+  } catch (e) {
+    return {
+      status: null,
+      check: {
+        name: 'daemon',
+        status: 'warn',
+        message: `status unavailable: ${(e as Error).message}`,
+      },
+    };
   }
 }
 

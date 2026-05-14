@@ -16,8 +16,9 @@ import type {
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 import {
-  execute as cartListExecute,
+  executeRaw as cartListExecute,
   type CartItem,
 } from './cart-list.js';
 
@@ -33,6 +34,7 @@ export interface CartAddArgs {
   offerId: string;
   skuId: string;
   quantity: number;
+  headed?: boolean;
 }
 
 export interface CartAddResult {
@@ -130,11 +132,23 @@ export async function execute(
     throw new CliError(2, 'BAD_INPUT', `Invalid quantity: ${args.quantity}`);
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'cart-add', args },
+    () => executeCartAdd(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+async function executeCartAdd(
+  ctx: BrowserContext,
+  args: CartAddArgs,
+): Promise<CartAddResult> {
   // Snapshot cart BEFORE add so we can diff to find the affected row reliably,
   // even when the same SKU was already in cart (server merges into the
   // existing row instead of creating a new cartId).
   info('Snapshotting cart...');
-  const before = await cartListExecute(ctx, {});
+  const before = await cartListExecute(ctx);
   const beforeQty = new Map<string, number>();
   for (const it of before.items) beforeQty.set(it.cartId, it.quantity);
 
@@ -373,7 +387,7 @@ export async function execute(
   //   2. Existing cartId with higher quantity in `after` → server merged
   //      into the pre-existing row (same offer + skuId already in cart).
   info('Verifying...');
-  const after = await cartListExecute(ctx, {});
+  const after = await cartListExecute(ctx);
 
   let added: CartItem | undefined;
   let isNewRow = false;
@@ -425,7 +439,7 @@ export async function run(opts: CartAddOpts): Promise<void> {
 
   const data = await dispatch<CartAddArgs, CartAddResult>(
     'cart-add',
-    { offerId: opts.offerId, skuId: opts.sku, quantity: qty },
+    { offerId: opts.offerId, skuId: opts.sku, quantity: qty, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

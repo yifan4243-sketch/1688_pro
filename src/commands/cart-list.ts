@@ -3,13 +3,16 @@ import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 
 export interface CartListOpts {
   profile?: string;
   headed?: boolean;
 }
 
-export type CartListArgs = Record<string, never>;
+export interface CartListArgs {
+  headed?: boolean;
+}
 
 export interface CartItem {
   cartId: string;
@@ -41,8 +44,17 @@ const RENDER_API_RE = /mtop\.1688\.buycenter\.mtoppurchaseastoreservice\.render/
 
 export async function execute(
   ctx: BrowserContext,
-  _args: CartListArgs,
+  args: CartListArgs,
 ): Promise<CartListResult> {
+  return withRecovery(
+    ctx,
+    { cmd: 'cart-list', args },
+    () => executeRaw(ctx),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+export async function executeRaw(ctx: BrowserContext): Promise<CartListResult> {
   const page = await ctx.newPage();
   let resolveCapture!: (v: unknown) => void;
   const captured = new Promise<unknown>((r) => {
@@ -243,7 +255,7 @@ function normalizeImage(pic: string | undefined): string | null {
 export async function run(opts: CartListOpts): Promise<void> {
   const data = await dispatch<CartListArgs, CartListResult>(
     'cart-list',
-    {},
+    { headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

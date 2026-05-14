@@ -2,8 +2,9 @@ import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 import {
-  execute as cartListExecute,
+  executeRaw as cartListExecute,
   type CartItem,
 } from './cart-list.js';
 
@@ -15,6 +16,7 @@ export interface CartRemoveOpts {
 
 export interface CartRemoveArgs {
   cartId: string;
+  headed?: boolean;
 }
 
 export interface CartRemoveResult {
@@ -30,9 +32,21 @@ export async function execute(
     throw new CliError(2, 'BAD_INPUT', `Invalid cartId: ${args.cartId}`);
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'cart-remove', args },
+    () => executeCartRemove(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+async function executeCartRemove(
+  ctx: BrowserContext,
+  args: CartRemoveArgs,
+): Promise<CartRemoveResult> {
   // 1. Locate the target item in the current cart.
   info('Looking up cart item...');
-  const before = await cartListExecute(ctx, {});
+  const before = await cartListExecute(ctx);
   const target = before.items.find((i) => i.cartId === args.cartId);
   if (!target) {
     throw new CliError(
@@ -157,7 +171,7 @@ export async function execute(
   }
 
   // 3. Verify removal by re-fetching cart.
-  const after = await cartListExecute(ctx, {});
+  const after = await cartListExecute(ctx);
   if (after.items.some((i) => i.cartId === args.cartId)) {
     throw new CliError(
       16,
@@ -174,7 +188,7 @@ export async function run(opts: CartRemoveOpts): Promise<void> {
   }
   const data = await dispatch<CartRemoveArgs, CartRemoveResult>(
     'cart-remove',
-    { cartId: opts.cartId },
+    { cartId: opts.cartId, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
   emit({

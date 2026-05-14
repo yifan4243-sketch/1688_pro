@@ -5,6 +5,7 @@ import type { BrowserContext, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 import {
   type Offer,
   type RawOfferItem,
@@ -45,6 +46,18 @@ export async function execute(
   if (!/^\d+$/.test(args.offerId)) {
     throw new CliError(2, 'BAD_INPUT', `Invalid offerId: ${args.offerId}`);
   }
+  return withRecovery(
+    ctx,
+    { cmd: 'similar', args },
+    () => executeSimilar(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+async function executeSimilar(
+  ctx: BrowserContext,
+  args: SimilarArgs,
+): Promise<SimilarResult> {
   const headed = args.headed === true;
   const page = await ctx.newPage();
 

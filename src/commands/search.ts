@@ -3,6 +3,7 @@ import iconv from 'iconv-lite';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { withRecovery } from '../session/recovery.js';
 
 export interface SearchOpts {
   max?: string;
@@ -45,9 +46,16 @@ export async function execute(
   ctx: BrowserContext,
   args: SearchArgs,
 ): Promise<SearchResult> {
-  const offers = await fetchSearch(ctx, args.keyword, args.headed === true);
-  const slice = offers.slice(0, args.max);
-  return { keyword: args.keyword, total: slice.length, offers: slice };
+  return withRecovery(
+    ctx,
+    { cmd: 'search', args },
+    async () => {
+      const offers = await fetchSearch(ctx, args.keyword, args.headed === true);
+      const slice = offers.slice(0, args.max);
+      return { keyword: args.keyword, total: slice.length, offers: slice };
+    },
+    { headed: args.headed === true, maxRetries: 1 },
+  );
 }
 
 export async function run(keyword: string, opts: SearchOpts): Promise<void> {

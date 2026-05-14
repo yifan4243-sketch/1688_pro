@@ -3,7 +3,8 @@ import type { BrowserContext, FrameLocator, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import { execute as orderGetExecute } from './order-get.js';
+import { withRecovery } from '../session/recovery.js';
+import { executeRaw as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
 
 export interface SellerMessagesOpts {
@@ -24,6 +25,7 @@ export interface SellerMessagesArgs {
   offerId?: string;
   myLoginId: string;
   limit: number;
+  headed?: boolean;
 }
 
 export type MessageKind =
@@ -253,6 +255,18 @@ async function waitForWsMessages(
 }
 
 export async function execute(
+  ctx: BrowserContext,
+  args: SellerMessagesArgs,
+): Promise<SellerMessagesResult> {
+  return withRecovery(
+    ctx,
+    { cmd: 'seller-messages', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 1 },
+  );
+}
+
+export async function executeRaw(
   ctx: BrowserContext,
   args: SellerMessagesArgs,
 ): Promise<SellerMessagesResult> {
@@ -746,15 +760,16 @@ export async function run(opts: SellerMessagesOpts): Promise<void> {
       offerId: opts.offer,
       myLoginId: state.nick,
       limit,
+      headed: opts.headed,
     };
   } else if (/^\d+$/.test(opts.target!)) {
     info(`Looking up seller for order ${opts.target}...`);
     const order = await dispatch<
-      { orderId: string; maxScanPages: number },
+      { orderId: string; maxScanPages: number; headed?: boolean },
       Awaited<ReturnType<typeof orderGetExecute>>
     >(
       'order-get',
-      { orderId: opts.target!, maxScanPages: 5 },
+      { orderId: opts.target!, maxScanPages: 5, headed: opts.headed },
       { headed: opts.headed, profile: opts.profile },
     );
     args = {
@@ -765,12 +780,14 @@ export async function run(opts: SellerMessagesOpts): Promise<void> {
       orderId: opts.target!,
       myLoginId: state.nick,
       limit,
+      headed: opts.headed,
     };
   } else {
     args = {
       searchNames: [opts.target!],
       myLoginId: state.nick,
       limit,
+      headed: opts.headed,
     };
   }
 

@@ -2,7 +2,8 @@ import type { BrowserContext, FrameLocator, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import { execute as orderGetExecute } from './order-get.js';
+import { withRecovery } from '../session/recovery.js';
+import { executeRaw as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
 
 export interface SellerChatOpts {
@@ -26,6 +27,7 @@ export interface SellerChatArgs {
   offerId?: string;
   myLoginId: string;
   message: string;
+  headed?: boolean;
 }
 
 export interface SellerChatResult {
@@ -53,6 +55,18 @@ export async function execute(
     throw new CliError(2, 'BAD_INPUT', 'Message too long (max 500 chars).');
   }
 
+  return withRecovery(
+    ctx,
+    { cmd: 'seller-chat', args },
+    () => executeRaw(ctx, args),
+    { headed: args.headed === true, maxRetries: 0 },
+  );
+}
+
+export async function executeRaw(
+  ctx: BrowserContext,
+  args: SellerChatArgs,
+): Promise<SellerChatResult> {
   const page = await ctx.newPage();
   try {
     // Build URL using 1688's "联系卖家" pattern:
@@ -256,11 +270,11 @@ export async function run(opts: SellerChatOpts): Promise<void> {
   if (/^\d+$/.test(opts.target)) {
     info(`Looking up seller for order ${opts.target}...`);
     const order = await dispatch<
-      { orderId: string; maxScanPages: number },
+      { orderId: string; maxScanPages: number; headed?: boolean },
       Awaited<ReturnType<typeof orderGetExecute>>
     >(
       'order-get',
-      { orderId: opts.target, maxScanPages: 5 },
+      { orderId: opts.target, maxScanPages: 5, headed: opts.headed },
       { headed: opts.headed, profile: opts.profile },
     );
     if (!order.seller.loginId) {
@@ -298,7 +312,7 @@ export async function run(opts: SellerChatOpts): Promise<void> {
     info(`Sending message 1/2: order link card`);
     await dispatch<SellerChatArgs, SellerChatResult>(
       'seller-chat',
-      { ...baseArgs, message: orderUrl },
+      { ...baseArgs, message: orderUrl, headed: opts.headed },
       { headed: opts.headed, profile: opts.profile },
     );
     await new Promise((r) => setTimeout(r, 1500));
@@ -307,7 +321,7 @@ export async function run(opts: SellerChatOpts): Promise<void> {
 
   const data = await dispatch<SellerChatArgs, SellerChatResult>(
     'seller-chat',
-    { ...baseArgs, message: finalMessage },
+    { ...baseArgs, message: finalMessage, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
 
