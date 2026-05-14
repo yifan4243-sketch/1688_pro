@@ -1,9 +1,14 @@
 import { writeFileSync } from 'node:fs';
-import type { BrowserContext, FrameLocator, Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import {
+  clickConversationByName,
+  findImInput,
+  waitForConversationActivated,
+} from '../session/im-locators.js';
 import { executeRaw as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
 
@@ -383,33 +388,13 @@ export async function executeRaw(
       );
     }
 
-    const imFrame: FrameLocator = page.frameLocator(
-      'iframe[src*="def_cbu_web_im_core"]',
-    );
-    const input = imFrame.locator('pre.edit[contenteditable="true"]').first();
-    try {
-      await input.waitFor({ state: 'visible', timeout: 20000 });
-    } catch {
-      throw new CliError(
-        22,
-        'CHAT_NOT_LOADED',
-        'Failed to open 旺旺 IM.',
-      );
-    }
+    await findImInput(page);
     await new Promise((r) => setTimeout(r, 3000));
 
     // If sidebar mode: find + click the seller
     let matched: string | null = null;
     if (!args.sellerLoginId || (!args.orderId && !args.offerId)) {
-      for (const name of args.searchNames) {
-        if (!name) continue;
-        const item = imFrame.locator(`text=${name}`).first();
-        if (await item.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await item.click({ force: true });
-          matched = name;
-          break;
-        }
-      }
+      matched = await clickConversationByName(page, args.searchNames);
       if (!matched) {
         throw new CliError(
           29,
@@ -422,27 +407,7 @@ export async function executeRaw(
       matched = args.searchNames[0] ?? args.sellerLoginId;
     }
 
-    // Wait for conversation panel to activate
-    const activated = await page
-      .waitForFunction(
-        () => {
-          const iframe = document.querySelector<HTMLIFrameElement>(
-            'iframe[src*="def_cbu_web_im_core"]',
-          );
-          const body = iframe?.contentDocument?.body?.innerText ?? '';
-          return !/您尚未选择联系人/.test(body) && body.length > 50;
-        },
-        { timeout: 25000 },
-      )
-      .then(() => true)
-      .catch(() => false);
-    if (!activated) {
-      throw new CliError(
-        26,
-        'CONVERSATION_NOT_SELECTED',
-        `Conversation did not activate for ${matched}.`,
-      );
-    }
+    await waitForConversationActivated(page, matched, args);
     // Wait for IM page to fire `/r/MessageManager/listUserMessages` and the
     // server's recv frame to arrive. Falls through after timeout so we can
     // still fall back to DOM extraction.

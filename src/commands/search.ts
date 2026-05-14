@@ -4,6 +4,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { clickSearchNextPage } from '../session/search-locators.js';
 
 export interface SearchOpts {
   max?: string;
@@ -444,9 +445,6 @@ async function fetchSearch(
 
   const allOffers: Offer[] = [];
   const seenIds = new Set<string>();
-  // Pagination control is in-page `<div>` elements (not anchors). The "next"
-  // arrow loses the `fui-next` clickable state on the last page.
-  const NEXT_BTN = '.fui-arrow.fui-next:not(.fui-next-disabled)';
 
   for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
     capturedOffers = [];
@@ -465,18 +463,9 @@ async function fetchSearch(
       // Clicking the in-page "next" arrow advances `beginPage` within the
       // SAME pageId, which is the only way to get a clean next 60.
       info(`Fetching page ${pageNum}/${pagesWanted}...`);
-      const nextBtn = page.locator(NEXT_BTN).first();
-      if ((await nextBtn.count()) === 0) {
-        info(`No further pages — stopping at ${allOffers.length} results.`);
-        break;
-      }
-      try {
-        await nextBtn.click({ timeout: 5000 });
-      } catch {
-        info(
-          `Could not advance to page ${pageNum} — stopping at ` +
-            `${allOffers.length} results.`,
-        );
+      const advanced = await clickSearchNextPage(page).catch(() => false);
+      if (!advanced) {
+        info(`Could not advance to page ${pageNum} — stopping at ${allOffers.length} results.`);
         break;
       }
     }

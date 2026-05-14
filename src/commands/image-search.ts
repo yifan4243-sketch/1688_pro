@@ -7,6 +7,10 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import {
+  clickImageSearchButton,
+  clickImageUploadButton,
+} from '../session/image-search-locators.js';
+import {
   type Offer,
   type RawOfferItem,
   SEARCH_MTOP_API,
@@ -98,40 +102,13 @@ async function uploadAndGetImageId(
       );
     }
 
-    // Click the upload button — filechooser handler picks up the file.
-    await page
-      .locator('.image-upload-button-container')
-      .first()
-      .click({ force: true, timeout: 8000 });
+    await clickImageUploadButton(page);
 
-    // Upload happens silently in background; "搜索图片" button appears only
-    // after the image is processed. Wait up to 20s for it.
-    const searchBtn = page.locator('text=搜索图片').first();
-    try {
-      await searchBtn.waitFor({ state: 'visible', timeout: 20000 });
-    } catch {
-      // Diagnostic: snapshot the page state to help debug
-      const state = await page
-        .evaluate(() => ({
-          url: location.href,
-          title: document.title,
-          bodyHead: (document.body?.innerText ?? '').slice(0, 300),
-        }))
-        .catch(() => null);
-      throw new CliError(
-        13,
-        'UPLOAD_FAILED',
-        `Upload appeared to fail — "搜索图片" button never showed.\n` +
-          (state
-            ? `URL: ${state.url}\nTitle: ${state.title}\nBody: ${state.bodyHead}`
-            : ''),
-      );
-    }
     await Promise.all([
       page
         .waitForURL(/imageId=\d+/, { timeout: 20000 })
         .catch(() => undefined),
-      searchBtn.click({ force: true }),
+      clickImageSearchButton(page),
     ]);
 
     const match = page.url().match(/imageId=(\d+)/);

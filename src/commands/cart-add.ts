@@ -17,6 +17,11 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { clickConfirmDialogButton } from '../session/cart-locators.js';
+import {
+  clickAddCartButton,
+  fillFirstSkuQuantityInput,
+} from '../session/offer-locators.js';
 import {
   executeRaw as cartListExecute,
   type CartItem,
@@ -285,30 +290,10 @@ async function executeCartAdd(
     // popup). Fill the FIRST visible qty input — our hijack will rewrite
     // the actual specId, so which input we fill doesn't matter.
     info('Setting trigger qty...');
-    try {
-      await page.waitForSelector('input.ant-input-number-input', {
-        state: 'visible',
-        timeout: 12000,
-      });
-    } catch {
-      throw new CliError(
-        11,
-        'SKU_TABLE_NOT_LOADED',
-        'No qty inputs visible on detail page.',
-      );
-    }
-    const qtyInp = page.locator('input.ant-input-number-input').first();
-    await qtyInp.click({ force: true, timeout: 3000 });
-    await qtyInp.fill('1');
-    await page.keyboard.press('Tab');
+    await fillFirstSkuQuantityInput(page, 1);
     await new Promise((r) => setTimeout(r, 600));
 
-    // Wait for the 加采购车 button to be clickable.
     info('Clicking 加采购车...');
-    const addBtn = page.locator(
-      'button:has-text("加采购车"):not([disabled])',
-    );
-    await addBtn.first().waitFor({ state: 'visible', timeout: 15000 });
 
     // Listen for the addCargo response so we can detect success quickly.
     let addCargoResult: { ok: boolean; ret?: string[] } | null = null;
@@ -330,23 +315,10 @@ async function executeCartAdd(
     };
     page.on('response', onResp);
 
-    await addBtn.first().click({ force: true, timeout: 5000 });
+    await clickAddCartButton(page);
 
-    // 1688 may pop a confirm dialog; click it if present.
     await new Promise((r) => setTimeout(r, 600));
-    const confirmBtn = page
-      .locator(
-        'div[role="dialog"] button:has-text("加入采购车"):visible, ' +
-          'div[role="dialog"] button:has-text("确认加入"):visible, ' +
-          'div[class*="dialog"] button:has-text("加入采购车"):visible, ' +
-          'div[class*="dialog"] button:has-text("确认"):visible',
-      )
-      .first();
-    if (await confirmBtn.count().catch(() => 0)) {
-      await confirmBtn
-        .click({ force: true, timeout: 2000 })
-        .catch(() => undefined);
-    }
+    await clickConfirmDialogButton(page).catch(() => undefined);
 
     // Wait actively for the addCargo response.
     const deadline = Date.now() + 10000;

@@ -6,6 +6,13 @@ import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { clickSubmitOrderButton } from '../session/checkout-locators.js';
+import {
+  clickCartCheckoutButton,
+  clickCartRowCheckbox,
+  uncheckAllCartRows,
+  waitForAnyCartRowChecked,
+  waitForCartItems,
+} from '../session/cart-locators.js';
 import { executeRaw as cartListExecute } from './cart-list.js';
 import { type CheckoutPrepareResult } from './checkout-prepare.js';
 
@@ -231,111 +238,23 @@ async function navigateToPreview(
   if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
     throw new CliError(3, 'NOT_LOGGED_IN', 'Session expired. Run `1688 login`.');
   }
-  try {
-    await page.waitForSelector('input[type="checkbox"].next-checkbox-input', {
-      timeout: 15000,
-    });
-  } catch {
-    throw new CliError(11, 'CART_NOT_LOADED', 'Cart page did not load.');
-  }
+  await waitForCartItems(page);
   await new Promise((r) => setTimeout(r, 1500));
 
-  // Uncheck all
-  await page.evaluate(() => {
-    const wrappers = Array.from(
-      document.querySelectorAll<HTMLElement>('.next-checkbox-wrapper'),
-    );
-    for (const w of wrappers) {
-      const aria = w.querySelector('[aria-checked]');
-      if (aria?.getAttribute('aria-checked') === 'true') {
-        w.click();
-      }
-    }
-  });
+  await uncheckAllCartRows(page);
   await new Promise((r) => setTimeout(r, 1000));
 
-  // Check each target. Use SKU title (unique per row) to disambiguate
-  // siblings — multiple SKUs of the same offer share productTitle, so walking
-  // up from productTitle alone hits the group-level checkbox.
   for (const cartId of cartIds) {
     const item = cart.items.find((i) => i.cartId === cartId)!;
-    const titleHint = item.productTitle.slice(0, 12);
-    const skuHint = item.skuTitle?.trim() ?? null;
-    const res = await page.evaluate(
-      ({ titleHint, skuHint }) => {
-        // Prefer rows that contain the SKU spec text (unique).
-        // If no skuTitle, fall back to productTitle.
-        const probe = skuHint && skuHint.length >= 3 ? skuHint : titleHint;
-        const all = Array.from(document.querySelectorAll<HTMLElement>('*'));
-        const candidates = all.filter(
-          (el) =>
-            el.children.length === 0 &&
-            el.textContent !== null &&
-            el.textContent.includes(probe),
-        );
-        // For each candidate, walk up to find a scope that contains BOTH the
-        // productTitle AND a checkbox. The SMALLEST such scope is the row.
-        for (const c of candidates) {
-          let row: HTMLElement | null = c;
-          for (let d = 0; d < 10 && row; d++) {
-            row = row.parentElement;
-            if (!row) break;
-            const txt = row.textContent ?? '';
-            if (!txt.includes(titleHint)) continue;
-            const cb = row.querySelector<HTMLElement>(
-              '.next-checkbox-wrapper',
-            );
-            if (cb) {
-              const aria = cb.querySelector('[aria-checked]');
-              if (aria?.getAttribute('aria-checked') !== 'true') cb.click();
-              return true;
-            }
-          }
-        }
-        return false;
-      },
-      { titleHint, skuHint },
-    );
-    if (!res) {
-      throw new CliError(
-        14,
-        'UI_ELEMENT_NOT_FOUND',
-        `Could not select cartId ${cartId} in cart UI (sku="${item.skuTitle ?? ''}").`,
-      );
-    }
+    await clickCartRowCheckbox(page, item);
     await new Promise((r) => setTimeout(r, 600));
   }
 
-  // Wait for at least one aria-checked=true to confirm React state updated
-  const checkedReady = await page
-    .waitForFunction(
-      () => {
-        const wrappers = Array.from(
-          document.querySelectorAll<HTMLElement>('.next-checkbox-wrapper'),
-        );
-        return wrappers.some((w) => {
-          const aria = w.querySelector('[aria-checked]');
-          return aria?.getAttribute('aria-checked') === 'true';
-        });
-      },
-      { timeout: 8000 },
-    )
-    .then(() => true)
-    .catch(() => false);
-  if (!checkedReady) {
-    throw new CliError(
-      14,
-      'CHECKBOX_NOT_TICKED',
-      'Target item did not register as selected.',
-    );
-  }
+  await waitForAnyCartRowChecked(page);
 
   // Click 结算; retry up to 3 times
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await page
-      .locator('button:has-text("结算"):not([disabled])')
-      .first()
-      .click({ force: true, timeout: 5000 });
+    await clickCartCheckoutButton(page);
     const navigated = await page
       .waitForURL(/smart_make_order|order\.1688\.com\/order/i, {
         timeout: 6000,
