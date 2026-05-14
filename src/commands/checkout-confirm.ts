@@ -5,6 +5,7 @@ import { isDaemonReachable } from '../daemon/client.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { clickSubmitOrderButton } from '../session/checkout-locators.js';
 import { executeRaw as cartListExecute } from './cart-list.js';
 import { type CheckoutPrepareResult } from './checkout-prepare.js';
 
@@ -521,19 +522,8 @@ async function submitOrder(page: Page): Promise<{
 }> {
   const beforeUrl = page.url();
 
-  // 1688 uses a custom web component: <q-button>...提交订单</q-button>
-  const submitBtn = page.getByText('提交订单', { exact: true }).first();
-  try {
-    await submitBtn.waitFor({ state: 'visible', timeout: 15000 });
-  } catch {
-    throw new CliError(
-      21,
-      'SUBMIT_BUTTON_NOT_FOUND',
-      'Could not find "提交订单" element on preview page.',
-    );
-  }
   await new Promise((r) => setTimeout(r, 1500));
-  await submitBtn.click({ force: true, timeout: 5000 });
+  await clickSubmitOrderButton(page);
 
   // Wait for nav to cashier/order/pay, or success text in body.
   const deadline = Date.now() + 30000;

@@ -4,6 +4,12 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import {
+  clickCartDeleteButton,
+  clickCartRowCheckbox,
+  clickConfirmDialogButton,
+  waitForCartItems,
+} from '../session/cart-locators.js';
+import {
   executeRaw as cartListExecute,
   type CartItem,
 } from './cart-list.js';
@@ -77,93 +83,17 @@ async function executeCartRemove(
         'Session expired. Run `1688 login`.',
       );
     }
-    // Wait for cart items to render.
-    try {
-      await page.waitForSelector('input[type="checkbox"].next-checkbox-input', {
-        timeout: 15000,
-      });
-    } catch {
-      throw new CliError(
-        11,
-        'CART_NOT_LOADED',
-        'Cart page did not finish loading.',
-      );
-    }
-    // Slight pause for async hydration of item rows.
+    await waitForCartItems(page);
     await new Promise((r) => setTimeout(r, 1500));
-
-    // Click the checkbox of the SKU-specific row (use skuTitle to disambiguate
-    // multiple variants of the same product, which share productTitle).
-    const titleHint = target.productTitle.slice(0, 12);
-    const skuHint = target.skuTitle?.trim() ?? null;
-    const clicked = await page.evaluate(
-      ({ titleHint, skuHint }) => {
-        const probe = skuHint && skuHint.length >= 3 ? skuHint : titleHint;
-        const all = Array.from(document.querySelectorAll<HTMLElement>('*'));
-        const candidates = all.filter(
-          (el) =>
-            el.children.length === 0 &&
-            el.textContent !== null &&
-            el.textContent.includes(probe),
-        );
-        for (const c of candidates) {
-          let row: HTMLElement | null = c;
-          for (let d = 0; d < 10 && row; d++) {
-            row = row.parentElement;
-            if (!row) break;
-            const txt = row.textContent ?? '';
-            if (!txt.includes(titleHint)) continue;
-            const cb = row.querySelector<HTMLElement>(
-              '.next-checkbox-wrapper',
-            );
-            if (cb) {
-              const aria = cb.querySelector('[aria-checked]');
-              const wasChecked = aria?.getAttribute('aria-checked') === 'true';
-              if (!wasChecked) cb.click();
-              return { ok: true, alreadyChecked: wasChecked };
-            }
-          }
-        }
-        return { ok: false, reason: 'row-not-found' };
-      },
-      { titleHint, skuHint },
-    );
-    if (!clicked.ok) {
-      throw new CliError(
-        14,
-        'UI_ELEMENT_NOT_FOUND',
-        `Could not locate cart row for "${target.productTitle}": ${clicked.reason}`,
-      );
-    }
+    await clickCartRowCheckbox(page, target);
 
     // Give server time to ack the selection.
     await new Promise((r) => setTimeout(r, 2000));
 
-    // Click the bulk "删除" button at the cart footer.
-    await page
-      .locator('button:has-text("删除")')
-      .first()
-      .click({ force: true, timeout: 5000 });
+    await clickCartDeleteButton(page);
 
-    // Confirm dialog.
     await new Promise((r) => setTimeout(r, 1500));
-    const confirmed = await page
-      .locator(
-        'div[class*="next-dialog"] button.next-btn-primary:visible, ' +
-          '[role="dialog"] button:has-text("确认"):visible, ' +
-          '[role="dialog"] button:has-text("确定"):visible',
-      )
-      .first()
-      .click({ force: true, timeout: 5000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!confirmed) {
-      throw new CliError(
-        15,
-        'CONFIRM_FAILED',
-        'Delete confirmation dialog not found or not clickable.',
-      );
-    }
+    await clickConfirmDialogButton(page);
     // Allow the server to process.
     await new Promise((r) => setTimeout(r, 3000));
   } finally {

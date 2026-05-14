@@ -1,8 +1,15 @@
-import type { BrowserContext, FrameLocator, Page } from 'playwright';
+import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import {
+  clickConversationByName,
+  clickImSendButton,
+  findImInput,
+  waitForConversationActivated,
+  waitForMessageSent,
+} from '../session/im-locators.js';
 import { executeRaw as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
 
@@ -108,17 +115,7 @@ export async function executeRaw(
       );
     }
 
-    const imFrame = page.frameLocator('iframe[src*="def_cbu_web_im_core"]');
-    const input = imFrame.locator('pre.edit[contenteditable="true"]').first();
-    try {
-      await input.waitFor({ state: 'visible', timeout: 20000 });
-    } catch {
-      throw new CliError(
-        22,
-        'CHAT_NOT_LOADED',
-        'Failed to open 旺旺 IM (page never loaded chat input).',
-      );
-    }
+    const input = await findImInput(page);
     await new Promise((r) => setTimeout(r, 3000));
 
     // If scoped URL (order/offer) was used, conversation should auto-activate.
@@ -129,19 +126,7 @@ export async function executeRaw(
       matchedName = args.searchNames[0] ?? args.sellerLoginId;
     } else {
       info(`Searching sidebar for: ${args.searchNames.join(' / ')}`);
-      for (const name of args.searchNames) {
-        if (!name) continue;
-        const item = imFrame.locator(`text=${name}`).first();
-        const visible = await item
-          .isVisible({ timeout: 2000 })
-          .catch(() => false);
-        if (visible) {
-          info(`Found "${name}" in sidebar; clicking...`);
-          await item.click({ force: true });
-          matchedName = name;
-          break;
-        }
-      }
+      matchedName = await clickConversationByName(page, args.searchNames);
       if (!matchedName) {
         throw new CliError(
           29,
@@ -154,30 +139,7 @@ export async function executeRaw(
       }
     }
 
-    // Wait for the conversation to actually activate (right pane no longer empty).
-    const activated = await page
-      .waitForFunction(
-        () => {
-          const iframe = document.querySelector<HTMLIFrameElement>(
-            'iframe[src*="def_cbu_web_im_core"]',
-          );
-          const body = iframe?.contentDocument?.body?.innerText ?? '';
-          return !/您尚未选择联系人/.test(body) && body.length > 50;
-        },
-        { timeout: 25000 },
-      )
-      .then(() => true)
-      .catch(() => false);
-    if (!activated) {
-      throw new CliError(
-        26,
-        'CONVERSATION_NOT_SELECTED',
-        `Conversation panel did not activate for ${matchedName}. ` +
-          (args.orderId
-            ? `OrderId ${args.orderId} was passed but conversation never opened.`
-            : 'Sidebar click did not switch to conversation.'),
-      );
-    }
+    await waitForConversationActivated(page, matchedName, args);
     await new Promise((r) => setTimeout(r, 1500));
 
     // 4. Type the message and send.
@@ -188,41 +150,10 @@ export async function executeRaw(
     await new Promise((r) => setTimeout(r, 500));
 
     info('Sending...');
-    await imFrame
-      .locator('button.send-btn:has-text("发送")')
-      .first()
-      .click({ force: true });
+    await clickImSendButton(page);
 
-    // 5. Verify: input clears OR message appears in chat body
     const sentAt = new Date().toISOString();
-    const sent = await page
-      .waitForFunction(
-        (msg) => {
-          const iframe = document.querySelector<HTMLIFrameElement>(
-            'iframe[src*="def_cbu_web_im_core"]',
-          );
-          const doc = iframe?.contentDocument;
-          if (!doc) return false;
-          const edit = doc.querySelector<HTMLElement>(
-            'pre.edit[contenteditable="true"]',
-          );
-          const editText = (edit?.innerText ?? '').replace(/\s+/g, '');
-          if (editText.length === 0) return true;
-          const body = doc.body?.innerText ?? '';
-          return body.includes(msg);
-        },
-        args.message,
-        { timeout: 10000 },
-      )
-      .then(() => true)
-      .catch(() => false);
-    if (!sent) {
-      throw new CliError(
-        24,
-        'SEND_UNCONFIRMED',
-        'Send clicked but neither input cleared nor message appeared in scrollback.',
-      );
-    }
+    await waitForMessageSent(page, args.message);
 
     return {
       ok: true,

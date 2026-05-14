@@ -3,6 +3,13 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import {
+  clickCartCheckoutButton,
+  clickCartRowCheckbox,
+  uncheckAllCartRows,
+  waitForAnyCartRowChecked,
+  waitForCartItems,
+} from '../session/cart-locators.js';
 import { executeRaw as cartListExecute } from './cart-list.js';
 
 export interface CheckoutPrepareOpts {
@@ -109,68 +116,19 @@ async function executeCheckoutPrepare(
         'Session expired. Run `1688 login`.',
       );
     }
-    try {
-      await page.waitForSelector('input[type="checkbox"].next-checkbox-input', {
-        timeout: 15000,
-      });
-    } catch {
-      throw new CliError(11, 'CART_NOT_LOADED', 'Cart page did not load.');
-    }
+    await waitForCartItems(page);
     await new Promise((r) => setTimeout(r, 1500));
 
-    // For each wanted cartId, find its row by product title and check it.
-    // For SAFETY, we won't uncheck others — we just toggle the targets to checked.
-    // 1688's 结算 only acts on currently checked items.
-    // First: uncheck everything via the master select-all (if checked) so only
-    //  our targets end up checked.
-    await uncheckAll(page);
+    await uncheckAllCartRows(page);
     await new Promise((r) => setTimeout(r, 1000));
 
     for (const cartId of args.cartIds) {
       const item = cart.items.find((i) => i.cartId === cartId)!;
-      const titleHint = item.productTitle.slice(0, 12);
-      const skuHint = item.skuTitle?.trim() ?? null;
-      const result = await page.evaluate(
-        ({ titleHint, skuHint }) => {
-          const probe = skuHint && skuHint.length >= 3 ? skuHint : titleHint;
-          const all = Array.from(document.querySelectorAll<HTMLElement>('*'));
-          const candidates = all.filter(
-            (el) =>
-              el.children.length === 0 &&
-              el.textContent !== null &&
-              el.textContent.includes(probe),
-          );
-          for (const c of candidates) {
-            let row: HTMLElement | null = c;
-            for (let d = 0; d < 10 && row; d++) {
-              row = row.parentElement;
-              if (!row) break;
-              const txt = row.textContent ?? '';
-              if (!txt.includes(titleHint)) continue;
-              const cb = row.querySelector<HTMLElement>(
-                '.next-checkbox-wrapper',
-              );
-              if (cb) {
-                const aria = cb.querySelector('[aria-checked]');
-                const checked = aria?.getAttribute('aria-checked') === 'true';
-                if (!checked) cb.click();
-                return { ok: true, alreadyChecked: checked };
-              }
-            }
-          }
-          return { ok: false, reason: 'row-not-found' };
-        },
-        { titleHint, skuHint },
-      );
-      if (!result.ok) {
-        throw new CliError(
-          14,
-          'UI_ELEMENT_NOT_FOUND',
-          `Could not select cartId ${cartId} (${result.reason}, sku="${item.skuTitle ?? ''}").`,
-        );
-      }
+      await clickCartRowCheckbox(page, item);
       await new Promise((r) => setTimeout(r, 800));
     }
+
+    await waitForAnyCartRowChecked(page);
 
     info('Clicking 结算...');
     const [_nav] = await Promise.all([
@@ -179,10 +137,7 @@ async function executeCheckoutPrepare(
           timeout: 25000,
         })
         .catch(() => undefined),
-      page
-        .locator('button:has-text("结算"):not([disabled])')
-        .first()
-        .click({ force: true, timeout: 5000 }),
+      clickCartCheckoutButton(page),
     ]);
     if (!/smart_make_order/i.test(page.url())) {
       // Sometimes the page renders inline rather than navigating.
@@ -203,24 +158,6 @@ async function executeCheckoutPrepare(
   } finally {
     await page.close().catch(() => {});
   }
-}
-
-async function uncheckAll(
-  page: Awaited<ReturnType<BrowserContext['newPage']>>,
-): Promise<void> {
-  // Try to find a master "全选" checkbox that's currently checked, and click it
-  // to uncheck everything. Fallback: walk all checkboxes and click each that is checked.
-  await page.evaluate(() => {
-    const wrappers = Array.from(
-      document.querySelectorAll<HTMLElement>('.next-checkbox-wrapper'),
-    );
-    for (const w of wrappers) {
-      const aria = w.querySelector('[aria-checked]');
-      if (aria?.getAttribute('aria-checked') === 'true') {
-        w.click();
-      }
-    }
-  });
 }
 
 interface RawPreview {
