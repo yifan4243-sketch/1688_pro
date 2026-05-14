@@ -160,6 +160,7 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
           await page.close().catch(() => {});
         }
       },
+      { cmd: 'checkout-confirm', args: { cartIds: opts.cartIds } },
     );
   });
 }
@@ -171,6 +172,7 @@ async function runConfirmedInline(
   return withDaemonPaused(() =>
     withSession({ headless: true, profile }, (ctx) =>
       execute(ctx, { cartIds }),
+      { cmd: 'checkout-confirm', args: { cartIds } },
     ),
   );
 }

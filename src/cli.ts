@@ -435,12 +435,28 @@ daemon
           return;
         }
         process.stdout.write(`Daemon: running (pid ${s.pid})\n`);
+        if (s.version) {
+          const suffix = s.versionMatches === false ? ' (restart recommended)' : '';
+          process.stdout.write(`  version: ${s.version}${suffix}\n`);
+        }
         if (s.reachable && s.stats && typeof s.stats === 'object') {
           const st = s.stats as Record<string, unknown>;
           process.stdout.write(`  uptime: ${Math.round((st.uptimeMs as number) / 1000)}s\n`);
           process.stdout.write(`  commands: ${st.commandCount}\n`);
           if (st.lastRequestAt) {
             process.stdout.write(`  last request: ${st.lastRequestAt}\n`);
+          }
+          const browser = st.browser as
+            | { browserAlive?: boolean; currentUrl?: string | null; pageState?: { kind?: string } | null }
+            | undefined;
+          if (browser) {
+            process.stdout.write(`  browser: ${browser.browserAlive ? 'alive' : 'not started'}\n`);
+            if (browser.pageState?.kind) {
+              process.stdout.write(`  page state: ${browser.pageState.kind}\n`);
+            }
+            if (browser.currentUrl) {
+              process.stdout.write(`  current url: ${browser.currentUrl}\n`);
+            }
           }
         }
       },
@@ -534,7 +550,24 @@ try {
   await program.parseAsync();
 } catch (e) {
   if (e instanceof CliError) {
-    if (e.message) process.stderr.write(`error: ${e.message}\n`);
+    if (isJson()) {
+      process.stderr.write(
+        JSON.stringify({
+          ok: false,
+          code: e.code,
+          message: e.message,
+          details: e.details,
+        }) + '\n',
+      );
+    } else if (e.message) {
+      process.stderr.write(`error: ${e.message}\n`);
+      if (e.details.recoverHint) {
+        process.stderr.write(`hint: ${e.details.recoverHint}\n`);
+      }
+      if (e.details.artifactDir) {
+        process.stderr.write(`debug: ${e.details.artifactDir}\n`);
+      }
+    }
     process.exit(e.exitCode);
   }
   const err = e as Error;

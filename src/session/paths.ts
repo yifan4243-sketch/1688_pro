@@ -31,8 +31,16 @@ export function pidFile(): string {
   return path.join(root(), 'daemon.pid');
 }
 
+export function daemonVersionFile(): string {
+  return path.join(root(), 'daemon.version');
+}
+
 export function daemonLogFile(): string {
   return path.join(root(), 'daemon.log');
+}
+
+export function runsDir(): string {
+  return path.join(root(), 'runs');
 }
 
 export function loginQrFile(): string {

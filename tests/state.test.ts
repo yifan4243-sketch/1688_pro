@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { stateFile } from '../src/session/paths.js';
+import {
+  daemonVersionFile,
+  runsDir,
+  stateFile,
+} from '../src/session/paths.js';
 import { readState, writeState, clearState } from '../src/session/state.js';
 
 let tmpHome: string;
@@ -23,6 +27,8 @@ afterEach(async () => {
 describe('state read/write', () => {
   it('returns empty state when file missing', async () => {
     expect(stateFile()).toBe(path.join(tmpHome, 'state.json'));
+    expect(daemonVersionFile()).toBe(path.join(tmpHome, 'daemon.version'));
+    expect(runsDir()).toBe(path.join(tmpHome, 'runs'));
     const s = await readState();
     expect(s).toEqual({ version: 1 });
   });

@@ -104,11 +104,21 @@ export async function dispatch<TArgs, TData>(
     // user to re-run `1688 login` or `daemon start` manually.
     if (!(await isDaemonReachable())) {
       try {
-        const { start } = await import('../daemon/manager.js');
+        const { ensureFreshDaemon } = await import('../daemon/manager.js');
         info('Starting daemon (one-time)...');
-        await start();
+        await ensureFreshDaemon();
       } catch {
         // Couldn't start — fall through to inline.
+      }
+    } else {
+      try {
+        const { ensureFreshDaemon } = await import('../daemon/manager.js');
+        const result = await ensureFreshDaemon();
+        if (result.restarted) {
+          info('Restarted daemon to match current CLI version.');
+        }
+      } catch {
+        // Couldn't refresh — fall through to the normal daemon/inline logic.
       }
     }
     if (await isDaemonReachable()) {
@@ -130,6 +140,7 @@ export async function dispatch<TArgs, TData>(
     return await withSession(
       { headless: !opts.headed, profile: opts.profile },
       (ctx) => fn(ctx, args),
+      { cmd: name, args },
     );
   } finally {
     await daemonMgr.resume();

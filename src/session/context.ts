@@ -6,6 +6,10 @@ import stealth from 'puppeteer-extra-plugin-stealth';
 import { profilePath } from './paths.js';
 import { acquireLock } from './lock.js';
 import { CliError } from '../io/errors.js';
+import {
+  enrichErrorWithArtifact,
+  type RunMeta,
+} from './artifacts.js';
 
 /**
  * Remove Chrome's stale SingletonLock / SingletonCookie / SingletonSocket files
@@ -39,6 +43,7 @@ const LAUNCH_OPTS = {
 export async function withSession<T>(
   opts: SessionOpts,
   fn: (ctx: BrowserContext) => Promise<T>,
+  meta?: RunMeta,
 ): Promise<T> {
   const release = await acquireLock();
   const dir = profilePath(opts.profile);
@@ -60,6 +65,11 @@ export async function withSession<T>(
       }
     });
     return await fn(ctx);
+  } catch (e) {
+    if (ctx && meta) {
+      throw await enrichErrorWithArtifact(ctx, meta, e);
+    }
+    throw e;
   } finally {
     if (ctx) await ctx.close().catch(() => {});
     await release().catch(() => {});

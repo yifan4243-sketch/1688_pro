@@ -81,7 +81,7 @@ export async function daemonCall<T>(cmd: string, args: unknown): Promise<T> {
       if (resp.ok) {
         succeed(resp.data as T);
       } else {
-        fail(new CliError(resp.exitCode, resp.code, resp.message));
+        fail(new CliError(resp.exitCode, resp.code, resp.message, resp.details));
       }
     });
 

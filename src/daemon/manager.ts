@@ -6,23 +6,44 @@ import {
   pidFile,
   socketPath,
   daemonLogFile,
+  daemonVersionFile,
   ensureRoot,
 } from '../session/paths.js';
 import { daemonCall, isDaemonReachable } from './client.js';
 import { CliError } from '../io/errors.js';
+import pkg from '../../package.json' with { type: 'json' };
 
 export interface DaemonStatus {
   running: boolean;
   pid?: number;
   reachable?: boolean;
+  version?: string | null;
+  expectedVersion?: string;
+  versionMatches?: boolean;
   stats?: unknown;
 }
 
 export async function status(): Promise<DaemonStatus> {
   const pid = await readPid();
-  if (pid === null) return { running: false };
+  const version = await readDaemonVersion();
+  const expectedVersion = pkg.version;
+  if (pid === null) {
+    return {
+      running: false,
+      version,
+      expectedVersion,
+      versionMatches: version === expectedVersion,
+    };
+  }
   const alive = isProcessAlive(pid);
-  if (!alive) return { running: false };
+  if (!alive) {
+    return {
+      running: false,
+      version,
+      expectedVersion,
+      versionMatches: version === expectedVersion,
+    };
+  }
   const reachable = await isDaemonReachable();
   let stats: unknown = undefined;
   if (reachable) {
@@ -32,18 +53,36 @@ export async function status(): Promise<DaemonStatus> {
       /* ignore */
     }
   }
-  return { running: true, pid, reachable, stats };
+  const statsVersion =
+    stats && typeof stats === 'object'
+      ? (stats as { version?: unknown }).version
+      : undefined;
+  const resolvedVersion =
+    typeof statsVersion === 'string' ? statsVersion : version;
+  return {
+    running: true,
+    pid,
+    reachable,
+    version: resolvedVersion,
+    expectedVersion,
+    versionMatches: resolvedVersion === expectedVersion,
+    stats,
+  };
 }
 
 export async function start(): Promise<{ pid: number }> {
   await ensureRoot();
   const existing = await status();
   if (existing.running) {
-    throw new CliError(
-      5,
-      'DAEMON_RUNNING',
-      `Daemon already running (pid ${existing.pid}).`,
-    );
+    if (existing.versionMatches === false) {
+      await stop();
+    } else {
+      throw new CliError(
+        5,
+        'DAEMON_RUNNING',
+        `Daemon already running (pid ${existing.pid}).`,
+      );
+    }
   }
 
   // Locate the CLI entrypoint to re-exec as "1688 serve".
@@ -76,6 +115,25 @@ export async function start(): Promise<{ pid: number }> {
     'DAEMON_START_TIMEOUT',
     'Daemon did not start within 15s. Check ~/.1688/daemon.log.',
   );
+}
+
+export async function ensureFreshDaemon(): Promise<{
+  pid: number;
+  restarted: boolean;
+}> {
+  const existing = await status();
+  if (!existing.running) {
+    const started = await start();
+    return { ...started, restarted: false };
+  }
+
+  if (existing.versionMatches === false) {
+    await stop();
+    const started = await start();
+    return { ...started, restarted: true };
+  }
+
+  return { pid: existing.pid ?? -1, restarted: false };
 }
 
 export async function stop(): Promise<{ stopped: boolean }> {
@@ -118,7 +176,9 @@ export async function stop(): Promise<{ stopped: boolean }> {
 async function cleanupArtifacts(): Promise<void> {
   // Windows named pipes have no filesystem entry — skip the socket path.
   const targets =
-    process.platform === 'win32' ? [pidFile()] : [socketPath(), pidFile()];
+    process.platform === 'win32'
+      ? [pidFile(), daemonVersionFile()]
+      : [socketPath(), pidFile(), daemonVersionFile()];
   for (const p of targets) {
     try {
       await fs.unlink(p);
@@ -133,6 +193,15 @@ async function readPid(): Promise<number | null> {
     const s = await fs.readFile(pidFile(), 'utf8');
     const n = parseInt(s.trim(), 10);
     return Number.isInteger(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readDaemonVersion(): Promise<string | null> {
+  try {
+    const s = await fs.readFile(daemonVersionFile(), 'utf8');
+    return s.trim() || null;
   } catch {
     return null;
   }

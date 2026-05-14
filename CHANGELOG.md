@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.32] - 2026-05-14
+
+### Added
+- **Daemon version checks.** The daemon now writes `daemon.version`, reports
+  its version in `1688 daemon status`, and the CLI refreshes a stale daemon
+  before sending commands so upgrades do not silently reuse old runtime code.
+- **Runtime diagnostics for agents.** `1688 daemon status` now includes
+  browser health, current URL, and classified page state when a shared browser
+  context is active.
+- **Failure artifacts.** Browser-backed command failures now save a debug
+  bundle under `~/.1688/runs/<requestId>/` with `meta.json`,
+  `screenshot.png`, and `page.html` when available. `CliError` details can
+  carry `artifactDir`, `currentUrl`, `pageState`, `category`, `retryable`,
+  and `recoverHint` for agent-friendly recovery.
+
+### Fixed
+- CLI and daemon error propagation now preserves structured diagnostic details
+  instead of returning only `code` and `message`.
+- Page-state detection classifies common 1688 failure modes: login redirects,
+  slider/security verification, and rate-limit pages.
+
 ## [0.1.31] - 2026-05-14
 
 ### Added

@@ -3,10 +3,12 @@ import fs from 'node:fs/promises';
 import {
   socketPath,
   pidFile,
+  daemonVersionFile,
   ensureRoot,
 } from '../session/paths.js';
 import {
   getSharedContext,
+  getSharedContextStatus,
   releaseSharedContext,
   runOnSharedCtx,
 } from '../session/shared.js';
@@ -14,6 +16,7 @@ import { loadExecutor } from '../session/dispatch.js';
 import { CliError } from '../io/errors.js';
 import { throttle } from './throttle.js';
 import type { Request, Response } from './protocol.js';
+import pkg from '../../package.json' with { type: 'json' };
 
 interface ServerOpts {
   idleTimeoutMs?: number;
@@ -21,6 +24,7 @@ interface ServerOpts {
 }
 
 interface ServerStats {
+  version: string;
   startedAt: string;
   pid: number;
   commandCount: number;
@@ -29,6 +33,7 @@ interface ServerStats {
 }
 
 const stats: ServerStats = {
+  version: pkg.version,
   startedAt: new Date().toISOString(),
   pid: process.pid,
   commandCount: 0,
@@ -59,6 +64,7 @@ export async function start(opts: ServerOpts = {}): Promise<void> {
   }
 
   await fs.writeFile(pidFile(), String(process.pid));
+  await fs.writeFile(daemonVersionFile(), pkg.version);
 
   log(`pid ${process.pid}, socket ${socketPath()}`);
 
@@ -146,6 +152,7 @@ async function handleRequest(req: Request): Promise<Response> {
   stats.commandCount++;
   try {
     if (req.cmd === 'status') {
+      const browser = await getSharedContextStatus();
       return {
         id: req.id,
         ok: true,
@@ -153,6 +160,7 @@ async function handleRequest(req: Request): Promise<Response> {
           ...stats,
           uptimeMs: Date.now() - new Date(stats.startedAt).getTime(),
           activeClients,
+          browser,
         },
       };
     }
@@ -169,7 +177,11 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     await throttle(req.cmd);
     const fn = await loadExecutor<unknown, unknown>(req.cmd);
-    const data = await runOnSharedCtx((ctx) => fn(ctx, req.args));
+    const data = await runOnSharedCtx((ctx) => fn(ctx, req.args), {
+      requestId: req.id,
+      cmd: req.cmd,
+      args: req.args,
+    });
     return { id: req.id, ok: true, data };
   } catch (e) {
     stats.lastError = (e as Error).message ?? String(e);
@@ -180,6 +192,7 @@ async function handleRequest(req: Request): Promise<Response> {
         exitCode: e.exitCode,
         code: e.code,
         message: e.message,
+        details: e.details,
       };
     }
     return {
@@ -231,6 +244,11 @@ async function shutdown(): Promise<void> {
   }
   try {
     await fs.unlink(pidFile());
+  } catch {
+    /* ignore */
+  }
+  try {
+    await fs.unlink(daemonVersionFile());
   } catch {
     /* ignore */
   }

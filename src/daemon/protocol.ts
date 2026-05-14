@@ -18,6 +18,7 @@ export interface ErrResponse {
   exitCode: number;
   code: string;
   message: string;
+  details?: Record<string, unknown>;
 }
 
 export type Response = OkResponse | ErrResponse;

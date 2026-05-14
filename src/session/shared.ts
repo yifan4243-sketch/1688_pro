@@ -10,6 +10,11 @@ import { profilePath } from './paths.js';
 import { acquireLock } from './lock.js';
 import { CliError } from '../io/errors.js';
 import { clearStaleSingleton } from './context.js';
+import {
+  enrichErrorWithArtifact,
+  type RunMeta,
+} from './artifacts.js';
+import { detectPageState, type PageState } from './page-state.js';
 
 const stealthPlugin = stealth();
 stealthPlugin.enabledEvasions.delete('iframe.contentWindow');
@@ -25,6 +30,14 @@ const LAUNCH_OPTS = {
 let sharedCtx: BrowserContext | null = null;
 let lockRelease: (() => Promise<void>) | null = null;
 let opChain: Promise<unknown> = Promise.resolve();
+
+export interface SharedContextStatus {
+  browserAlive: boolean;
+  pageCount: number;
+  currentUrl: string | null;
+  pageState: PageState | null;
+  loggedIn: boolean | null;
+}
 
 export async function getSharedContext(): Promise<BrowserContext> {
   if (sharedCtx) return sharedCtx;
@@ -47,6 +60,7 @@ export async function getSharedContext(): Promise<BrowserContext> {
 
 export async function runOnSharedCtx<T>(
   fn: (ctx: BrowserContext) => Promise<T>,
+  meta?: RunMeta,
 ): Promise<T> {
   // Append to serial queue. Each op waits for the previous one to finish.
   const prev = opChain;
@@ -61,10 +75,44 @@ export async function runOnSharedCtx<T>(
       const ctx = await getSharedContext();
       resolveOp(await fn(ctx));
     } catch (e) {
-      rejectOp(e);
+      const ctx = sharedCtx;
+      if (ctx && meta) {
+        rejectOp(await enrichErrorWithArtifact(ctx, meta, e));
+      } else {
+        rejectOp(e);
+      }
     }
   });
   return opPromise;
+}
+
+export async function getSharedContextStatus(): Promise<SharedContextStatus> {
+  if (!sharedCtx) {
+    return {
+      browserAlive: false,
+      pageCount: 0,
+      currentUrl: null,
+      pageState: null,
+      loggedIn: null,
+    };
+  }
+
+  const pages = sharedCtx.pages().filter((p) => !p.isClosed());
+  const page = pages.at(-1) ?? null;
+  const pageState = page ? await detectPageState(page).catch(() => null) : null;
+  return {
+    browserAlive: true,
+    pageCount: pages.length,
+    currentUrl: page?.url() ?? null,
+    pageState,
+    loggedIn: pageState
+      ? pageState.kind === 'normal_1688_page'
+        ? true
+        : pageState.kind === 'not_logged_in'
+          ? false
+          : null
+      : null,
+  };
 }
 
 export async function releaseSharedContext(): Promise<void> {
