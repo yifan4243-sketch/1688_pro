@@ -50,7 +50,12 @@ export async function execute(
     ctx,
     { cmd: 'search', args },
     async () => {
-      const offers = await fetchSearch(ctx, args.keyword, args.headed === true);
+      const offers = await fetchSearch(
+        ctx,
+        args.keyword,
+        args.headed === true,
+        args.max,
+      );
       const slice = offers.slice(0, args.max);
       return { keyword: args.keyword, total: slice.length, offers: slice };
     },
@@ -86,6 +91,15 @@ let MTOP_SEQ = 0;
 export const SEARCH_MTOP_API =
   'mtop.relationrecommend.wirelessrecommend.recommend';
 export const SEARCH_APP_ID = '32517';
+
+// 1688 search returns 60 offers per page. `--max` auto-paginates by
+// clicking the in-page "next" arrow (which keeps the search-context
+// `pageId` stable — see fetchSearch for why that matters). MAX_PAGES caps
+// it: each extra page is another click + mtop round-trip (~3-5s) and a bit
+// more WAF exposure, so we stop at 10 pages (600 results) even if --max
+// asks for more.
+const PAGE_SIZE = 60;
+const MAX_PAGES = 10;
 
 export function parseMtopJsonp(raw: string): unknown {
   const t = raw.trim();
@@ -167,6 +181,7 @@ async function fetchSearch(
   ctx: BrowserContext,
   keyword: string,
   headed: boolean,
+  maxResults: number,
 ): Promise<Offer[]> {
   const page = await ctx.newPage();
 
@@ -176,20 +191,43 @@ async function fetchSearch(
   const gbkQs = Array.from(gbkBytes)
     .map((b) => '%' + b.toString(16).padStart(2, '0').toUpperCase())
     .join('');
-  const url = `https://s.1688.com/selloffer/offer_search.htm?keywords=${gbkQs}`;
+  const baseUrl = `https://s.1688.com/selloffer/offer_search.htm?keywords=${gbkQs}`;
+  const pagesWanted = Math.min(
+    Math.max(1, Math.ceil(maxResults / PAGE_SIZE)),
+    MAX_PAGES,
+  );
 
-  // mtop interceptor — captures the main-search response (appId=32517).
-  // The page may fire multiple recommend calls; we keep the one with the
-  // most items (main search has 60; recommendations have fewer).
+  // mtop interceptor — captures the result list for the EXACT page we
+  // navigated to.
+  //
+  // The search page fires several appId=32517 calls: a navigation/config
+  // call (`batchGetNavigationAndConfigData`) and the result list
+  // (`getOfferList`). Only the latter carries offers. Crucially, we also
+  // match the request's `beginPage` against the page we're currently on —
+  // a stale page-1 response can still be in flight when we've already
+  // navigated to page 2, and capturing it would silently mix pages or stall
+  // pagination.
   let capturedOffers: Offer[] = [];
+  let currentTargetPage = 1;
   const onResp = async (resp: import('playwright').Response) => {
     const respUrl = resp.url();
     if (!respUrl.includes(SEARCH_MTOP_API)) return;
     try {
-      const qs = new URL(respUrl).search;
-      const dataParam = new URLSearchParams(qs).get('data') ?? '';
-      const dataObj = JSON.parse(dataParam);
+      const dataParam =
+        new URLSearchParams(new URL(respUrl).search).get('data') ?? '';
+      const dataObj = JSON.parse(dataParam) as {
+        appId?: unknown;
+        params?: string;
+      };
       if (String(dataObj.appId) !== SEARCH_APP_ID) return;
+      const params = JSON.parse(dataObj.params ?? '{}') as {
+        method?: string;
+        beginPage?: number | string;
+      };
+      if (params.method !== 'getOfferList') return;
+      // `beginPage` is a number on page 1 (the page's default) but a string
+      // on pages 2+ (it flows through the click handler) — coerce to compare.
+      if (Number(params.beginPage ?? 1) !== currentTargetPage) return;
     } catch {
       return;
     }
@@ -202,9 +240,7 @@ async function fetchSearch(
       const offers = items
         .map(mapOffer)
         .filter((o): o is Offer => o !== null);
-      if (offers.length > capturedOffers.length) {
-        capturedOffers = offers;
-      }
+      if (offers.length > 0) capturedOffers = offers;
     } catch {
       /* malformed response — skip */
     }
@@ -227,9 +263,12 @@ async function fetchSearch(
     }
   }
 
-  async function navigateSearch(): Promise<void> {
+  async function navigateTo(targetUrl: string): Promise<void> {
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(targetUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000,
+      });
     } catch (e) {
       throw new CliError(
         9,
@@ -377,22 +416,6 @@ async function fetchSearch(
     });
   }
 
-  // Stable strategy: always warm up before search. Cookie-presence checks
-  // can't tell whether the WAF has invalidated the session, so we pay a
-  // small constant overhead instead of betting on stale cookies.
-  info('Warming up s.1688.com...');
-  await warmup(1500);
-
-  // Attach the capture listener ONLY now — after warmup — so the homepage's
-  // own recommendation feed (same appId=32517) can't poison capturedOffers.
-  page.on('response', onResp);
-
-  info(`Searching 1688 for "${keyword}"...`);
-  if (headed) {
-    info('A Chrome window has opened — switch focus to it now.');
-  }
-  await navigateSearch();
-
   // Wait for the search mtop response (appId=32517). Headless: short
   // timeout; headed: long enough for user to solve any slider.
   async function waitForOffers(timeoutMs: number): Promise<boolean> {
@@ -409,25 +432,109 @@ async function fetchSearch(
     return false;
   }
 
-  let got = await waitForOffers(headed ? 180000 : 12000);
-  if (!got && !headed) {
-    info('First attempt blocked or empty. Re-warming and retrying...');
-    // Detach + reset around the re-warmup: the re-warmup hits the homepage
-    // again, which would otherwise re-poison capturedOffers with the
-    // recommendation feed.
-    page.off('response', onResp);
+  // Stable strategy: always warm up before search. Cookie-presence checks
+  // can't tell whether the WAF has invalidated the session, so we pay a
+  // small constant overhead instead of betting on stale cookies.
+  info('Warming up s.1688.com...');
+  await warmup(1500);
+
+  // Attach the capture listener ONLY now — after warmup — so the homepage's
+  // own recommendation feed (same appId=32517) can't poison capturedOffers.
+  page.on('response', onResp);
+
+  const allOffers: Offer[] = [];
+  const seenIds = new Set<string>();
+  // Pagination control is in-page `<div>` elements (not anchors). The "next"
+  // arrow loses the `fui-next` clickable state on the last page.
+  const NEXT_BTN = '.fui-arrow.fui-next:not(.fui-next-disabled)';
+
+  for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
     capturedOffers = [];
-    await warmup(3500);
-    page.on('response', onResp);
-    await navigateSearch();
-    got = await waitForOffers(15000);
+    currentTargetPage = pageNum; // onResp only captures responses for this page
+
+    if (pageNum === 1) {
+      info(`Searching 1688 for "${keyword}"...`);
+      if (headed) {
+        info('A Chrome window has opened — switch focus to it now.');
+      }
+      await navigateTo(baseUrl);
+    } else {
+      // Pages 2+ MUST stay in the same page session. Every fresh navigation
+      // mints a new search-context `pageId`, and `beginPage=N` against a
+      // fresh pageId returns near-duplicate top results (~75% overlap).
+      // Clicking the in-page "next" arrow advances `beginPage` within the
+      // SAME pageId, which is the only way to get a clean next 60.
+      info(`Fetching page ${pageNum}/${pagesWanted}...`);
+      const nextBtn = page.locator(NEXT_BTN).first();
+      if ((await nextBtn.count()) === 0) {
+        info(`No further pages — stopping at ${allOffers.length} results.`);
+        break;
+      }
+      try {
+        await nextBtn.click({ timeout: 5000 });
+      } catch {
+        info(
+          `Could not advance to page ${pageNum} — stopping at ` +
+            `${allOffers.length} results.`,
+        );
+        break;
+      }
+    }
+
+    let got = await waitForOffers(headed ? 180000 : 12000);
+    // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
+    // just stops the loop with whatever has been collected so far.
+    if (!got && !headed && pageNum === 1) {
+      info('First attempt blocked or empty. Re-warming and retrying...');
+      // Detach + reset around the re-warmup: the re-warmup hits the homepage
+      // again, which would otherwise re-poison capturedOffers.
+      page.off('response', onResp);
+      capturedOffers = [];
+      await warmup(3500);
+      page.on('response', onResp);
+      await navigateTo(baseUrl);
+      got = await waitForOffers(15000);
+    }
+    if (!got) {
+      if (pageNum === 1) {
+        page.off('response', onResp);
+        throw riskControlError(headed);
+      }
+      info(
+        `Page ${pageNum} blocked or empty — returning ${allOffers.length} ` +
+          `results from ${pageNum - 1} page(s).`,
+      );
+      break;
+    }
+    if (pageNum === 1) await detectLoginRedirect(page);
+
+    // Accumulate with cross-page dedup. 1688 occasionally repeats P4P ad
+    // slots across pages; dedup keeps the result set clean.
+    let added = 0;
+    for (const o of capturedOffers) {
+      if (seenIds.has(o.offerId)) continue;
+      seenIds.add(o.offerId);
+      allOffers.push(o);
+      added++;
+    }
+
+    // Stop conditions:
+    //  - collected enough for the caller's --max
+    //  - short page (< 60) means we hit the last page of results
+    //  - zero new items means pagination isn't advancing (bail rather than
+    //    spin through identical pages)
+    if (allOffers.length >= maxResults) break;
+    if (capturedOffers.length < PAGE_SIZE) break;
+    if (added === 0) break;
+
+    // Human-like jitter between page clicks to keep the WAF score low.
+    if (pageNum < pagesWanted) {
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000));
+    }
   }
+
   page.off('response', onResp);
-  if (!got) {
-    throw riskControlError(headed);
-  }
-  await detectLoginRedirect(page);
-  return capturedOffers;
+  return allOffers;
 }
 
 async function isBlocked(page: Page, retries = 3): Promise<boolean> {
