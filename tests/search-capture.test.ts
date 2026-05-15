@@ -8,16 +8,24 @@ import {
 } from '../src/session/search-capture.js';
 
 class MockPage extends EventEmitter {
-  on(event: 'response', listener: (response: PWResponse) => void): this {
+  on(event: 'response', listener: (response: PWResponse) => void): this;
+  on(event: 'close', listener: () => void): this;
+  on(event: string, listener: (...args: unknown[]) => void): this {
     return super.on(event, listener);
   }
 
-  off(event: 'response', listener: (response: PWResponse) => void): this {
+  off(event: 'response', listener: (response: PWResponse) => void): this;
+  off(event: 'close', listener: () => void): this;
+  off(event: string, listener: (...args: unknown[]) => void): this {
     return super.off(event, listener);
   }
 
   emitResponse(response: PWResponse): void {
     this.emit('response', response);
+  }
+
+  emitClose(): void {
+    this.emit('close');
   }
 }
 
@@ -73,6 +81,14 @@ describe('startSearchOfferCapture', () => {
     const result = await wait;
     expect(result.status).toBe('captured');
     expect(result.offers.map((o) => o.offerId)).toEqual(['ok']);
+    expect(result.diagnostics).toMatchObject({
+      disposed: false,
+      finalStatus: 'captured',
+      timedOut: false,
+      matchedCount: 1,
+    });
+    expect(result.diagnostics.startedAt).toBeTruthy();
+    expect(result.diagnostics.endedAt).toBeTruthy();
     expect(capture.diagnostics().matchedCount).toBe(1);
     targetPage = 3;
   });
@@ -103,6 +119,10 @@ describe('startSearchOfferCapture', () => {
 
     expect(result.status).toBe('timeout');
     expect(result.offers).toEqual([]);
+    expect(result.diagnostics).toMatchObject({
+      finalStatus: 'timeout',
+      timedOut: true,
+    });
   });
 
   it('returns blocked when the blocked predicate becomes true', async () => {
@@ -118,7 +138,7 @@ describe('startSearchOfferCapture', () => {
     expect(result.offers).toEqual([]);
   });
 
-  it('returns browser_closed when the page is closed', async () => {
+  it('returns browser_closed when the page is closed by predicate', async () => {
     const capture = startSearchOfferCapture({ page: page() });
 
     const result = await capture.wait({
@@ -129,6 +149,26 @@ describe('startSearchOfferCapture', () => {
 
     expect(result.status).toBe('browser_closed');
     expect(result.offers).toEqual([]);
+    expect(result.diagnostics).toMatchObject({
+      finalStatus: 'browser_closed',
+      timedOut: false,
+    });
+  });
+
+  it('returns browser_closed when the page close event fires', async () => {
+    const mockPage = page();
+    const capture = startSearchOfferCapture({ page: mockPage });
+
+    const wait = capture.wait({ timeoutMs: 50, intervalMs: 1 });
+    mockPage.emitClose();
+    const result = await wait;
+
+    expect(result.status).toBe('browser_closed');
+    expect(result.offers).toEqual([]);
+    expect(result.diagnostics).toMatchObject({
+      finalStatus: 'browser_closed',
+      timedOut: false,
+    });
   });
 
   it('returns stream_closed when the capture is disposed before a response arrives', async () => {
@@ -139,6 +179,11 @@ describe('startSearchOfferCapture', () => {
 
     expect(result.status).toBe('stream_closed');
     expect(result.offers).toEqual([]);
+    expect(result.diagnostics).toMatchObject({
+      finalStatus: 'stream_closed',
+      timedOut: false,
+      disposed: true,
+    });
   });
 
   it('scopes listener cleanup around an action', async () => {
@@ -154,7 +199,12 @@ describe('startSearchOfferCapture', () => {
 
     expect(result.status).toBe('captured');
     expect(result.offers.map((o) => o.offerId)).toEqual(['scoped']);
+    expect(result.diagnostics).toMatchObject({
+      disposed: false,
+      finalStatus: 'captured',
+    });
     expect(mockPage.listenerCount('response')).toBe(0);
+    expect(mockPage.listenerCount('close')).toBe(0);
   });
 
   it('cleans up scoped listeners when the action fails', async () => {
@@ -171,5 +221,20 @@ describe('startSearchOfferCapture', () => {
     ).rejects.toThrow('navigation failed');
 
     expect(mockPage.listenerCount('response')).toBe(0);
+    expect(mockPage.listenerCount('close')).toBe(0);
+  });
+
+  it('records parser failures in diagnostics', async () => {
+    const mockPage = page();
+    const capture = startSearchOfferCapture({ page: mockPage });
+
+    const wait = capture.wait({ timeoutMs: 5, intervalMs: 1 });
+    mockPage.emitResponse(response(searchUrl({}), 'not jsonp'));
+    const result = await wait;
+
+    expect(result.status).toBe('timeout');
+    expect(result.diagnostics.failureCount).toBe(1);
+    expect(result.diagnostics.lastError?.message).toBeTruthy();
+    expect(result.diagnostics.failures[0]?.url).toContain(SEARCH_MTOP_API);
   });
 });
