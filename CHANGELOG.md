@@ -24,6 +24,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   `dumpWsFramesForProbe`) that any future IM-side command can reuse.
   Tests in `tests/inbox.test.ts`.
 
+- **`1688 inbox --limit N` auto-paginates beyond page 1.** The IM
+  client only fetches ~20 conversations on first load. To satisfy
+  larger `--limit`, the command now nudges the IM iframe to lazy-load
+  more pages by rotating three trigger strategies (JS scrollTop
+  overshoot, real OS-level `page.mouse.wheel`, synthetic scroll-event
+  dispatch) — necessary because the IM SDK throttles repeated
+  identical-shape triggers. Capped at `MAX_PAGES = 10` rounds
+  (≈130–150 unique conversations after dedup); `truncated` flag in
+  the result indicates more remain. Same UX shape as `search --max`.
+
+  Bug fix bundled in: `src/session/im-ws.ts` had a stray CommonJS
+  `require('node:fs')` in `dumpWsFramesForProbe` that broke probe
+  output when called from ESM scripts.
+
 ## [0.1.39] - 2026-05-15
 
 ### Fixed

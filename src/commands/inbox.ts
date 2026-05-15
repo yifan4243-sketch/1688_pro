@@ -1,10 +1,11 @@
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { CliError } from '../io/errors.js';
 import { emit, info } from '../io/output.js';
 import { findImInput } from '../session/im-locators.js';
 import {
   IM_BASE,
+  type WsFrame,
   collectWsFrames,
   dumpWsFramesForProbe,
   findLwpResponses,
@@ -16,6 +17,11 @@ import { sleep } from '../session/wait.js';
 
 const LWP_LIST = '/r/Conversation/listNewestPagination';
 const LWP_LIST_TOP = '/r/Conversation/listTop';
+
+// Hard cap on auto-pagination scroll rounds. The IM client returns ~20
+// conversations per page, so MAX_PAGES * pageSize ≈ upper bound on
+// inbox depth this command will surface. Matches `search` MAX_PAGES.
+const MAX_PAGES = 10;
 
 export interface InboxOpts {
   limit?: string;
@@ -60,6 +66,7 @@ export interface InboxResult {
 
 interface LwpListBody {
   nextCursor?: number;
+  hasMore?: number;
   userConvs?: LwpUserConv[];
 }
 
@@ -183,6 +190,119 @@ function msEpochToIso(ms?: number): string | null {
   return new Date(ms).toISOString();
 }
 
+async function loadMorePages(
+  page: Page,
+  frames: WsFrame[],
+  args: InboxArgs,
+): Promise<void> {
+  const imFrame = page
+    .frames()
+    .find((f) => /def_cbu_web_im_core/.test(f.url()));
+  if (!imFrame) return;
+
+  let pages = 1; // page 1 already loaded by initial wait
+  while (pages < MAX_PAGES) {
+    // Count UNIQUE conversations parsed so far. Stop if caller's limit is
+    // already satisfied (post-filter for --unread).
+    const bodies = findLwpResponses<LwpListBody>(frames, LWP_LIST);
+    const { conversations } = parseConversations(bodies, args.myMemberId);
+    const visible = args.unreadOnly
+      ? conversations.filter((c) => c.unread > 0)
+      : conversations;
+    if (visible.length >= args.limit) return;
+
+    // Stop if server says no more pages (hasMore=0 OR nextCursor=0).
+    const lastBody = bodies.at(-1);
+    if (lastBody && lastBody.hasMore === 0) return;
+    if (lastBody && (lastBody.nextCursor ?? 0) === 0) return;
+
+    const beforeCount = bodies.length;
+    await scrollImSidebar(page, imFrame, pages);
+    const arrived = await waitForFrameCountIncrease(
+      frames,
+      LWP_LIST,
+      beforeCount,
+      6000,
+    );
+    if (!arrived) return; // no more pages OR IM stopped responding
+    pages++;
+    // Cool-down before the next scroll — the IM SDK rate-limits
+    // back-to-back lazy-loads beyond a few pages.
+    await sleep(400);
+  }
+}
+
+/**
+ * Trigger the IM client's lazy-load. Headed and headless behave subtly
+ * differently for repeated scrolls: a single strategy (e.g. only mouse.wheel,
+ * or only JS scrollTop overshoot) works the first time then gets debounced
+ * by the React virtualizer. Combining both in each round — JS overshoot to
+ * push past the visible window, then mouse.wheel for a real input event —
+ * reliably fires the next-page LWP request across head/headless modes.
+ *
+ * The IM iframe layout: [sidebar (~280px) | chat panel]. We aim at x+150,
+ * y+250 — comfortably inside the sidebar conv list.
+ */
+async function scrollImSidebar(
+  page: Page,
+  imFrame: import('playwright').Frame,
+  attempt: number,
+): Promise<void> {
+  // Rotate strategies per attempt — the IM SDK throttles identical-shape
+  // triggers. Probing showed it accepts JS scrollTop overshoot, real
+  // mouse.wheel, and synthetic scroll-event dispatch each as independent
+  // channels. Rotating across them defeats the throttle and unlocks
+  // pages 5+ where a single repeated strategy stalls.
+  const strategy = attempt % 3;
+  if (strategy === 0) {
+    await imFrame.evaluate(() => {
+      for (const el of document.querySelectorAll('*')) {
+        const sh = el.scrollHeight;
+        const ch = el.clientHeight;
+        if (sh > ch + 20) (el as HTMLElement).scrollTop = sh + 1000;
+      }
+    });
+    return;
+  }
+  if (strategy === 1) {
+    const handle = await imFrame.frameElement().catch(() => null);
+    const box = handle ? await handle.boundingBox().catch(() => null) : null;
+    if (!box) return;
+    // Vary position + delta each call so the SDK doesn't see "same wheel".
+    await page.mouse.move(box.x + 150, box.y + 200 + (attempt % 4) * 50);
+    await page.mouse.wheel(0, 1200 + (attempt % 5) * 300);
+    return;
+  }
+  // Synthetic scroll event — moves scrollTop and fires the React-bound
+  // scroll handler that virtual-list libraries (react-window/react-virtualized)
+  // listen to.
+  await imFrame.evaluate(() => {
+    for (const el of document.querySelectorAll('*')) {
+      const sh = el.scrollHeight;
+      const ch = el.clientHeight;
+      if (sh > ch + 20) {
+        (el as HTMLElement).scrollTop = sh;
+        el.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }
+    }
+  });
+}
+
+async function waitForFrameCountIncrease(
+  frames: WsFrame[],
+  method: string,
+  baseline: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const count = findLwpResponses(frames, method).length;
+    if (count > baseline) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
 export async function execute(
   ctx: BrowserContext,
   args: InboxArgs,
@@ -228,6 +348,15 @@ export async function executeRaw(
       await sleep(2000);
     }
 
+    // Auto-paginate when caller wants more than what page 1 returned.
+    // The IM client lazy-loads on scroll; we trigger the same path by
+    // scrolling all scrollable containers in the IM iframe. Each scroll
+    // round produces one more listNewestPagination response (or none, if
+    // we've hit the end).
+    if (args.limit > 20) {
+      await loadMorePages(page, frames, args);
+    }
+
     dumpWsFramesForProbe(frames);
 
     const listBodies = findLwpResponses<LwpListBody>(frames, LWP_LIST);
@@ -241,6 +370,9 @@ export async function executeRaw(
         { category: 'capture', currentUrl: page.url(), retryable: true },
       );
     }
+    const lastBody = listBodies.at(-1);
+    const hasMoreFromServer =
+      lastBody?.hasMore === 1 || (lastBody?.nextCursor ?? 0) > 0;
     const { conversations, nextCursor } = parseConversations(
       allBodies,
       args.myMemberId,
@@ -248,8 +380,10 @@ export async function executeRaw(
 
     let filtered = conversations;
     if (args.unreadOnly) filtered = filtered.filter((c) => c.unread > 0);
-    const truncated = filtered.length > args.limit;
-    if (truncated) filtered = filtered.slice(0, args.limit);
+    const truncated =
+      filtered.length > args.limit ||
+      (filtered.length <= args.limit && hasMoreFromServer);
+    if (filtered.length > args.limit) filtered = filtered.slice(0, args.limit);
 
     return {
       myLoginId: args.myLoginId,

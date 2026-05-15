@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import type { Page } from 'playwright';
 import { waitUntil } from './wait.js';
 
@@ -100,8 +101,6 @@ export function dumpWsFramesForProbe(
   payloadHints: RegExp = /msgId|messageId|cardType|offerId|orderId|conversationCode|userConvs|listMessage/i,
 ): void {
   if (process.env.BB1688_PROBE !== '1') return;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { writeFileSync } = require('node:fs') as typeof import('node:fs');
   const midToMethod = midToMethodMap(frames);
   const enriched = frames.map((f) => ({
     ...f,
