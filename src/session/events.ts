@@ -112,6 +112,11 @@ export async function appendEventBestEffort(event: CommandEvent): Promise<void> 
 }
 
 export async function readRecentEvents(limit = 100): Promise<CommandEvent[]> {
+  const events = await readAllEvents();
+  return events.slice(-Math.max(1, limit));
+}
+
+export async function readAllEvents(): Promise<CommandEvent[]> {
   const file = eventsFile();
   let text = '';
   try {
@@ -119,9 +124,8 @@ export async function readRecentEvents(limit = 100): Promise<CommandEvent[]> {
   } catch {
     return [];
   }
-  const lines = text.split('\n').filter(Boolean).slice(-Math.max(1, limit));
   const events: CommandEvent[] = [];
-  for (const line of lines) {
+  for (const line of text.split('\n').filter(Boolean)) {
     try {
       events.push(JSON.parse(line) as CommandEvent);
     } catch {
@@ -129,6 +133,56 @@ export async function readRecentEvents(limit = 100): Promise<CommandEvent[]> {
     }
   }
   return events;
+}
+
+export interface CommandEventSummary {
+  requestId: string;
+  cmd: string;
+  status: CommandEventStatus;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  profile?: string;
+  artifactDir?: string;
+  errorCode?: string;
+  pageState?: string;
+  verification?: CommandEvent['verification'];
+  warnings?: CommandEvent['warnings'];
+  events: CommandEvent[];
+}
+
+export function summarizeEvents(events: CommandEvent[]): CommandEventSummary[] {
+  const byRequest = new Map<string, CommandEvent[]>();
+  for (const event of events) {
+    const list = byRequest.get(event.requestId) ?? [];
+    list.push(event);
+    byRequest.set(event.requestId, list);
+  }
+  return [...byRequest.entries()].map(([requestId, list]) => {
+    const sorted = [...list].sort((a, b) => a.ts.localeCompare(b.ts));
+    const first = sorted[0]!;
+    const last = sorted.at(-1)!;
+    return {
+      requestId,
+      cmd: last.cmd || first.cmd,
+      status: last.status,
+      startedAt: sorted.find((e) => e.phase === 'start')?.ts ?? first.ts,
+      endedAt: last.phase === 'start' ? undefined : last.ts,
+      durationMs: last.durationMs,
+      profile: last.profile ?? first.profile,
+      artifactDir: last.artifactDir,
+      errorCode: last.errorCode,
+      pageState: last.pageState,
+      verification: last.verification,
+      warnings: last.warnings,
+      events: sorted,
+    };
+  });
+}
+
+export async function readRecentEventSummaries(limit = 20): Promise<CommandEventSummary[]> {
+  const summaries = summarizeEvents(await readAllEvents());
+  return summaries.slice(-Math.max(1, limit));
 }
 
 function verificationFromDetails(

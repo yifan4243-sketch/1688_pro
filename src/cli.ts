@@ -476,6 +476,38 @@ daemon
     });
   });
 
+const debug = program
+  .command('debug')
+  .description('Inspect recent command events and failure artifacts');
+
+debug
+  .command('list')
+  .description('List recent command events')
+  .option('--limit <n>', 'Max requests to show', '20')
+  .option('--failed', 'Only show failed requests')
+  .action(async (opts) => {
+    const { list } = await import('./commands/debug.js');
+    await list(opts);
+  });
+
+debug
+  .command('last')
+  .description('Show the most recent command event')
+  .option('--failed', 'Show the most recent failed request')
+  .action(async (opts) => {
+    const { last } = await import('./commands/debug.js');
+    await last(opts);
+  });
+
+debug
+  .command('show')
+  .description('Show events and artifact location for a request')
+  .argument('<requestId>', 'Request ID')
+  .action(async (requestId) => {
+    const { show } = await import('./commands/debug.js');
+    await show({ requestId });
+  });
+
 program
   .command('feedback')
   .description(
