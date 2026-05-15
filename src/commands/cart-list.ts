@@ -1,10 +1,11 @@
 import { appendFileSync } from 'node:fs';
-import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
-import { withTimeout } from '../session/wait.js';
+import { parseMtopJsonp } from '../session/mtop.js';
+import { startResponseCapture } from '../session/response-capture.js';
 
 export interface CartListOpts {
   profile?: string;
@@ -57,64 +58,51 @@ export async function execute(
 
 export async function executeRaw(ctx: BrowserContext): Promise<CartListResult> {
   const page = await ctx.newPage();
-  let resolveCapture!: (v: unknown) => void;
-  const captured = new Promise<unknown>((r) => {
-    resolveCapture = r;
-  });
-
-  const onResp = async (resp: PWResponse) => {
-    if (!RENDER_API_RE.test(resp.url())) return;
-    try {
-      const text = await resp.text();
-      const parsed = parseMtop(text) as { data?: { model?: string } };
-      if (typeof parsed?.data?.model === 'string') {
-        resolveCapture(JSON.parse(parsed.data.model));
-      }
-    } catch {
-      /* ignore parse errors */
-    }
-  };
-  page.on('response', onResp);
-
-  info('Loading cart...');
-  try {
-    await page.goto(CART_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  } catch (e) {
-    throw new CliError(
-      9,
-      'NETWORK_ERROR',
-      `Failed to load cart page: ${(e as Error).message}`,
-    );
-  }
-  if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
-    throw new CliError(
-      3,
-      'NOT_LOGGED_IN',
-      'Session expired. Run `1688 login`.',
-    );
-  }
-
-  const model = await withTimeout(captured, {
+  const capture = startResponseCapture<RawModel>({
+    page,
     timeoutMs: 25000,
-    fallback: null,
+    matcher: RENDER_API_RE,
+    parse: async (resp) => {
+      const parsed = parseMtopJsonp<{ data?: { model?: string } }>(
+        await resp.text(),
+      );
+      if (typeof parsed?.data?.model !== 'string') return null;
+      return JSON.parse(parsed.data.model) as RawModel;
+    },
   });
-  page.off('response', onResp);
-  await page.close().catch(() => {});
 
-  if (!model) {
-    throw new CliError(
-      11,
-      'NO_CART_DATA',
-      'Cart response was not captured. The page may have changed or been risk-controlled.',
-    );
+  try {
+    info('Loading cart...');
+    try {
+      await page.goto(CART_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    } catch (e) {
+      throw new CliError(
+        9,
+        'NETWORK_ERROR',
+        `Failed to load cart page: ${(e as Error).message}`,
+      );
+    }
+    if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
+      throw new CliError(
+        3,
+        'NOT_LOGGED_IN',
+        'Session expired. Run `1688 login`.',
+      );
+    }
+
+    const model = await capture.wait();
+    if (!model) {
+      throw new CliError(
+        11,
+        'NO_CART_DATA',
+        'Cart response was not captured. The page may have changed or been risk-controlled.',
+      );
+    }
+    return parseCart(model);
+  } finally {
+    capture.dispose();
+    await page.close().catch(() => {});
   }
-  return parseCart(model as RawModel);
-}
-
-function parseMtop(text: string): unknown {
-  const t = text.trim();
-  const m = t.match(/^\s*mtopjsonp\d+\(([\s\S]*)\)\s*$/);
-  return JSON.parse(m ? m[1]! : t);
 }
 
 interface RawModel {

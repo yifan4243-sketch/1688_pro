@@ -1,9 +1,9 @@
-import type { BrowserContext, Response as PWResponse } from 'playwright';
+import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
-import { withTimeout } from '../session/wait.js';
+import { startResponseCapture } from '../session/response-capture.js';
 
 export interface OrderListOpts {
   status?: string;
@@ -124,87 +124,75 @@ export async function executeRaw(
   args: OrderListArgs,
 ): Promise<OrderListResult> {
   const page = await ctx.newPage();
-
-  let resolveCapture!: (v: unknown) => void;
-  const captured = new Promise<unknown>((res) => {
-    resolveCapture = res;
-  });
-
-  const onResp = async (resp: PWResponse) => {
-    if (!MTOP_API_RE.test(resp.url())) return;
-    try {
+  const capture = startResponseCapture<RawList>({
+    page,
+    timeoutMs: 25000,
+    matcher: MTOP_API_RE,
+    parse: async (resp) => {
       const text = await resp.text();
       const outer = JSON.parse(text) as {
         data?: { data?: { result?: string } };
       };
       const resultStr = outer?.data?.data?.result;
-      if (typeof resultStr !== 'string') return;
-      const inner = JSON.parse(resultStr) as {
-        data?: { data?: unknown[]; total?: number; pages?: number; pageSize?: number };
-        success?: boolean;
-      };
+      if (typeof resultStr !== 'string') return null;
+      const inner = JSON.parse(resultStr) as RawList & { success?: boolean };
       const list = inner?.data?.data;
-      if (!Array.isArray(list)) return;
+      if (!Array.isArray(list)) return null;
       const first = list[0] as { id?: unknown } | undefined;
-      if (list.length === 0 || (first && (first.id ?? null) !== null)) {
-        if (process.env.BB1688_PROBE === '1') {
-          try {
-            const fs = await import('node:fs/promises');
-            await fs.writeFile('/tmp/1688-order-list-raw.json', text);
-            process.stderr.write(
-              `[probe] saved raw order-list response → /tmp/1688-order-list-raw.json (${text.length} bytes)\n`,
-            );
-          } catch {
-            /* ignore */
-          }
+      if (list.length > 0 && (first?.id ?? null) === null) return null;
+      if (process.env.BB1688_PROBE === '1') {
+        try {
+          const fs = await import('node:fs/promises');
+          await fs.writeFile('/tmp/1688-order-list-raw.json', text);
+          process.stderr.write(
+            `[probe] saved raw order-list response → /tmp/1688-order-list-raw.json (${text.length} bytes)\n`,
+          );
+        } catch {
+          /* ignore */
         }
-        resolveCapture(inner);
       }
-    } catch {
-      /* ignore non-JSON responses */
-    }
-  };
-  page.on('response', onResp);
-
-  const url = `${ORDER_LIST_URL}?tradeStatus=${encodeURIComponent(
-    args.status,
-  )}&page=${args.page}&pageSize=${args.pageSize}`;
-  info(`Fetching orders (${args.status}, page ${args.page})...`);
-  try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  } catch (e) {
-    throw new CliError(
-      9,
-      'NETWORK_ERROR',
-      `Failed to load order page: ${(e as Error).message}`,
-    );
-  }
-
-  if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
-    throw new CliError(
-      3,
-      'NOT_LOGGED_IN',
-      'Session expired. Run `1688 login`.',
-    );
-  }
-
-  // Wait up to 25s for the mtop response carrying the order array.
-  const inner = await withTimeout(captured, {
-    timeoutMs: 25000,
-    fallback: null,
+      return inner;
+    },
   });
-  page.off('response', onResp);
-  await page.close().catch(() => {});
 
-  if (!inner) {
-    throw new CliError(
-      11,
-      'NO_ORDER_DATA',
-      'Order list response was not captured (page may have changed or risk-controlled).',
-    );
+  try {
+    const url = `${ORDER_LIST_URL}?tradeStatus=${encodeURIComponent(
+      args.status,
+    )}&page=${args.page}&pageSize=${args.pageSize}`;
+    info(`Fetching orders (${args.status}, page ${args.page})...`);
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    } catch (e) {
+      throw new CliError(
+        9,
+        'NETWORK_ERROR',
+        `Failed to load order page: ${(e as Error).message}`,
+      );
+    }
+
+    if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
+      throw new CliError(
+        3,
+        'NOT_LOGGED_IN',
+        'Session expired. Run `1688 login`.',
+      );
+    }
+
+    // Wait up to 25s for the mtop response carrying the order array.
+    const inner = await capture.wait();
+    if (!inner) {
+      throw new CliError(
+        11,
+        'NO_ORDER_DATA',
+        'Order list response was not captured (page may have changed or risk-controlled).',
+      );
+    }
+
+    return parseOrderList(inner, args);
+  } finally {
+    capture.dispose();
+    await page.close().catch(() => {});
   }
-
-  return parseOrderList(inner as RawList, args);
 }
 
 interface RawList {

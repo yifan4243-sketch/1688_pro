@@ -8,16 +8,14 @@
 //
 // Wall time: ~6s for ANY SKU layout — single-attr, multi-attr, hidden rows,
 // new layouts 1688 may ship next month — all work identically.
-import type {
-  BrowserContext,
-  Page,
-  Response as PWResponse,
-} from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
-import { sleep, waitUntil } from '../session/wait.js';
+import { sleep } from '../session/wait.js';
+import { parseMtopJsonp } from '../session/mtop.js';
+import { startResponseCapture } from '../session/response-capture.js';
 import { clickConfirmDialogButton } from '../session/cart-locators.js';
 import {
   clickAddCartButton,
@@ -64,22 +62,16 @@ interface SkuInfo {
   canBookCount: string;
 }
 
-function parseMtop(text: string): unknown {
-  const t = text.trim();
-  const m = t.match(/^\s*mtopjsonp\d+\(([\s\S]*)\)\s*$/);
-  return JSON.parse(m ? m[1]! : t);
-}
-
 async function captureSkuMap(
   page: Page,
   timeoutMs: number,
 ): Promise<Map<string, SkuInfo>> {
-  let skuMap: Map<string, SkuInfo> | null = null;
-  const onResp = async (resp: PWResponse) => {
-    if (!SKU_API_RE.test(resp.url())) return;
-    try {
-      const text = await resp.text();
-      const json = parseMtop(text) as {
+  const capture = startResponseCapture<Map<string, SkuInfo>>({
+    page,
+    timeoutMs,
+    matcher: SKU_API_RE,
+    parse: async (resp) => {
+      const json = parseMtopJsonp<{
         data?: {
           skuSelectorBizModel?: {
             skuInfoMap?: Record<
@@ -94,9 +86,9 @@ async function captureSkuMap(
             >;
           };
         };
-      };
+      }>(await resp.text());
       const raw = json?.data?.skuSelectorBizModel?.skuInfoMap;
-      if (!raw) return;
+      if (!raw) return null;
       const m = new Map<string, SkuInfo>();
       for (const [, v] of Object.entries(raw)) {
         if (v.skuId && v.specId) {
@@ -109,21 +101,10 @@ async function captureSkuMap(
           });
         }
       }
-      if (m.size > 0) skuMap = m;
-    } catch {
-      /* ignore */
-    }
-  };
-  page.on('response', onResp);
-  try {
-    await waitUntil(() => skuMap !== null || page.isClosed(), {
-      timeoutMs,
-      intervalMs: 200,
-    });
-    return skuMap ?? new Map();
-  } finally {
-    page.off('response', onResp);
-  }
+      return m.size > 0 ? m : null;
+    },
+  });
+  return (await capture.wait()) ?? new Map();
 }
 
 export async function execute(
@@ -299,35 +280,32 @@ async function executeCartAdd(
     info('Clicking 加采购车...');
 
     // Listen for the addCargo response so we can detect success quickly.
-    let addCargoResult: { ok: boolean; ret?: string[] } | null = null;
-    const onResp = async (resp: PWResponse) => {
-      if (!/addcargo/i.test(resp.url())) return;
-      try {
-        const text = await resp.text();
-        const m = text.match(/^\s*mtopjsonp\w+\(([\s\S]*)\)\s*$/);
-        const json = JSON.parse(m ? m[1]! : text) as { ret?: string[] };
+    const addCargoCapture = startResponseCapture<{ ok: boolean; ret?: string[] }>({
+      page,
+      timeoutMs: 10000,
+      matcher: /addcargo/i,
+      parse: async (resp) => {
+        const json = parseMtopJsonp<{ ret?: string[] }>(await resp.text());
         const ret = json?.ret ?? [];
         const ok =
           Array.isArray(ret) &&
           ret.length > 0 &&
           /SUCCESS/i.test(ret[0]!);
-        addCargoResult = { ok, ret };
-      } catch {
-        /* ignore */
-      }
-    };
-    page.on('response', onResp);
-
-    await clickAddCartButton(page);
-
-    await sleep(600);
-    await clickConfirmDialogButton(page).catch(() => undefined);
-
-    await waitUntil(() => addCargoResult !== null, {
-      timeoutMs: 10000,
-      intervalMs: 200,
+        return { ok, ret };
+      },
     });
-    page.off('response', onResp);
+
+    let addCargoResult: { ok: boolean; ret?: string[] } | null;
+    try {
+      await clickAddCartButton(page);
+
+      await sleep(600);
+      await clickConfirmDialogButton(page).catch(() => undefined);
+
+      addCargoResult = await addCargoCapture.wait();
+    } finally {
+      addCargoCapture.dispose();
+    }
 
     // Also check that our hijack actually fired (sanity).
     const hijackFired = await page.evaluate(() => {

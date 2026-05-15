@@ -5,6 +5,7 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { clickSearchNextPage } from '../session/search-locators.js';
+import { parseMtopJsonp } from '../session/mtop.js';
 import { sleep } from '../session/wait.js';
 
 export interface SearchOpts {
@@ -103,11 +104,7 @@ export const SEARCH_APP_ID = '32517';
 const PAGE_SIZE = 60;
 const MAX_PAGES = 10;
 
-export function parseMtopJsonp(raw: string): unknown {
-  const t = raw.trim();
-  const m = t.match(/^\s*mtopjsonp\w+\(([\s\S]*)\)\s*$/);
-  return JSON.parse(m ? m[1]! : t);
-}
+export { parseMtopJsonp };
 
 export interface RawOfferItem {
   cellType?: string;

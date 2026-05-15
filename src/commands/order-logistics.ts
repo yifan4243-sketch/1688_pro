@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { parseMtop } from '../session/mtop.js';
 import { sleep } from '../session/wait.js';
 
 export interface OrderLogisticsOpts {
@@ -207,12 +208,6 @@ async function fetchPageLogistics(
   }
 
   return { traceList, totalPages, orderIdsOnPage };
-}
-
-function parseMtop(text: string): unknown {
-  const t = text.trim();
-  const m = t.match(/^\s*mtopjsonp\d+\(([\s\S]*)\)\s*$/);
-  return JSON.parse(m ? m[1]! : t);
 }
 
 function parseTrace(t: {

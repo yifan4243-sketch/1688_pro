@@ -3,7 +3,9 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
-import { sleep, withTimeout } from '../session/wait.js';
+import { sleep } from '../session/wait.js';
+import { parseMtop } from '../session/mtop.js';
+import { startResponseCapture } from '../session/response-capture.js';
 
 export interface OfferOpts {
   offerId: string;
@@ -124,35 +126,30 @@ export async function executeRaw(
 ): Promise<OfferResult> {
   const page = await ctx.newPage();
 
-  let resolveSku!: (v: unknown) => void;
-  const skuPromise = new Promise<unknown>((r) => {
-    resolveSku = r;
+  const skuCapture = startResponseCapture<SkuBizModel>({
+    page,
+    timeoutMs: 18000,
+    matcher: SKU_API_RE,
+    parse: async (resp) => {
+      const text = await resp.text();
+      if (process.env.BB1688_PROBE === '1') {
+        try {
+          const fs = await import('node:fs/promises');
+          await fs.writeFile('/tmp/1688-sku-raw.json', text);
+          process.stderr.write(
+            `[probe] saved sku → /tmp/1688-sku-raw.json (${text.length} bytes)\n`,
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      const json = parseMtop<{ data?: { skuSelectorBizModel?: SkuBizModel } }>(
+        text,
+      );
+      return json?.data?.skuSelectorBizModel ?? null;
+    },
   });
   const onResp = async (resp: PWResponse) => {
-    if (SKU_API_RE.test(resp.url())) {
-      try {
-        const text = await resp.text();
-        if (process.env.BB1688_PROBE === '1') {
-          try {
-            const fs = await import('node:fs/promises');
-            await fs.writeFile('/tmp/1688-sku-raw.json', text);
-            process.stderr.write(
-              `[probe] saved sku → /tmp/1688-sku-raw.json (${text.length} bytes)\n`,
-            );
-          } catch {
-            /* ignore */
-          }
-        }
-        const json = parseMtop(text) as {
-          data?: { skuSelectorBizModel?: unknown };
-        };
-        if (json?.data?.skuSelectorBizModel)
-          resolveSku(json.data.skuSelectorBizModel);
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
     // Probe: save every offerdetail.service response so we can see which
     // call carries productAttributes.
     if (
@@ -264,38 +261,32 @@ export async function executeRaw(
   }
 
   const url = `https://detail.1688.com/offer/${args.offerId}.html`;
-  info(`Fetching offer ${args.offerId}...`);
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  } catch (e) {
-    throw new CliError(
-      9,
-      'NETWORK_ERROR',
-      `Failed to load offer page: ${(e as Error).message}`,
-    );
+    info(`Fetching offer ${args.offerId}...`);
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    } catch (e) {
+      throw new CliError(
+        9,
+        'NETWORK_ERROR',
+        `Failed to load offer page: ${(e as Error).message}`,
+      );
+    }
+    if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
+      throw new CliError(
+        3,
+        'NOT_LOGGED_IN',
+        'Session expired. Run `1688 login`.',
+      );
+    }
+
+    const sku = await skuCapture.wait();
+    const pageInfo = await readPageInfo(page);
+    return assemble(args.offerId, url, sku, pageInfo);
+  } finally {
+    skuCapture.dispose();
+    page.off('response', onResp);
   }
-  if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
-    throw new CliError(
-      3,
-      'NOT_LOGGED_IN',
-      'Session expired. Run `1688 login`.',
-    );
-  }
-
-  const sku = (await withTimeout(skuPromise, {
-    timeoutMs: 18000,
-    fallback: null,
-  })) as SkuBizModel | null;
-  page.off('response', onResp);
-
-  const pageInfo = await readPageInfo(page);
-  return assemble(args.offerId, url, sku, pageInfo);
-}
-
-function parseMtop(text: string): unknown {
-  const t = text.trim();
-  const m = t.match(/^\s*mtopjsonp\d+\(([\s\S]*)\)\s*$/);
-  return JSON.parse(m ? m[1]! : t);
 }
 
 interface SkuBizModel {
