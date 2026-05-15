@@ -15,7 +15,10 @@ import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { sleep } from '../session/wait.js';
 import { parseMtopJsonp } from '../session/mtop.js';
-import { startResponseCapture } from '../session/response-capture.js';
+import {
+  startResponseCapture,
+  type ResponseCaptureDiagnostics,
+} from '../session/response-capture.js';
 import { clickConfirmDialogButton } from '../session/cart-locators.js';
 import {
   clickAddCartButton,
@@ -62,10 +65,15 @@ interface SkuInfo {
   canBookCount: string;
 }
 
+interface SkuMapCaptureResult {
+  skuMap: Map<string, SkuInfo>;
+  responseCapture: ResponseCaptureDiagnostics;
+}
+
 async function captureSkuMap(
   page: Page,
   timeoutMs: number,
-): Promise<Map<string, SkuInfo>> {
+): Promise<SkuMapCaptureResult> {
   const capture = startResponseCapture<Map<string, SkuInfo>>({
     page,
     timeoutMs,
@@ -104,7 +112,10 @@ async function captureSkuMap(
       return m.size > 0 ? m : null;
     },
   });
-  return (await capture.wait()) ?? new Map();
+  return {
+    skuMap: (await capture.wait()) ?? new Map(),
+    responseCapture: capture.diagnostics(),
+  };
 }
 
 export async function execute(
@@ -224,12 +235,17 @@ async function executeCartAdd(
     // Look up the specId for the requested skuId by intercepting the SKU
     // mtop response, then push it into the page's hijack state.
     info('Resolving specId...');
-    const skuMap = await captureSkuMap(page, 18000);
+    const { skuMap, responseCapture } = await captureSkuMap(page, 18000);
     if (skuMap.size === 0) {
       throw new CliError(
         11,
         'NO_SKU_DATA',
         'Could not capture SKU mapping (page may be risk-controlled).',
+        {
+          category: 'response_capture',
+          retryable: true,
+          responseCapture,
+        },
       );
     }
     const sku = skuMap.get(args.skuId);

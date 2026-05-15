@@ -186,4 +186,131 @@ describe('startResponseCapture', () => {
     expect(parse).toHaveBeenCalledTimes(1);
     expect(mockPage.listenerCount('response')).toBe(0);
   });
+
+  it('records parser errors', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 50,
+      matcher: /api/,
+      parse: async (resp) => JSON.parse(await resp.text()) as { ok: boolean },
+    });
+
+    const wait = capture.wait();
+    mockPage.emitResponse(response('https://example.com/api', 'not json'));
+    mockPage.emitResponse(response('https://example.com/api', '{"ok":true}'));
+
+    expect(await wait).toEqual({ ok: true });
+    const diagnostics = capture.diagnostics();
+    expect(diagnostics.failureCount).toBe(1);
+    expect(diagnostics.failures[0]).toMatchObject({
+      phase: 'parse',
+      url: 'https://example.com/api',
+    });
+  });
+
+  it('records empty parser results', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 5,
+      matcher: /api/,
+      parse: async () => null,
+    });
+
+    const wait = capture.wait();
+    mockPage.emitResponse(response('https://example.com/api'));
+
+    expect(await wait).toBeNull();
+    const diagnostics = capture.diagnostics();
+    expect(diagnostics.matchedCount).toBe(1);
+    expect(diagnostics.emptyResultCount).toBe(1);
+    expect(diagnostics.emptyResults[0]).toMatchObject({
+      url: 'https://example.com/api',
+    });
+  });
+
+  it('records timeout diagnostics when no response matched', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 5,
+      matcher: /api/,
+      parse: async () => ({ ok: true }),
+    });
+
+    const wait = capture.wait();
+    mockPage.emitResponse(response('https://example.com/other'));
+
+    expect(await wait).toBeNull();
+    const diagnostics = capture.diagnostics();
+    expect(diagnostics.timedOut).toBe(true);
+    expect(diagnostics.seenCount).toBe(1);
+    expect(diagnostics.matchedCount).toBe(0);
+    expect(diagnostics.lastSeenUrl).toBe('https://example.com/other');
+  });
+
+  it('records matcher errors', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 5,
+      matcher: () => {
+        throw new Error('bad matcher');
+      },
+      parse: async () => ({ ok: true }),
+    });
+
+    const wait = capture.wait();
+    mockPage.emitResponse(response('https://example.com/api'));
+
+    expect(await wait).toBeNull();
+    const diagnostics = capture.diagnostics();
+    expect(diagnostics.failureCount).toBe(1);
+    expect(diagnostics.failures[0]).toMatchObject({
+      phase: 'match',
+      message: 'bad matcher',
+    });
+  });
+
+  it('keeps diagnostics available after dispose', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 50,
+      matcher: /api/,
+      parse: async () => ({ ok: true }),
+    });
+
+    const wait = capture.wait();
+    mockPage.emitResponse(response('https://example.com/api'));
+    await wait;
+    capture.dispose();
+
+    expect(capture.diagnostics()).toMatchObject({
+      disposed: true,
+      settled: true,
+      matchedCount: 1,
+      parsedCount: 1,
+    });
+  });
+
+  it('returns copied diagnostics arrays', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 5,
+      matcher: /api/,
+      parse: async () => null,
+    });
+
+    const wait = capture.wait();
+    mockPage.emitResponse(response('https://example.com/api'));
+    await wait;
+
+    const diagnostics = capture.diagnostics();
+    diagnostics.emptyResults.length = 0;
+
+    expect(capture.diagnostics().emptyResults).toHaveLength(1);
+  });
 });

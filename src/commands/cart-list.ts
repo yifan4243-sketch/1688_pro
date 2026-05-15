@@ -96,6 +96,11 @@ export async function executeRaw(ctx: BrowserContext): Promise<CartListResult> {
         11,
         'NO_CART_DATA',
         'Cart response was not captured. The page may have changed or been risk-controlled.',
+        {
+          category: 'response_capture',
+          retryable: true,
+          responseCapture: capture.diagnostics(),
+        },
       );
     }
     return parseCart(model);

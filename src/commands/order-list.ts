@@ -185,6 +185,11 @@ export async function executeRaw(
         11,
         'NO_ORDER_DATA',
         'Order list response was not captured (page may have changed or risk-controlled).',
+        {
+          category: 'response_capture',
+          retryable: true,
+          responseCapture: capture.diagnostics(),
+        },
       );
     }
 

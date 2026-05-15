@@ -35,11 +35,12 @@ interface ErrorShape {
   code?: string;
   message: string;
   stack?: string;
+  details?: CliErrorDetails;
 }
 
 function errorShape(e: unknown): ErrorShape {
   if (e instanceof CliError) {
-    return { code: e.code, message: e.message, stack: e.stack };
+    return { code: e.code, message: e.message, stack: e.stack, details: e.details };
   }
   if (e instanceof Error) {
     return { message: e.message, stack: e.stack };
@@ -186,6 +187,12 @@ export async function captureFailureArtifact(
   }
 
   const shaped = errorShape(error);
+  const responseCapture = shaped.details?.responseCapture;
+  if (responseCapture) {
+    await writeJson(path.join(dir, 'response-capture.json'), responseCapture).catch(
+      () => {},
+    );
+  }
   await fs.writeFile(path.join(dir, 'error.txt'), errorText(shaped)).catch(() => {});
   await writeJson(path.join(dir, 'meta.json'), {
     requestId: id,
