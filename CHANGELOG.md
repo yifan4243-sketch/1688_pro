@@ -3,6 +3,35 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.39] - 2026-05-15
+
+### Fixed
+- **`search` retry capture lifecycle.** The mtop response interceptor
+  was being torn down before the in-page retry click could replay the
+  `getOfferList` request, so retried pages produced no captured payload
+  and surfaced as empty pages. The capture handle now stays attached
+  across the full retry window (`src/session/search-capture.ts`,
+  `src/commands/search.ts`).
+
+### Changed
+- **Centralized 1688 mtop response capture.** Per-command interceptor
+  bookkeeping (cart, image-search, offer, order-list/logistics, search,
+  similar) now goes through `src/session/response-capture.ts` and the
+  search-specific `src/session/search-capture.ts` /
+  `src/session/search-mtop.ts`. Page-event wiring, payload matching,
+  and teardown live in one place; commands shrank significantly
+  (search.ts alone went from ~600 to ~390 lines). Covered by
+  `tests/response-capture.test.ts`, `tests/search-capture.test.ts`,
+  `tests/search-mtop.test.ts`, `tests/mtop.test.ts`,
+  `tests/artifacts.test.ts`.
+- **Centralized deadline polling in `src/session/wait.ts`.** The
+  ad-hoc `Date.now()` deadline loops left in commands after 0.1.38's
+  consolidation now share a single helper, with extra coverage in
+  `tests/wait.test.ts`.
+
+### Docs
+- README title/header polish: clearer focus on the AI-agent use case.
+
 ## [0.1.38] - 2026-05-14
 
 ### Changed
