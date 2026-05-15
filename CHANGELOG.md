@@ -3,6 +3,43 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.38] - 2026-05-14
+
+### Changed
+- **Centralized browser timing helpers (`src/session/wait.ts`).** Fixed
+  sleeps and ad-hoc polling loops scattered across commands, daemon,
+  locator, and recovery code now go through a single wait layer with
+  shared semantics (timeout fallback, polling delay, jittered sleep).
+  Affected surfaces include `cart-add`, `cart-list`, `cart-remove`,
+  `checkout-confirm`, `checkout-prepare`, `image-search`, `login`,
+  `offer`, `order-list`, `order-logistics`, `search`, `seller-chat`,
+  `seller-inquire`, `seller-messages`, `similar`, plus
+  `daemon/manager`, `daemon/throttle`, `session/locator`,
+  `session/page-state`, and `session/recovery`. No behavior change for
+  callers — purely a consolidation that makes browser timing easier to
+  tune and test (`tests/wait.test.ts`).
+
+## [0.1.37] - 2026-05-14
+
+### Changed
+- **Consolidated remaining UI selectors behind locator helpers.**
+  `cart-add`, `image-search`, `search` pagination, `seller-messages`,
+  and `checkout` preview selection no longer own raw selectors. New
+  helpers in `src/session/image-search-locators.ts`,
+  `offer-locators.ts`, and `search-locators.ts` centralize the lookup
+  surface so page UI changes produce structured diagnostics rather
+  than scattered selector failures.
+
+## [0.1.36] - 2026-05-14
+
+### Changed
+- **Stabilized browser element targeting.** Cart, checkout, and IM
+  element lookups moved behind semantic locator helpers
+  (`src/session/cart-locators.ts`, `checkout-locators.ts`,
+  `im-locators.ts`, and the shared `locator.ts`). Page UI changes now
+  surface as structured recovery diagnostics instead of low-level
+  selector errors. Covered by `tests/locator.test.ts`.
+
 ## [0.1.35] - 2026-05-14
 
 ### Added
