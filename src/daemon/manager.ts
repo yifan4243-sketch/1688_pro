@@ -11,6 +11,7 @@ import {
 } from '../session/paths.js';
 import { daemonCall, isDaemonReachable } from './client.js';
 import { CliError } from '../io/errors.js';
+import { waitUntil } from '../session/wait.js';
 import pkg from '../../package.json' with { type: 'json' };
 
 export interface DaemonStatus {
@@ -101,14 +102,13 @@ export async function start(): Promise<{ pid: number }> {
   child.unref();
   await logFd.close();
 
-  // Wait until socket is reachable (max ~15s).
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (await isDaemonReachable()) {
-      const pid = (await readPid()) ?? child.pid ?? -1;
-      return { pid };
-    }
-    await new Promise((r) => setTimeout(r, 250));
+  const reachable = await waitUntil(isDaemonReachable, {
+    timeoutMs: 15000,
+    intervalMs: 250,
+  });
+  if (reachable) {
+    const pid = (await readPid()) ?? child.pid ?? -1;
+    return { pid };
   }
   throw new CliError(
     9,
@@ -156,12 +156,10 @@ export async function stop(): Promise<{ stopped: boolean }> {
       /* already dead */
     }
   }
-  // Wait up to 10s for clean exit.
-  const deadline = Date.now() + 10000;
-  while (Date.now() < deadline) {
-    if (!isProcessAlive(pid)) break;
-    await new Promise((r) => setTimeout(r, 200));
-  }
+  await waitUntil(() => !isProcessAlive(pid), {
+    timeoutMs: 10000,
+    intervalMs: 200,
+  });
   if (isProcessAlive(pid)) {
     try {
       process.kill(pid, 'SIGKILL');

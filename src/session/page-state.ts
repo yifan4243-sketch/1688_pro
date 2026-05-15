@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { withTimeout } from './wait.js';
 
 export type PageStateKind =
   | 'normal_1688_page'
@@ -26,23 +27,6 @@ const RISK_TEXT_RE =
 const RATE_LIMIT_TEXT_RE =
   /(访问频繁|请求频繁|操作频繁|稍后再试|访问受限|流量异常|系统繁忙)/i;
 const PAGE_PROBE_TIMEOUT_MS = 1500;
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  fallback: T,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), PAGE_PROBE_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 export function classifyPageState(snapshot: PageSnapshot): PageState {
   const url = snapshot.url;
@@ -80,16 +64,19 @@ export async function detectPageState(page: Page): Promise<PageState> {
   let text = '';
 
   try {
-    title = await withTimeout(page.title(), null);
+    title = await withTimeout(page.title(), {
+      timeoutMs: PAGE_PROBE_TIMEOUT_MS,
+      fallback: null,
+    });
   } catch {
     title = null;
   }
 
   try {
-    text = await withTimeout(
-      page.evaluate(() => document.body?.innerText ?? ''),
-      '',
-    );
+    text = await withTimeout(page.evaluate(() => document.body?.innerText ?? ''), {
+      timeoutMs: PAGE_PROBE_TIMEOUT_MS,
+      fallback: '',
+    });
     if (text.length > 20_000) text = text.slice(0, 20_000);
   } catch {
     text = '';

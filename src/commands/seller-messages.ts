@@ -390,7 +390,7 @@ export async function executeRaw(
     }
 
     await findImInput(page);
-    await new Promise((r) => setTimeout(r, 3000));
+    await sleep(3000);
 
     // If sidebar mode: find + click the seller
     let matched: string | null = null;

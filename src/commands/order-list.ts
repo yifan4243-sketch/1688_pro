@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { withTimeout } from '../session/wait.js';
 
 export interface OrderListOpts {
   status?: string;
@@ -188,10 +189,10 @@ export async function executeRaw(
   }
 
   // Wait up to 25s for the mtop response carrying the order array.
-  const inner = await Promise.race([
-    captured,
-    new Promise<null>((res) => setTimeout(() => res(null), 25000)),
-  ]);
+  const inner = await withTimeout(captured, {
+    timeoutMs: 25000,
+    fallback: null,
+  });
   page.off('response', onResp);
   await page.close().catch(() => {});
 

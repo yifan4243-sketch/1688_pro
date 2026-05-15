@@ -4,6 +4,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { withTimeout } from '../session/wait.js';
 
 export interface CartListOpts {
   profile?: string;
@@ -93,10 +94,10 @@ export async function executeRaw(ctx: BrowserContext): Promise<CartListResult> {
     );
   }
 
-  const model = await Promise.race([
-    captured,
-    new Promise<null>((res) => setTimeout(() => res(null), 25000)),
-  ]);
+  const model = await withTimeout(captured, {
+    timeoutMs: 25000,
+    fallback: null,
+  });
   page.off('response', onResp);
   await page.close().catch(() => {});
 

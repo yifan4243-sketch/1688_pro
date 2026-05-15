@@ -13,6 +13,7 @@ import {
   type RunMeta,
 } from './artifacts.js';
 import { detectPageState, type PageState } from './page-state.js';
+import { sleep } from './wait.js';
 
 export type RecoveryFailureKind =
   | 'not_logged_in'
@@ -410,29 +411,24 @@ export function recoveryDecisionFor(
   }
 }
 
-async function wait(ms: number): Promise<void> {
-  if (ms <= 0) return;
-  await new Promise((r) => setTimeout(r, ms));
-}
-
 async function runRecoveryAction(decision: RecoveryDecision, page: Page | null): Promise<void> {
   switch (decision.action) {
     case 'dismiss_overlay_and_retry':
       if (page && !page.isClosed()) {
         await page.keyboard.press('Escape').catch(() => {});
-        await wait(decision.cooldownMs);
+        await sleep(decision.cooldownMs);
       }
       return;
     case 'backoff':
       info(`1688 rate limit detected; backing off for ${Math.round(decision.cooldownMs / 1000)}s before one retry...`);
-      await wait(decision.cooldownMs);
+      await sleep(decision.cooldownMs);
       return;
     case 'retry_after_network_backoff':
     case 'retry_after_resnapshot':
     case 'wait_for_business_signal':
     case 'stabilize_and_retry':
     case 'retry_once_then_fail':
-      await wait(decision.cooldownMs);
+      await sleep(decision.cooldownMs);
       return;
     default:
       return;

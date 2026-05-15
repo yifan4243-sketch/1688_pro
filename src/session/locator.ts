@@ -1,5 +1,6 @@
 import type { Locator, Page } from 'playwright';
 import { CliError } from '../io/errors.js';
+import { waitForTruthy } from './wait.js';
 
 export type LocatorCandidate =
   | { kind: 'role'; role: Parameters<Page['getByRole']>[0]; name: string | RegExp }
@@ -82,21 +83,26 @@ async function findUsable(
   opts: StableLocatorOptions,
 ): Promise<Locator> {
   const timeoutMs = opts.timeoutMs ?? 5000;
-  const deadline = Date.now() + timeoutMs;
   const strategies = candidates.map(locatorCandidateToDebugString);
-
-  while (Date.now() <= deadline) {
-    for (const candidate of candidates) {
-      const locator = locatorFor(page, candidate);
-      if (await isLocatorUsable(locator, opts)) {
-        if (opts.scrollIntoView ?? true) {
-          await locator.scrollIntoViewIfNeeded({ timeout: 1000 }).catch(() => {});
+  const locator = await waitForTruthy(
+    async () => {
+      for (const candidate of candidates) {
+        const candidateLocator = locatorFor(page, candidate);
+        if (await isLocatorUsable(candidateLocator, opts)) {
+          if (opts.scrollIntoView ?? true) {
+            await candidateLocator
+              .scrollIntoViewIfNeeded({ timeout: 1000 })
+              .catch(() => {});
+          }
+          return candidateLocator;
         }
-        return locator;
       }
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
+      return null;
+    },
+    { timeoutMs, intervalMs: 200 },
+  );
+
+  if (locator) return locator;
 
   throw new CliError(
     14,

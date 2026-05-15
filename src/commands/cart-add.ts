@@ -115,13 +115,15 @@ async function captureSkuMap(
     }
   };
   page.on('response', onResp);
-  const deadline = Date.now() + timeoutMs;
-  while (!skuMap && Date.now() < deadline) {
-    if (page.isClosed()) break;
-    await new Promise((r) => setTimeout(r, 200));
+  try {
+    await waitUntil(() => skuMap !== null || page.isClosed(), {
+      timeoutMs,
+      intervalMs: 200,
+    });
+    return skuMap ?? new Map();
+  } finally {
+    page.off('response', onResp);
   }
-  page.off('response', onResp);
-  return skuMap ?? new Map();
 }
 
 export async function execute(

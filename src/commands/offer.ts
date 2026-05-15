@@ -3,7 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
-import { sleep } from '../session/wait.js';
+import { sleep, withTimeout } from '../session/wait.js';
 
 export interface OfferOpts {
   offerId: string;
@@ -282,10 +282,10 @@ export async function executeRaw(
     );
   }
 
-  const sku = (await Promise.race([
-    skuPromise,
-    new Promise<null>((res) => setTimeout(() => res(null), 18000)),
-  ])) as SkuBizModel | null;
+  const sku = (await withTimeout(skuPromise, {
+    timeoutMs: 18000,
+    fallback: null,
+  })) as SkuBizModel | null;
   page.off('response', onResp);
 
   const pageInfo = await readPageInfo(page);

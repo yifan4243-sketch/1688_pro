@@ -8,6 +8,28 @@ export interface WaitUntilOptions {
   intervalMs?: number;
 }
 
+export interface WithTimeoutOptions<TFallback> {
+  timeoutMs: number;
+  fallback: TFallback;
+}
+
+export async function withTimeout<T, TFallback = T>(
+  promise: Promise<T>,
+  opts: WithTimeoutOptions<TFallback>,
+): Promise<T | TFallback> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race<T | TFallback>([
+      promise,
+      new Promise<TFallback>((resolve) => {
+        timer = setTimeout(() => resolve(opts.fallback), opts.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
   opts: WaitUntilOptions,
