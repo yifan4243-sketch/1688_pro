@@ -293,107 +293,108 @@ async function fetchSearch(
   info('Warming up s.1688.com...');
   await warmup(1500);
 
-  const capture = startSearchOfferCapture({
+  let capture = startSearchOfferCapture({
     page,
     requireMethod: 'getOfferList',
     targetPage: () => currentTargetPage,
   });
 
-  const allOffers: Offer[] = [];
-  const seenIds = new Set<string>();
+  try {
+    const allOffers: Offer[] = [];
+    const seenIds = new Set<string>();
 
-  for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
-    capture.reset();
-    currentTargetPage = pageNum;
+    for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
+      capture.reset();
+      currentTargetPage = pageNum;
 
-    if (pageNum === 1) {
-      info(`Searching 1688 for "${keyword}"...`);
-      if (headed) {
-        info('A Chrome window has opened — switch focus to it now.');
+      if (pageNum === 1) {
+        info(`Searching 1688 for "${keyword}"...`);
+        if (headed) {
+          info('A Chrome window has opened — switch focus to it now.');
+        }
+        await navigateTo(baseUrl);
+      } else {
+        // Pages 2+ MUST stay in the same page session. Every fresh navigation
+        // mints a new search-context `pageId`, and `beginPage=N` against a
+        // fresh pageId returns near-duplicate top results (~75% overlap).
+        // Clicking the in-page "next" arrow advances `beginPage` within the
+        // SAME pageId, which is the only way to get a clean next 60.
+        info(`Fetching page ${pageNum}/${pagesWanted}...`);
+        const advanced = await clickSearchNextPage(page).catch(() => false);
+        if (!advanced) {
+          info(`Could not advance to page ${pageNum} — stopping at ${allOffers.length} results.`);
+          break;
+        }
       }
-      await navigateTo(baseUrl);
-    } else {
-      // Pages 2+ MUST stay in the same page session. Every fresh navigation
-      // mints a new search-context `pageId`, and `beginPage=N` against a
-      // fresh pageId returns near-duplicate top results (~75% overlap).
-      // Clicking the in-page "next" arrow advances `beginPage` within the
-      // SAME pageId, which is the only way to get a clean next 60.
-      info(`Fetching page ${pageNum}/${pagesWanted}...`);
-      const advanced = await clickSearchNextPage(page).catch(() => false);
-      if (!advanced) {
-        info(`Could not advance to page ${pageNum} — stopping at ${allOffers.length} results.`);
-        break;
-      }
-    }
 
-    let capturedOffers = await capture.wait({
-      timeoutMs: headed ? 180000 : 12000,
-      isClosed: () => page.isClosed(),
-      isBlocked: isSearchBlocked,
-    });
-    let got = capturedOffers.length > 0;
-    // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
-    // just stops the loop with whatever has been collected so far.
-    if (!got && !headed && pageNum === 1) {
-      info('First attempt blocked or empty. Re-warming and retrying...');
-      // Dispose + recreate around the re-warmup: the re-warmup hits the
-      // homepage again, which would otherwise re-poison capturedOffers.
-      capture.dispose();
-      await warmup(3500);
-      const retryCapture = startSearchOfferCapture({
-        page,
-        requireMethod: 'getOfferList',
-        targetPage: () => currentTargetPage,
-      });
-      await navigateTo(baseUrl);
-      capturedOffers = await retryCapture.wait({
-        timeoutMs: 15000,
+      let capturedOffers = await capture.wait({
+        timeoutMs: headed ? 180000 : 12000,
         isClosed: () => page.isClosed(),
         isBlocked: isSearchBlocked,
       });
-      got = capturedOffers.length > 0;
-      retryCapture.dispose();
-    }
-    if (!got) {
-      if (pageNum === 1) {
+      let got = capturedOffers.length > 0;
+      // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
+      // just stops the loop with whatever has been collected so far.
+      if (!got && !headed && pageNum === 1) {
+        info('First attempt blocked or empty. Re-warming and retrying...');
+        // Dispose + recreate around the re-warmup: the re-warmup hits the
+        // homepage again, which would otherwise re-poison capturedOffers.
         capture.dispose();
-        throw riskControlError(headed);
+        await warmup(3500);
+        capture = startSearchOfferCapture({
+          page,
+          requireMethod: 'getOfferList',
+          targetPage: () => currentTargetPage,
+        });
+        await navigateTo(baseUrl);
+        capturedOffers = await capture.wait({
+          timeoutMs: 15000,
+          isClosed: () => page.isClosed(),
+          isBlocked: isSearchBlocked,
+        });
+        got = capturedOffers.length > 0;
       }
-      info(
-        `Page ${pageNum} blocked or empty — returning ${allOffers.length} ` +
-          `results from ${pageNum - 1} page(s).`,
-      );
-      break;
-    }
-    if (pageNum === 1) await detectLoginRedirect(page);
+      if (!got) {
+        if (pageNum === 1) {
+          throw riskControlError(headed);
+        }
+        info(
+          `Page ${pageNum} blocked or empty — returning ${allOffers.length} ` +
+            `results from ${pageNum - 1} page(s).`,
+        );
+        break;
+      }
+      if (pageNum === 1) await detectLoginRedirect(page);
 
-    // Accumulate with cross-page dedup. 1688 occasionally repeats P4P ad
-    // slots across pages; dedup keeps the result set clean.
-    let added = 0;
-    for (const o of capturedOffers) {
-      if (seenIds.has(o.offerId)) continue;
-      seenIds.add(o.offerId);
-      allOffers.push(o);
-      added++;
+      // Accumulate with cross-page dedup. 1688 occasionally repeats P4P ad
+      // slots across pages; dedup keeps the result set clean.
+      let added = 0;
+      for (const o of capturedOffers) {
+        if (seenIds.has(o.offerId)) continue;
+        seenIds.add(o.offerId);
+        allOffers.push(o);
+        added++;
+      }
+
+      // Stop conditions:
+      //  - collected enough for the caller's --max
+      //  - short page (< 60) means we hit the last page of results
+      //  - zero new items means pagination isn't advancing (bail rather than
+      //    spin through identical pages)
+      if (allOffers.length >= maxResults) break;
+      if (capturedOffers.length < PAGE_SIZE) break;
+      if (added === 0) break;
+
+      // Human-like jitter between page clicks to keep the WAF score low.
+      if (pageNum < pagesWanted) {
+        await sleep(1500 + Math.random() * 2000);
+      }
     }
 
-    // Stop conditions:
-    //  - collected enough for the caller's --max
-    //  - short page (< 60) means we hit the last page of results
-    //  - zero new items means pagination isn't advancing (bail rather than
-    //    spin through identical pages)
-    if (allOffers.length >= maxResults) break;
-    if (capturedOffers.length < PAGE_SIZE) break;
-    if (added === 0) break;
-
-    // Human-like jitter between page clicks to keep the WAF score low.
-    if (pageNum < pagesWanted) {
-      await sleep(1500 + Math.random() * 2000);
-    }
+    return allOffers;
+  } finally {
+    capture.dispose();
   }
-
-  capture.dispose();
-  return allOffers;
 }
 
 async function isBlocked(page: Page, retries = 3): Promise<boolean> {
