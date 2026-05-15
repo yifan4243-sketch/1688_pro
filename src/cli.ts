@@ -84,9 +84,21 @@ program
     await run({ ...opts, offerId });
   });
 
+program
+  .command('inbox')
+  .description('List recent 旺旺 IM conversations (newest first)')
+  .option('--limit <n>', 'Max conversations to return (default 20, max 200)', '20')
+  .option('--unread', 'Only show conversations with unread messages')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (debug visibility)')
+  .action(async (opts) => {
+    const { run } = await import('./commands/inbox.js');
+    await run(opts);
+  });
+
 const seller = program
   .command('seller')
-  .description('Seller communication (旺旺 IM)');
+  .description('Seller communication (旺旺 IM). See also: `1688 inbox`.');
 
 seller
   .command('inquire')

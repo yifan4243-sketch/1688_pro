@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`1688 inbox` — list recent 旺旺 IM conversations.** New top-level
+  command that captures the IM client's
+  `/r/Conversation/listNewestPagination` LWP response and emits a
+  clean per-conversation record: `cid`, `peer.{nick,id}`, `unread`,
+  `topRank`, `muted`, `updatedAt`, `lastMessage.{kind,preview,at,fromMe}`.
+  Pinned conversations bubble to the top, then sorted by `updatedAt`
+  desc. `--unread` filters to active threads; `nextCursor` is exposed
+  for future pagination. The `cid` is the stable handle that future
+  versions of `seller messages` can accept directly (avoiding the
+  fragile sidebar-click path). Peer identity comes from
+  `user_extension.target.dnick` rather than `extension.targetMainNick`
+  so peer-mirrored conversations resolve correctly.
+
+  Also added `src/session/im-ws.ts` — shared LWP/WS frame helpers
+  (`collectWsFrames`, `waitForLwpResponse`, `findLwpResponses`,
+  `dumpWsFramesForProbe`) that any future IM-side command can reuse.
+  Tests in `tests/inbox.test.ts`.
+
 ## [0.1.39] - 2026-05-15
 
 ### Fixed

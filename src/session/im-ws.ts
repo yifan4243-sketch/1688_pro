@@ -1,0 +1,134 @@
+import type { Page } from 'playwright';
+import { waitUntil } from './wait.js';
+
+export const IM_BASE =
+  'https://air.1688.com/app/ocms-fusion-components-1688/def_cbu_web_im/index.html';
+
+export interface WsFrame {
+  type: 'sent' | 'recv';
+  method: string;
+  mid: string | null;
+  payloadLen: number;
+  payload: string;
+}
+
+export function collectWsFrames(page: Page): WsFrame[] {
+  const frames: WsFrame[] = [];
+  page.on('websocket', (ws) => {
+    const record = (
+      type: 'sent' | 'recv',
+      payloadRaw: string | Buffer,
+    ): void => {
+      const payload =
+        typeof payloadRaw === 'string' ? payloadRaw : payloadRaw.toString();
+      let method = '';
+      let mid: string | null = null;
+      try {
+        const j = JSON.parse(payload) as {
+          lwp?: string;
+          headers?: { mid?: string };
+        };
+        method = j?.lwp ?? '';
+        mid = j?.headers?.mid ?? null;
+      } catch {
+        /* not JSON — skip */
+      }
+      frames.push({ type, method, mid, payloadLen: payload.length, payload });
+    };
+    ws.on('framesent', (frame) => record('sent', frame.payload));
+    ws.on('framereceived', (frame) => record('recv', frame.payload));
+  });
+  return frames;
+}
+
+function midToMethodMap(frames: WsFrame[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const f of frames) {
+    if (f.type === 'sent' && f.mid && f.method) m.set(f.mid, f.method);
+  }
+  return m;
+}
+
+export function findLwpResponses<TBody = unknown>(
+  frames: WsFrame[],
+  method: string,
+): TBody[] {
+  const midToMethod = midToMethodMap(frames);
+  const out: TBody[] = [];
+  for (const f of frames) {
+    if (f.type !== 'recv') continue;
+    if (!f.mid) continue;
+    if (midToMethod.get(f.mid) !== method) continue;
+    try {
+      const env = JSON.parse(f.payload) as { code?: number; body?: TBody };
+      if (env.code !== 200) continue;
+      if (env.body !== undefined) out.push(env.body);
+    } catch {
+      /* skip */
+    }
+  }
+  return out;
+}
+
+export async function waitForLwpResponse(
+  frames: WsFrame[],
+  method: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  return waitUntil(
+    () => {
+      const midToMethod = midToMethodMap(frames);
+      return frames.some(
+        (f) =>
+          f.type === 'recv' && f.mid && midToMethod.get(f.mid) === method,
+      );
+    },
+    { timeoutMs, intervalMs: 200 },
+  );
+}
+
+/**
+ * Probe support: synchronously dump WS frames to /tmp/1688-ws-*.json.
+ *
+ * Call from inside the command's `try` block (NOT from `page.on('close', ...)`)
+ * so the dump runs before process exit. Headless `page.close()` does not
+ * always flush close-event listeners before the process exits.
+ */
+export function dumpWsFramesForProbe(
+  frames: WsFrame[],
+  interestingPattern: RegExp = /Message|Conversation|SingleChat/i,
+  payloadHints: RegExp = /msgId|messageId|cardType|offerId|orderId|conversationCode|userConvs|listMessage/i,
+): void {
+  if (process.env.BB1688_PROBE !== '1') return;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { writeFileSync } = require('node:fs') as typeof import('node:fs');
+  const midToMethod = midToMethodMap(frames);
+  const enriched = frames.map((f) => ({
+    ...f,
+    reqMethod:
+      f.type === 'recv' && f.mid ? midToMethod.get(f.mid) ?? null : null,
+  }));
+  const interesting = enriched.filter((f) => {
+    if (f.type === 'sent') return interestingPattern.test(f.method);
+    if (f.reqMethod && interestingPattern.test(f.reqMethod)) return true;
+    return payloadHints.test(f.payload);
+  });
+  try {
+    writeFileSync(
+      '/tmp/1688-ws-frames.json',
+      JSON.stringify(enriched, null, 2),
+    );
+    writeFileSync(
+      '/tmp/1688-ws-interesting.json',
+      JSON.stringify(interesting, null, 2),
+    );
+    process.stderr.write(
+      `[ws-frames] total=${frames.length} interesting=${interesting.length}\n` +
+        `methods seen: ${[...new Set(frames.map((f) => f.method).filter(Boolean))].join(', ')}\n` +
+        `full dump → /tmp/1688-ws-frames.json (${enriched.length} frames)\n` +
+        `interesting dump → /tmp/1688-ws-interesting.json (${interesting.length} frames)\n`,
+    );
+  } catch (e) {
+    process.stderr.write(`[ws-frames] write failed: ${String(e)}\n`);
+  }
+}

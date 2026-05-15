@@ -69,6 +69,10 @@ const REGISTRY: Record<string, () => Promise<Executor<unknown, unknown>>> = {
     import('../commands/seller-messages.js').then(
       (m) => m.execute as Executor<unknown, unknown>,
     ),
+  inbox: () =>
+    import('../commands/inbox.js').then(
+      (m) => m.execute as Executor<unknown, unknown>,
+    ),
   'detail-feglobals': () =>
     import('../commands/seller-inquire.js').then(
       (m) => m.scrapeFeGlobals as Executor<unknown, unknown>,
