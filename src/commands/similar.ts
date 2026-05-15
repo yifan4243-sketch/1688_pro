@@ -7,7 +7,7 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { sleep } from '../session/wait.js';
-import { startSearchOfferCapture } from '../session/search-capture.js';
+import { captureSearchOffersForAction } from '../session/search-capture.js';
 import { type Offer } from './search.js';
 
 export interface SimilarOpts {
@@ -64,11 +64,8 @@ async function executeSimilar(
     });
     await sleep(1500);
 
-    const capture = startSearchOfferCapture({
-      page,
-      keep: 'largest',
-    });
-    const captureResult = await capture.waitForAction(
+    const captureResult = await captureSearchOffersForAction(
+      { page, keep: 'largest' },
       async () => {
         info(`Finding similar offers for ${args.offerId}...`);
         if (headed) info('A Chrome window has opened — switch focus to it now.');

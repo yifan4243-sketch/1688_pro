@@ -10,7 +10,7 @@ import {
   clickImageSearchButton,
   clickImageUploadButton,
 } from '../session/image-search-locators.js';
-import { startSearchOfferCapture } from '../session/search-capture.js';
+import { captureSearchOffersForAction } from '../session/search-capture.js';
 import { type Offer } from './search.js';
 
 export interface ImageSearchOpts {
@@ -125,13 +125,9 @@ async function searchByImageId(
 ): Promise<Offer[]> {
   const page = await ctx.newPage();
 
-  const capture = startSearchOfferCapture({
-    page,
-    keep: 'largest',
-  });
-
   try {
-    const captureResult = await capture.waitForAction(
+    const captureResult = await captureSearchOffersForAction(
+      { page, keep: 'largest' },
       async () => {
         await page.goto(RESULT_URL(imageId), {
           waitUntil: 'domcontentloaded',

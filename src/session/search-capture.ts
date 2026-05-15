@@ -31,6 +31,13 @@ export type SearchOfferCaptureWaitStatus =
   | 'browser_closed'
   | 'stream_closed';
 
+export interface SearchOfferCaptureWaitOptions {
+  timeoutMs: number;
+  intervalMs?: number;
+  isBlocked?: () => boolean | Promise<boolean>;
+  isClosed?: () => boolean;
+}
+
 export interface SearchOfferCaptureWaitResult {
   status: SearchOfferCaptureWaitStatus;
   offers: Offer[];
@@ -42,6 +49,15 @@ export interface SearchOfferCaptureResult<TResult> {
   status: SearchOfferCaptureWaitStatus;
   offers: Offer[];
   diagnostics: SearchOfferCaptureDiagnostics;
+}
+
+export async function captureSearchOffersForAction<TResult>(
+  opts: SearchOfferCaptureOptions,
+  action: () => Promise<TResult>,
+  waitOptions: SearchOfferCaptureWaitOptions,
+): Promise<SearchOfferCaptureResult<TResult>> {
+  const capture = startSearchOfferCapture(opts);
+  return capture.waitForAction(action, waitOptions);
 }
 
 export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
@@ -109,12 +125,9 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
     opts.page.off('response', onResponse);
   };
 
-  const wait = async (optsWait: {
-    timeoutMs: number;
-    intervalMs?: number;
-    isBlocked?: () => boolean | Promise<boolean>;
-    isClosed?: () => boolean;
-  }): Promise<SearchOfferCaptureWaitResult> => {
+  const wait = async (
+    optsWait: SearchOfferCaptureWaitOptions,
+  ): Promise<SearchOfferCaptureWaitResult> => {
     const deadline = Date.now() + optsWait.timeoutMs;
     const intervalMs = optsWait.intervalMs ?? 300;
     let status: SearchOfferCaptureWaitStatus = 'timeout';
@@ -143,12 +156,7 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
 
   const waitForAction = async <TResult>(
     action: () => Promise<TResult>,
-    optsWait: {
-      timeoutMs: number;
-      intervalMs?: number;
-      isBlocked?: () => boolean | Promise<boolean>;
-      isClosed?: () => boolean;
-    },
+    optsWait: SearchOfferCaptureWaitOptions,
   ): Promise<SearchOfferCaptureResult<TResult>> => {
     try {
       const actionResult = await action();

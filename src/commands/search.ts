@@ -293,116 +293,125 @@ async function fetchSearch(
   info('Warming up s.1688.com...');
   await warmup(1500);
 
-  let capture = startSearchOfferCapture({
-    page,
-    requireMethod: 'getOfferList',
-    targetPage: () => currentTargetPage,
-  });
+  const allOffers: Offer[] = [];
+  const seenIds = new Set<string>();
 
-  try {
-    const allOffers: Offer[] = [];
-    const seenIds = new Set<string>();
+  class PageAdvanceStopped extends Error {}
 
-    for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
-      capture.reset();
-      currentTargetPage = pageNum;
+  const capturePageAction = async (
+    action: () => Promise<void>,
+    timeoutMs: number,
+  ) => {
+    const capture = startSearchOfferCapture({
+      page,
+      requireMethod: 'getOfferList',
+      targetPage: () => currentTargetPage,
+    });
+    try {
+      await action();
+      return await capture.wait({
+        timeoutMs,
+        isClosed: () => page.isClosed(),
+        isBlocked: isSearchBlocked,
+      });
+    } finally {
+      capture.dispose();
+    }
+  };
 
-      if (pageNum === 1) {
+  for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
+    currentTargetPage = pageNum;
+
+    let captureResult;
+    if (pageNum === 1) {
+      captureResult = await capturePageAction(async () => {
         info(`Searching 1688 for "${keyword}"...`);
         if (headed) {
           info('A Chrome window has opened — switch focus to it now.');
         }
         await navigateTo(baseUrl);
-      } else {
-        // Pages 2+ MUST stay in the same page session. Every fresh navigation
-        // mints a new search-context `pageId`, and `beginPage=N` against a
-        // fresh pageId returns near-duplicate top results (~75% overlap).
-        // Clicking the in-page "next" arrow advances `beginPage` within the
-        // SAME pageId, which is the only way to get a clean next 60.
-        info(`Fetching page ${pageNum}/${pagesWanted}...`);
-        const advanced = await clickSearchNextPage(page).catch(() => false);
-        if (!advanced) {
-          info(`Could not advance to page ${pageNum} — stopping at ${allOffers.length} results.`);
-          break;
-        }
-      }
-
-      let captureResult = await capture.wait({
-        timeoutMs: headed ? 180000 : 12000,
-        isClosed: () => page.isClosed(),
-        isBlocked: isSearchBlocked,
-      });
-      let capturedOffers = captureResult.offers;
-      let got = captureResult.status === 'captured';
-      if (captureResult.status === 'browser_closed') {
-        throw new CliError(130, 'CANCELED', 'Browser closed.');
-      }
-      // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
-      // just stops the loop with whatever has been collected so far.
-      if (!got && !headed && pageNum === 1) {
-        info('First attempt blocked or empty. Re-warming and retrying...');
-        // Dispose + recreate around the re-warmup: the re-warmup hits the
-        // homepage again, which would otherwise re-poison capturedOffers.
-        capture.dispose();
-        await warmup(3500);
-        capture = startSearchOfferCapture({
-          page,
-          requireMethod: 'getOfferList',
-          targetPage: () => currentTargetPage,
-        });
-        await navigateTo(baseUrl);
-        captureResult = await capture.wait({
-          timeoutMs: 15000,
-          isClosed: () => page.isClosed(),
-          isBlocked: isSearchBlocked,
-        });
-        capturedOffers = captureResult.offers;
-        got = captureResult.status === 'captured';
-        if (captureResult.status === 'browser_closed') {
-          throw new CliError(130, 'CANCELED', 'Browser closed.');
-        }
-      }
-      if (!got) {
-        if (pageNum === 1) {
-          throw riskControlError(headed);
-        }
-        info(
-          `Page ${pageNum} blocked or empty — returning ${allOffers.length} ` +
-            `results from ${pageNum - 1} page(s).`,
-        );
-        break;
-      }
-      if (pageNum === 1) await detectLoginRedirect(page);
-
-      // Accumulate with cross-page dedup. 1688 occasionally repeats P4P ad
-      // slots across pages; dedup keeps the result set clean.
-      let added = 0;
-      for (const o of capturedOffers) {
-        if (seenIds.has(o.offerId)) continue;
-        seenIds.add(o.offerId);
-        allOffers.push(o);
-        added++;
-      }
-
-      // Stop conditions:
-      //  - collected enough for the caller's --max
-      //  - short page (< 60) means we hit the last page of results
-      //  - zero new items means pagination isn't advancing (bail rather than
-      //    spin through identical pages)
-      if (allOffers.length >= maxResults) break;
-      if (capturedOffers.length < PAGE_SIZE) break;
-      if (added === 0) break;
-
-      // Human-like jitter between page clicks to keep the WAF score low.
-      if (pageNum < pagesWanted) {
-        await sleep(1500 + Math.random() * 2000);
+      }, headed ? 180000 : 12000);
+    } else {
+      try {
+        captureResult = await capturePageAction(async () => {
+          // Pages 2+ MUST stay in the same page session. Every fresh navigation
+          // mints a new search-context `pageId`, and `beginPage=N` against a
+          // fresh pageId returns near-duplicate top results (~75% overlap).
+          // Clicking the in-page "next" arrow advances `beginPage` within the
+          // SAME pageId, which is the only way to get a clean next 60.
+          info(`Fetching page ${pageNum}/${pagesWanted}...`);
+          const advanced = await clickSearchNextPage(page).catch(() => false);
+          if (!advanced) {
+            info(`Could not advance to page ${pageNum} — stopping at ${allOffers.length} results.`);
+            throw new PageAdvanceStopped();
+          }
+        }, headed ? 180000 : 12000);
+      } catch (e) {
+        if (e instanceof PageAdvanceStopped) break;
+        throw e;
       }
     }
 
-    return allOffers;
-  } finally {
-    capture.dispose();
+    let capturedOffers = captureResult.offers;
+    let got = captureResult.status === 'captured';
+    if (captureResult.status === 'browser_closed') {
+      throw new CliError(130, 'CANCELED', 'Browser closed.');
+    }
+    // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
+    // just stops the loop with whatever has been collected so far.
+    if (!got && !headed && pageNum === 1) {
+      info('First attempt blocked or empty. Re-warming and retrying...');
+      await warmup(3500);
+      captureResult = await capturePageAction(
+        async () => {
+          await navigateTo(baseUrl);
+        },
+        15000,
+      );
+      capturedOffers = captureResult.offers;
+      got = captureResult.status === 'captured';
+      if (captureResult.status === 'browser_closed') {
+        throw new CliError(130, 'CANCELED', 'Browser closed.');
+      }
+    }
+    if (!got) {
+      if (pageNum === 1) {
+        throw riskControlError(headed);
+      }
+      info(
+        `Page ${pageNum} blocked or empty — returning ${allOffers.length} ` +
+          `results from ${pageNum - 1} page(s).`,
+      );
+      break;
+    }
+    if (pageNum === 1) await detectLoginRedirect(page);
+
+    // Accumulate with cross-page dedup. 1688 occasionally repeats P4P ad
+    // slots across pages; dedup keeps the result set clean.
+    let added = 0;
+    for (const o of capturedOffers) {
+      if (seenIds.has(o.offerId)) continue;
+      seenIds.add(o.offerId);
+      allOffers.push(o);
+      added++;
+    }
+
+    // Stop conditions:
+    //  - collected enough for the caller's --max
+    //  - short page (< 60) means we hit the last page of results
+    //  - zero new items means pagination isn't advancing (bail rather than
+    //    spin through identical pages)
+    if (allOffers.length >= maxResults) break;
+    if (capturedOffers.length < PAGE_SIZE) break;
+    if (added === 0) break;
+
+    // Human-like jitter between page clicks to keep the WAF score low.
+    if (pageNum < pagesWanted) {
+      await sleep(1500 + Math.random() * 2000);
+    }
   }
+
+  return allOffers;
 }
 
 async function isBlocked(page: Page, retries = 3): Promise<boolean> {

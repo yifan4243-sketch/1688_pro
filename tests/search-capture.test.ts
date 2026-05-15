@@ -2,7 +2,10 @@ import { EventEmitter } from 'node:events';
 import type { Page, Response as PWResponse } from 'playwright';
 import { describe, expect, it } from 'vitest';
 import { SEARCH_APP_ID, SEARCH_MTOP_API } from '../src/session/search-mtop.js';
-import { startSearchOfferCapture } from '../src/session/search-capture.js';
+import {
+  captureSearchOffersForAction,
+  startSearchOfferCapture,
+} from '../src/session/search-capture.js';
 
 class MockPage extends EventEmitter {
   on(event: 'response', listener: (response: PWResponse) => void): this {
@@ -136,5 +139,37 @@ describe('startSearchOfferCapture', () => {
 
     expect(result.status).toBe('stream_closed');
     expect(result.offers).toEqual([]);
+  });
+
+  it('scopes listener cleanup around an action', async () => {
+    const mockPage = page();
+
+    const result = await captureSearchOffersForAction(
+      { page: mockPage },
+      async () => {
+        mockPage.emitResponse(response(searchUrl({}), body('scoped')));
+      },
+      { timeoutMs: 50, intervalMs: 1 },
+    );
+
+    expect(result.status).toBe('captured');
+    expect(result.offers.map((o) => o.offerId)).toEqual(['scoped']);
+    expect(mockPage.listenerCount('response')).toBe(0);
+  });
+
+  it('cleans up scoped listeners when the action fails', async () => {
+    const mockPage = page();
+
+    await expect(
+      captureSearchOffersForAction(
+        { page: mockPage },
+        async () => {
+          throw new Error('navigation failed');
+        },
+        { timeoutMs: 50, intervalMs: 1 },
+      ),
+    ).rejects.toThrow('navigation failed');
+
+    expect(mockPage.listenerCount('response')).toBe(0);
   });
 });
