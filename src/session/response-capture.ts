@@ -46,8 +46,17 @@ export interface StartResponseCaptureOptions<T> {
   maxDiagnosticsEntries?: number;
 }
 
+export interface ResponseCaptureActionResult<T, TResult> {
+  actionResult: TResult;
+  response: T | null;
+  diagnostics: ResponseCaptureDiagnostics;
+}
+
 export interface ResponseCapture<T> {
   wait(): Promise<T | null>;
+  waitForAction<TResult>(
+    action: () => Promise<TResult>,
+  ): Promise<ResponseCaptureActionResult<T, TResult>>;
   dispose(): void;
   diagnostics(): ResponseCaptureDiagnostics;
 }
@@ -183,6 +192,19 @@ export function startResponseCapture<T>(
         })
         .finally(dispose);
       return waitPromise;
+    },
+    async waitForAction<TResult>(action: () => Promise<TResult>) {
+      try {
+        const actionResult = await action();
+        const response = await this.wait();
+        return {
+          actionResult,
+          response,
+          diagnostics: diagnostics(),
+        };
+      } finally {
+        dispose();
+      }
     },
     dispose,
     diagnostics,

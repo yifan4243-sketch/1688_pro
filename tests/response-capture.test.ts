@@ -313,4 +313,90 @@ describe('startResponseCapture', () => {
 
     expect(capture.diagnostics().emptyResults).toHaveLength(1);
   });
+
+  it('captures responses emitted during waitForAction actions', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 50,
+      matcher: /api/,
+      parse: async (resp) => JSON.parse(await resp.text()) as { ok: boolean },
+    });
+
+    const result = await capture.waitForAction(async () => {
+      mockPage.emitResponse(response('https://example.com/api', '{"ok":true}'));
+      return 'clicked';
+    });
+
+    expect(result.actionResult).toBe('clicked');
+    expect(result.response).toEqual({ ok: true });
+    expect(result.diagnostics).toMatchObject({
+      disposed: true,
+      settled: true,
+      matchedCount: 1,
+      parsedCount: 1,
+    });
+    expect(mockPage.listenerCount('response')).toBe(0);
+  });
+
+  it('disposes and rethrows when waitForAction actions fail', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 50,
+      matcher: /api/,
+      parse: async () => ({ ok: true }),
+    });
+
+    await expect(
+      capture.waitForAction(async () => {
+        throw new Error('click failed');
+      }),
+    ).rejects.toThrow('click failed');
+
+    expect(mockPage.listenerCount('response')).toBe(0);
+    expect(capture.diagnostics()).toMatchObject({
+      disposed: true,
+      timedOut: false,
+    });
+  });
+
+  it('preserves parser diagnostics through waitForAction', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 50,
+      matcher: /api/,
+      parse: async (resp) => JSON.parse(await resp.text()) as { ok: boolean },
+    });
+
+    const result = await capture.waitForAction(async () => {
+      mockPage.emitResponse(response('https://example.com/api', 'not json'));
+      mockPage.emitResponse(response('https://example.com/api', '{"ok":true}'));
+    });
+
+    expect(result.response).toEqual({ ok: true });
+    expect(result.diagnostics.failureCount).toBe(1);
+    expect(result.diagnostics.failures[0]).toMatchObject({ phase: 'parse' });
+  });
+
+  it('preserves empty-result diagnostics through waitForAction', async () => {
+    const mockPage = page();
+    const capture = startResponseCapture({
+      page: mockPage,
+      timeoutMs: 5,
+      matcher: /api/,
+      parse: async () => null,
+    });
+
+    const result = await capture.waitForAction(async () => {
+      mockPage.emitResponse(response('https://example.com/api'));
+    });
+
+    expect(result.response).toBeNull();
+    expect(result.diagnostics).toMatchObject({
+      timedOut: true,
+      emptyResultCount: 1,
+    });
+  });
 });

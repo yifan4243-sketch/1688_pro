@@ -5,6 +5,16 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { clickSearchNextPage } from '../session/search-locators.js';
+import { startSearchOfferCapture } from '../session/search-capture.js';
+import {
+  SEARCH_APP_ID,
+  SEARCH_MTOP_API,
+  mapOffer,
+  parseOfferItemsFromMtopText,
+  readSearchMtopRequestMeta,
+  type Offer,
+  type RawOfferItem,
+} from '../session/search-mtop.js';
 import { parseMtopJsonp } from '../session/mtop.js';
 import { sleep } from '../session/wait.js';
 
@@ -26,24 +36,7 @@ export interface SearchResult {
   offers: Offer[];
 }
 
-export interface Offer {
-  offerId: string;
-  title: string;
-  price: { text: string; min: number | null; max: number | null };
-  supplier: {
-    name: string | null;
-    shopUrl: string | null;
-    years: number | null;
-  };
-  location: { province: string | null; city: string | null };
-  bizType: string | null; // 生产加工 / 贸易商 / 经销批发 ...
-  verified: { factory: boolean; business: boolean; superFactory: boolean };
-  tags: string[]; // 服务标签：退货包运费 / 先采后付 / 7天无理由 ...
-  isP4P: boolean; // 是否广告竞价位
-  turnover: string | null; // 已售数 / 订单数（bookedCount）
-  url: string;
-  image: string | null;
-}
+export type { Offer };
 
 export async function execute(
   ctx: BrowserContext,
@@ -88,13 +81,7 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
 let HTML_SEQ = 0;
 let MTOP_SEQ = 0;
 
-// 1688's main search reuses the WirelessRecommend.recommend mtop API with
-// appId=32517. Same endpoint serves keyword search, image search, and
-// related-product recommendations — appId is the discriminator.
-export const SEARCH_MTOP_API =
-  'mtop.relationrecommend.wirelessrecommend.recommend';
-export const SEARCH_APP_ID = '32517';
-
+export { SEARCH_APP_ID, SEARCH_MTOP_API, mapOffer };
 // 1688 search returns 60 offers per page. `--max` auto-paginates by
 // clicking the in-page "next" arrow (which keeps the search-context
 // `pageId` stable — see fetchSearch for why that matters). MAX_PAGES caps
@@ -106,75 +93,7 @@ const MAX_PAGES = 10;
 
 export { parseMtopJsonp };
 
-export interface RawOfferItem {
-  cellType?: string;
-  data?: {
-    offerId?: string;
-    title?: string;
-    priceInfo?: { price?: string };
-    offerPicUrl?: string;
-    loginId?: string;
-    memberId?: string;
-    province?: string;
-    city?: string;
-    bookedCount?: string;
-    isP4P?: string;
-    bizType?: string;
-    factoryInspection?: string;
-    businessInspection?: string;
-    superFactory?: string;
-    tags?: { text?: string }[];
-    winPortUrl?: string;
-    shop?: { text?: string; tpYear?: string };
-    shopAddition?: { shopLinkUrl?: string };
-  };
-}
-
-function bool(s?: string): boolean {
-  return s === 'true';
-}
-
-export function mapOffer(item: RawOfferItem): Offer | null {
-  const d = item.data;
-  if (!d?.offerId) return null;
-  const title = (d.title ?? '').replace(/<\/?font[^>]*>/g, '').trim();
-  const priceRaw = d.priceInfo?.price;
-  const price = priceRaw ? parseFloat(priceRaw) : null;
-  const yearsRaw = d.shop?.tpYear;
-  const years = yearsRaw ? parseInt(yearsRaw, 10) : null;
-  const tags = (d.tags ?? [])
-    .map((t) => t?.text?.trim() ?? '')
-    .filter((s): s is string => !!s);
-  return {
-    offerId: d.offerId,
-    title,
-    price: {
-      text: priceRaw ? `¥${priceRaw}` : '',
-      min: price,
-      max: price,
-    },
-    supplier: {
-      name: d.shop?.text ?? null,
-      shopUrl: d.shopAddition?.shopLinkUrl ?? d.winPortUrl ?? null,
-      years,
-    },
-    location: {
-      province: d.province ?? null,
-      city: d.city ?? null,
-    },
-    bizType: d.bizType ?? null,
-    verified: {
-      factory: bool(d.factoryInspection),
-      business: bool(d.businessInspection),
-      superFactory: bool(d.superFactory),
-    },
-    tags,
-    isP4P: bool(d.isP4P),
-    turnover: d.bookedCount ?? null,
-    url: `https://detail.1688.com/offer/${d.offerId}.html`,
-    image: d.offerPicUrl ?? null,
-  };
-}
+export type { RawOfferItem };
 
 async function fetchSearch(
   ctx: BrowserContext,
@@ -196,59 +115,10 @@ async function fetchSearch(
     MAX_PAGES,
   );
 
-  // mtop interceptor — captures the result list for the EXACT page we
-  // navigated to.
-  //
-  // The search page fires several appId=32517 calls: a navigation/config
-  // call (`batchGetNavigationAndConfigData`) and the result list
-  // (`getOfferList`). Only the latter carries offers. Crucially, we also
-  // match the request's `beginPage` against the page we're currently on —
-  // a stale page-1 response can still be in flight when we've already
-  // navigated to page 2, and capturing it would silently mix pages or stall
-  // pagination.
-  let capturedOffers: Offer[] = [];
+  // The search capture must only attach AFTER warmup: the warmup homepage fires
+  // the same WirelessRecommend endpoint/appId for recommendations. The capture
+  // also checks beginPage so stale page-1 responses cannot poison later pages.
   let currentTargetPage = 1;
-  const onResp = async (resp: import('playwright').Response) => {
-    const respUrl = resp.url();
-    if (!respUrl.includes(SEARCH_MTOP_API)) return;
-    try {
-      const dataParam =
-        new URLSearchParams(new URL(respUrl).search).get('data') ?? '';
-      const dataObj = JSON.parse(dataParam) as {
-        appId?: unknown;
-        params?: string;
-      };
-      if (String(dataObj.appId) !== SEARCH_APP_ID) return;
-      const params = JSON.parse(dataObj.params ?? '{}') as {
-        method?: string;
-        beginPage?: number | string;
-      };
-      if (params.method !== 'getOfferList') return;
-      // `beginPage` is a number on page 1 (the page's default) but a string
-      // on pages 2+ (it flows through the click handler) — coerce to compare.
-      if (Number(params.beginPage ?? 1) !== currentTargetPage) return;
-    } catch {
-      return;
-    }
-    try {
-      const body = await resp.text();
-      const json = parseMtopJsonp(body) as {
-        data?: { data?: { OFFER?: { items?: RawOfferItem[] } } };
-      };
-      const items = json?.data?.data?.OFFER?.items ?? [];
-      const offers = items
-        .map(mapOffer)
-        .filter((o): o is Offer => o !== null);
-      if (offers.length > 0) capturedOffers = offers;
-    } catch {
-      /* malformed response — skip */
-    }
-  };
-  // NOTE: `onResp` is intentionally NOT attached here. It must only listen
-  // AFTER the warmup navigation — `https://s.1688.com/` (the warmup target)
-  // fires its own WirelessRecommend.recommend with appId=32517 for the
-  // homepage recommendation feed. Attaching early captures that feed instead
-  // of the actual keyword-search results.
 
   async function warmup(delayMs: number): Promise<void> {
     try {
@@ -415,21 +285,7 @@ async function fetchSearch(
     });
   }
 
-  // Wait for the search mtop response (appId=32517). Headless: short
-  // timeout; headed: long enough for user to solve any slider.
-  async function waitForOffers(timeoutMs: number): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (page.isClosed()) {
-        throw new CliError(130, 'CANCELED', 'Browser closed.');
-      }
-      if (capturedOffers.length > 0) return true;
-      // Cheap WAF check: if we're stuck on the punish URL, fail fast headless.
-      if (!headed && /\/punish|x5secdata=/.test(page.url())) return false;
-      await sleep(300);
-    }
-    return false;
-  }
+  const isSearchBlocked = () => !headed && /\/punish|x5secdata=/.test(page.url());
 
   // Stable strategy: always warm up before search. Cookie-presence checks
   // can't tell whether the WAF has invalidated the session, so we pay a
@@ -437,16 +293,18 @@ async function fetchSearch(
   info('Warming up s.1688.com...');
   await warmup(1500);
 
-  // Attach the capture listener ONLY now — after warmup — so the homepage's
-  // own recommendation feed (same appId=32517) can't poison capturedOffers.
-  page.on('response', onResp);
+  const capture = startSearchOfferCapture({
+    page,
+    requireMethod: 'getOfferList',
+    targetPage: () => currentTargetPage,
+  });
 
   const allOffers: Offer[] = [];
   const seenIds = new Set<string>();
 
   for (let pageNum = 1; pageNum <= pagesWanted; pageNum++) {
-    capturedOffers = [];
-    currentTargetPage = pageNum; // onResp only captures responses for this page
+    capture.reset();
+    currentTargetPage = pageNum;
 
     if (pageNum === 1) {
       info(`Searching 1688 for "${keyword}"...`);
@@ -468,23 +326,37 @@ async function fetchSearch(
       }
     }
 
-    let got = await waitForOffers(headed ? 180000 : 12000);
+    let capturedOffers = await capture.wait({
+      timeoutMs: headed ? 180000 : 12000,
+      isClosed: () => page.isClosed(),
+      isBlocked: isSearchBlocked,
+    });
+    let got = capturedOffers.length > 0;
     // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
     // just stops the loop with whatever has been collected so far.
     if (!got && !headed && pageNum === 1) {
       info('First attempt blocked or empty. Re-warming and retrying...');
-      // Detach + reset around the re-warmup: the re-warmup hits the homepage
-      // again, which would otherwise re-poison capturedOffers.
-      page.off('response', onResp);
-      capturedOffers = [];
+      // Dispose + recreate around the re-warmup: the re-warmup hits the
+      // homepage again, which would otherwise re-poison capturedOffers.
+      capture.dispose();
       await warmup(3500);
-      page.on('response', onResp);
+      const retryCapture = startSearchOfferCapture({
+        page,
+        requireMethod: 'getOfferList',
+        targetPage: () => currentTargetPage,
+      });
       await navigateTo(baseUrl);
-      got = await waitForOffers(15000);
+      capturedOffers = await retryCapture.wait({
+        timeoutMs: 15000,
+        isClosed: () => page.isClosed(),
+        isBlocked: isSearchBlocked,
+      });
+      got = capturedOffers.length > 0;
+      retryCapture.dispose();
     }
     if (!got) {
       if (pageNum === 1) {
-        page.off('response', onResp);
+        capture.dispose();
         throw riskControlError(headed);
       }
       info(
@@ -520,7 +392,7 @@ async function fetchSearch(
     }
   }
 
-  page.off('response', onResp);
+  capture.dispose();
   return allOffers;
 }
 

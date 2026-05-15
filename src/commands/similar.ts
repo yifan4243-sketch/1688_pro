@@ -1,20 +1,14 @@
 // Find similar offers — uses 1688's "找同款 / 找相似" page which renders
 // results from the same WirelessRecommend.recommend mtop API (appId=32517)
 // that search uses, just seeded by an offerId instead of a keyword.
-import type { BrowserContext, Response as PWResponse } from 'playwright';
+import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { sleep } from '../session/wait.js';
-import {
-  type Offer,
-  type RawOfferItem,
-  SEARCH_MTOP_API,
-  SEARCH_APP_ID,
-  parseMtopJsonp,
-  mapOffer,
-} from './search.js';
+import { startSearchOfferCapture } from '../session/search-capture.js';
+import { type Offer } from './search.js';
 
 export interface SimilarOpts {
   offerId: string;
@@ -62,34 +56,6 @@ async function executeSimilar(
   const headed = args.headed === true;
   const page = await ctx.newPage();
 
-  let captured: Offer[] = [];
-  const onResp = async (resp: PWResponse) => {
-    const u = resp.url();
-    if (!u.includes(SEARCH_MTOP_API)) return;
-    try {
-      const dataParam =
-        new URLSearchParams(new URL(u).search).get('data') ?? '';
-      const dataObj = JSON.parse(dataParam);
-      if (String(dataObj.appId) !== SEARCH_APP_ID) return;
-    } catch {
-      return;
-    }
-    try {
-      const body = await resp.text();
-      const json = parseMtopJsonp(body) as {
-        data?: { data?: { OFFER?: { items?: RawOfferItem[] } } };
-      };
-      const items = json?.data?.data?.OFFER?.items ?? [];
-      const offers = items
-        .map(mapOffer)
-        .filter((o): o is Offer => o !== null);
-      if (offers.length > captured.length) captured = offers;
-    } catch {
-      /* malformed — skip */
-    }
-  };
-  page.on('response', onResp);
-
   try {
     info('Warming up s.1688.com...');
     await page.goto('https://s.1688.com/', {
@@ -98,23 +64,25 @@ async function executeSimilar(
     });
     await sleep(1500);
 
-    info(`Finding similar offers for ${args.offerId}...`);
-    if (headed) info('A Chrome window has opened — switch focus to it now.');
-    await page.goto(SIMILAR_URL(args.offerId), {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
+    const capture = startSearchOfferCapture({
+      page,
+      keep: 'largest',
     });
-
-    const deadline = Date.now() + (headed ? 180000 : 15000);
-    while (Date.now() < deadline) {
-      if (page.isClosed()) {
-        throw new CliError(130, 'CANCELED', 'Browser closed.');
-      }
-      if (captured.length > 0) break;
-      if (!headed && /\/punish|x5secdata=/.test(page.url())) break;
-      await sleep(300);
-    }
-    page.off('response', onResp);
+    const { offers: captured } = await capture.waitForAction(
+      async () => {
+        info(`Finding similar offers for ${args.offerId}...`);
+        if (headed) info('A Chrome window has opened — switch focus to it now.');
+        await page.goto(SIMILAR_URL(args.offerId), {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000,
+        });
+      },
+      {
+        timeoutMs: headed ? 180000 : 15000,
+        isClosed: () => page.isClosed(),
+        isBlocked: () => !headed && /\/punish|x5secdata=/.test(page.url()),
+      },
+    );
 
     if (captured.length === 0) {
       throw new CliError(
