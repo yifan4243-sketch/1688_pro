@@ -5,6 +5,7 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { clickSearchNextPage } from '../session/search-locators.js';
+import { sleep } from '../session/wait.js';
 
 export interface SearchOpts {
   max?: string;
@@ -258,7 +259,7 @@ async function fetchSearch(
         waitUntil: 'domcontentloaded',
         timeout: 20000,
       });
-      await new Promise((r) => setTimeout(r, delayMs));
+      await sleep(delayMs);
     } catch {
       /* best-effort */
     }
@@ -428,7 +429,7 @@ async function fetchSearch(
       if (capturedOffers.length > 0) return true;
       // Cheap WAF check: if we're stuck on the punish URL, fail fast headless.
       if (!headed && /\/punish|x5secdata=/.test(page.url())) return false;
-      await new Promise((r) => setTimeout(r, 300));
+      await sleep(300);
     }
     return false;
   }
@@ -518,7 +519,7 @@ async function fetchSearch(
 
     // Human-like jitter between page clicks to keep the WAF score low.
     if (pageNum < pagesWanted) {
-      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000));
+      await sleep(1500 + Math.random() * 2000);
     }
   }
 
@@ -542,7 +543,7 @@ async function isBlocked(page: Page, retries = 3): Promise<boolean> {
     } catch {
       return false;
     }
-    if (i < retries - 1) await new Promise((r) => setTimeout(r, 800));
+    if (i < retries - 1) await sleep(800);
   }
   return false;
 }
@@ -616,7 +617,7 @@ async function waitPastBlocking(
       lastProgressAt = Date.now();
     }
 
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
   }
   return false;
 }

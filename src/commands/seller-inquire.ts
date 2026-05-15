@@ -4,6 +4,7 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { executeRaw as cartListExecute } from './cart-list.js';
 import { readState } from '../session/state.js';
+import { sleep } from '../session/wait.js';
 import type {
   SellerChatArgs,
   SellerChatResult,
@@ -75,7 +76,7 @@ export async function run(opts: SellerInquireOpts): Promise<void> {
   );
 
   // Small pause so the 2 sends look natural (and avoid hammering)
-  await new Promise((r) => setTimeout(r, 1500));
+  await sleep(1500);
 
   info(`Sending message 2/2: question`);
   const data = await dispatch<SellerChatArgs, SellerChatResult>(
@@ -155,7 +156,7 @@ export async function scrapeFeGlobals(
     );
     // The script tag containing FE_GLOBALS is in the initial HTML, so we don't
     // need to wait for JS to run — but a small delay helps if redirects happen.
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
     const result = await page.evaluate(() => {
       const w = window as unknown as { FE_GLOBALS?: { offerLoginId?: string } };
       return { offerLoginId: w.FE_GLOBALS?.offerLoginId ?? null };

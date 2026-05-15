@@ -10,6 +10,7 @@ import {
   clickImageSearchButton,
   clickImageUploadButton,
 } from '../session/image-search-locators.js';
+import { sleep } from '../session/wait.js';
 import {
   type Offer,
   type RawOfferItem,
@@ -173,7 +174,7 @@ async function searchByImageId(
       }
       if (captured.length > 0) break;
       if (/\/punish|x5secdata=/.test(page.url())) break;
-      await new Promise((r) => setTimeout(r, 300));
+      await sleep(300);
     }
     page.off('response', onResp);
     return captured;

@@ -7,6 +7,7 @@ import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { nowIso } from '../util/time.js';
 import { loginQrFile, ensureRoot } from '../session/paths.js';
+import { sleep } from '../session/wait.js';
 
 export interface LoginOpts {
   force?: boolean;
@@ -187,7 +188,7 @@ async function waitForLogin(
     ) {
       return;
     }
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
   }
   throw new CliError(
     7,

@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 
 export interface OfferOpts {
   offerId: string;
@@ -390,9 +391,9 @@ async function readPageInfo(page: Page): Promise<PageInfo> {
   // products there, which can hang the renderer.
   try {
     await page.evaluate(() => window.scrollTo(0, 1500));
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
     await page.evaluate(() => window.scrollTo(0, 3000));
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
   } catch {
     /* best-effort */
   }

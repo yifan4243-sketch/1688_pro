@@ -9,6 +9,7 @@ import {
   findImInput,
   waitForConversationActivated,
 } from '../session/im-locators.js';
+import { sleep } from '../session/wait.js';
 import { executeRaw as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
 
@@ -254,7 +255,7 @@ async function waitForWsMessages(
         midToMethod.get(f.mid) === '/r/MessageManager/listUserMessages',
     );
     if (hit) return true;
-    await new Promise((r) => setTimeout(r, 250));
+    await sleep(250);
   }
   return false;
 }
@@ -414,10 +415,10 @@ export async function executeRaw(
     const gotWsMessages = await waitForWsMessages(wsFrames, 8000);
     if (gotWsMessages) {
       // Give a tiny grace window in case a second page-load batch is in flight.
-      await new Promise((r) => setTimeout(r, 800));
+      await sleep(800);
     } else {
       // No WS response captured — wait a bit more for DOM render.
-      await new Promise((r) => setTimeout(r, 2500));
+      await sleep(2500);
     }
 
     // Try the WebSocket path first — server-truth data (messageId, createAt,
@@ -504,7 +505,7 @@ export async function executeRaw(
 
     // Probe mode: wait longer for response frames.
     if (process.env.BB1688_PROBE === '1') {
-      await new Promise((r) => setTimeout(r, 15000));
+      await sleep(15000);
     }
     // Probe: dump (1) suspected card item HTML, (2) all mtop calls fired
     // during the IM load, (3) any WebSocket connections + global state.
@@ -798,7 +799,7 @@ export async function run(opts: SellerMessagesOpts): Promise<void> {
     // Poll loop
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      await new Promise((r) => setTimeout(r, intervalSec * 1000));
+      await sleep(intervalSec * 1000);
       let next: SellerMessagesResult;
       try {
         next = await fetchOnce();

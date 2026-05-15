@@ -6,6 +6,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 import {
   type Offer,
   type RawOfferItem,
@@ -95,7 +96,7 @@ async function executeSimilar(
       waitUntil: 'domcontentloaded',
       timeout: 20000,
     });
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleep(1500);
 
     info(`Finding similar offers for ${args.offerId}...`);
     if (headed) info('A Chrome window has opened — switch focus to it now.');
@@ -111,7 +112,7 @@ async function executeSimilar(
       }
       if (captured.length > 0) break;
       if (!headed && /\/punish|x5secdata=/.test(page.url())) break;
-      await new Promise((r) => setTimeout(r, 300));
+      await sleep(300);
     }
     page.off('response', onResp);
 

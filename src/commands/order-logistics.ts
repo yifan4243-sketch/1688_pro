@@ -3,6 +3,7 @@ import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
+import { sleep } from '../session/wait.js';
 
 export interface OrderLogisticsOpts {
   orderId: string;
@@ -182,7 +183,7 @@ async function fetchPageLogistics(
     let stableSince = 0;
     while (Date.now() < deadline) {
       if (orderIdsOnPage.length === 0) {
-        await new Promise((r) => setTimeout(r, 250));
+        await sleep(250);
         continue;
       }
       if (traceResponseCount !== lastTraceCount) {
@@ -198,7 +199,7 @@ async function fetchPageLogistics(
       ) {
         break;
       }
-      await new Promise((r) => setTimeout(r, 250));
+      await sleep(250);
     }
   } finally {
     pwPage.off('response', onResp);
