@@ -43,6 +43,10 @@ export function runsDir(): string {
   return path.join(root(), 'runs');
 }
 
+export function eventsFile(): string {
+  return path.join(root(), 'events.jsonl');
+}
+
 export function loginQrFile(): string {
   return path.join(root(), 'login-qr.png');
 }

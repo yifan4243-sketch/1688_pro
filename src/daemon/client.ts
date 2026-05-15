@@ -36,7 +36,11 @@ export async function isDaemonReachable(): Promise<boolean> {
   });
 }
 
-export async function daemonCall<T>(cmd: string, args: unknown): Promise<T> {
+export async function daemonCall<T>(
+  cmd: string,
+  args: unknown,
+  requestId = makeRequestId(),
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const sock = net.createConnection(socketPath());
     let buf = '';
@@ -62,7 +66,7 @@ export async function daemonCall<T>(cmd: string, args: unknown): Promise<T> {
     }
 
     sock.on('connect', () => {
-      const req = { id: makeRequestId(), cmd, args };
+      const req = { id: requestId, cmd, args };
       sock.write(JSON.stringify(req) + '\n');
     });
 
