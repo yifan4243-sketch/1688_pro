@@ -7,10 +7,12 @@ import {
   stateFile,
   lockFile,
   profilePath,
+  runsDir,
 } from '../session/paths.js';
 import { readState } from '../session/state.js';
 import { emit } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { appendEvent, readRecentEvents } from '../session/events.js';
 import pkg from '../../package.json' with { type: 'json' };
 
 export interface VersionInfo {
@@ -84,6 +86,7 @@ async function checkUpdate(): Promise<{ check: Check; version: VersionInfo }> {
 
 export interface DoctorOpts {
   launch?: boolean;
+  live?: boolean;
   profile?: string;
 }
 
@@ -110,6 +113,9 @@ export async function run(opts: DoctorOpts): Promise<void> {
   checks.push(await checkSession());
   const daemon = await checkDaemonHealth();
   checks.push(daemon.check);
+  if (opts.live) {
+    checks.push(...(await checkLiveProbes(daemon.status)));
+  }
   const upd = await checkUpdate();
   checks.push(upd.check);
 
@@ -424,6 +430,95 @@ async function checkDaemonHealth(): Promise<{
       },
     };
   }
+}
+
+async function checkLiveProbes(
+  daemon: DoctorDaemonStatus | null,
+): Promise<Check[]> {
+  const checks: Check[] = [];
+  checks.push(checkDaemonLiveProbe(daemon));
+  checks.push(await checkEventLogWrite());
+  checks.push(await checkArtifactWrite());
+  checks.push(await checkRecentRiskEvent());
+  return checks;
+}
+
+function checkDaemonLiveProbe(daemon: DoctorDaemonStatus | null): Check {
+  if (!daemon?.running) {
+    return {
+      name: 'live daemon socket',
+      status: 'warn',
+      message: 'daemon not running; commands will use inline browser sessions',
+      fix: '1688 daemon start',
+    };
+  }
+  if (!daemon.reachable) {
+    return {
+      name: 'live daemon socket',
+      status: 'fail',
+      message: `daemon pid ${daemon.pid ?? '?'} is not reachable`,
+      fix: '1688 daemon reload',
+    };
+  }
+  return {
+    name: 'live daemon socket',
+    status: 'ok',
+    message: 'reachable',
+  };
+}
+
+async function checkEventLogWrite(): Promise<Check> {
+  try {
+    await appendEvent({
+      ts: new Date().toISOString(),
+      requestId: `doctor-live-${Date.now().toString(36)}`,
+      cmd: 'doctor',
+      phase: 'end',
+      status: 'ok',
+    });
+    return { name: 'live event log', status: 'ok', message: 'writable' };
+  } catch (e) {
+    return {
+      name: 'live event log',
+      status: 'fail',
+      message: `unwritable: ${(e as Error).message}`,
+      fix: `chmod u+w ${root()}`,
+    };
+  }
+}
+
+async function checkArtifactWrite(): Promise<Check> {
+  const dir = path.join(runsDir(), `.doctor-live-${Date.now().toString(36)}`);
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'probe.json'), JSON.stringify({ ok: true }));
+    return { name: 'live artifact write', status: 'ok', message: 'writable' };
+  } catch (e) {
+    return {
+      name: 'live artifact write',
+      status: 'fail',
+      message: `unwritable: ${(e as Error).message}`,
+      fix: `chmod u+w ${runsDir()}`,
+    };
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function checkRecentRiskEvent(): Promise<Check> {
+  const recent = await readRecentEvents(50);
+  const risk = [...recent]
+    .reverse()
+    .find((e) => e.verification?.state === 'risk_control' || e.errorCode === 'RISK_CONTROL');
+  if (!risk) {
+    return { name: 'live recent risk', status: 'ok', message: 'no recent risk-control event' };
+  }
+  return {
+    name: 'live recent risk',
+    status: 'warn',
+    message: `recent risk event in ${risk.cmd} (${risk.requestId})`,
+    fix: 'Run the affected command with --headed if verification is still active.',
+  };
 }
 
 async function checkSession(): Promise<Check> {

@@ -357,6 +357,7 @@ program
   .command('doctor')
   .description('Check environment, profile, Chromium, and session')
   .option('--no-launch', 'Skip the actual Chromium launch test (faster)')
+  .option('--live', 'Run read-only live probes for daemon, artifacts, and event logging')
   .option('--profile <name>', 'Profile name (default: default)')
   .action(async (opts) => {
     const { run } = await import('./commands/doctor.js');
