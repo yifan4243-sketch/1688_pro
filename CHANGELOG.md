@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.40] - 2026-05-15
 
 ### Added
 - **`1688 inbox` — list recent 旺旺 IM conversations.** New top-level
