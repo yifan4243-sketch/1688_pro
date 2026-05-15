@@ -1,5 +1,5 @@
 import type { Page, Response as PWResponse } from 'playwright';
-import { sleep } from './wait.js';
+import { waitWithDeadline } from './wait.js';
 import {
   SEARCH_APP_ID,
   parseOfferItemsFromMtopText,
@@ -115,30 +115,18 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
     isBlocked?: () => boolean | Promise<boolean>;
     isClosed?: () => boolean;
   }): Promise<SearchOfferCaptureWaitResult> => {
-    const deadline = Date.now() + optsWait.timeoutMs;
-    const intervalMs = optsWait.intervalMs ?? 300;
-    let status: SearchOfferCaptureWaitStatus = 'timeout';
-    while (Date.now() < deadline) {
-      if (optsWait.isClosed?.()) {
-        status = 'browser_closed';
-        break;
-      }
-      if (offers.length > 0) {
-        status = 'captured';
-        break;
-      }
-      if (await optsWait.isBlocked?.()) {
-        status = 'blocked';
-        break;
-      }
-      if (disposed) {
-        status = 'stream_closed';
-        break;
-      }
-      await sleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
-    }
-    if (offers.length > 0) status = 'captured';
-    return { status, offers, diagnostics: diagnostics() };
+    const result = await waitWithDeadline<SearchOfferCaptureWaitStatus>(async () => {
+      if (optsWait.isClosed?.()) return 'browser_closed';
+      if (offers.length > 0) return 'captured';
+      if (await optsWait.isBlocked?.()) return 'blocked';
+      if (disposed) return 'stream_closed';
+      return null;
+    }, {
+      timeoutMs: optsWait.timeoutMs,
+      intervalMs: optsWait.intervalMs ?? 300,
+      onTimeout: () => (offers.length > 0 ? 'captured' : 'timeout'),
+    });
+    return { status: result, offers, diagnostics: diagnostics() };
   };
 
   const waitForAction = async <TResult>(

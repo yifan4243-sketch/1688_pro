@@ -16,7 +16,7 @@ import {
   type RawOfferItem,
 } from '../session/search-mtop.js';
 import { parseMtopJsonp } from '../session/mtop.js';
-import { sleep } from '../session/wait.js';
+import { sleep, waitWithDeadline } from '../session/wait.js';
 
 export interface SearchOpts {
   max?: string;
@@ -447,11 +447,10 @@ async function waitPastBlocking(
     info('Verification page detected — drag the slider in the window.');
   }
 
-  const deadline = Date.now() + (headed ? 180000 : 8000);
   let lastProgressAt = Date.now();
   let lastDebugAt = 0;
   const debug = process.env.BB1688_DEBUG === '1';
-  while (Date.now() < deadline) {
+  return waitWithDeadline<boolean>(async ({ now, remainingMs }) => {
     if (page.isClosed()) {
       throw new CliError(130, 'CANCELED', 'Browser closed.');
     }
@@ -465,11 +464,11 @@ async function waitPastBlocking(
       }))
       .catch(() => null);
 
-    if (debug && state && Date.now() - lastDebugAt > 1000) {
+    if (debug && state && now - lastDebugAt > 1000) {
       info(
         `[poll] url=${state.url.slice(0, 80)} title="${state.title.slice(0, 40)}" anchors=${state.anchorCount} bodyLen=${state.bodyLen}`,
       );
-      lastDebugAt = Date.now();
+      lastDebugAt = now;
     }
 
     if (state) {
@@ -486,18 +485,19 @@ async function waitPastBlocking(
       }
     }
 
-    if (headed && Date.now() - lastProgressAt > 10000) {
+    if (headed && now - lastProgressAt > 10000) {
       info(
-        `Still waiting for results page (${Math.round(
-          (deadline - Date.now()) / 1000,
-        )}s left)...`,
+        `Still waiting for results page (${Math.round(remainingMs / 1000)}s left)...`,
       );
-      lastProgressAt = Date.now();
+      lastProgressAt = now;
     }
 
-    await sleep(500);
-  }
-  return false;
+    return null;
+  }, {
+    timeoutMs: headed ? 180000 : 8000,
+    intervalMs: 500,
+    onTimeout: () => false,
+  });
 }
 
 function riskControlError(triedHeaded: boolean): CliError {
