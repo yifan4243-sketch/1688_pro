@@ -68,7 +68,7 @@ async function executeSimilar(
       page,
       keep: 'largest',
     });
-    const { offers: captured } = await capture.waitForAction(
+    const captureResult = await capture.waitForAction(
       async () => {
         info(`Finding similar offers for ${args.offerId}...`);
         if (headed) info('A Chrome window has opened — switch focus to it now.');
@@ -83,6 +83,17 @@ async function executeSimilar(
         isBlocked: () => !headed && /\/punish|x5secdata=/.test(page.url()),
       },
     );
+    if (captureResult.status === 'browser_closed') {
+      throw new CliError(130, 'CANCELED', 'Browser closed.');
+    }
+    if (captureResult.status === 'blocked') {
+      throw new CliError(
+        4,
+        'RISK_CONTROL',
+        '1688 risk-control page detected. Run once with --headed to solve the slider; subsequent calls work for hours.',
+      );
+    }
+    const captured = captureResult.offers;
 
     if (captured.length === 0) {
       throw new CliError(
