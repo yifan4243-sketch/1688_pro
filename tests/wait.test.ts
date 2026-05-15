@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { sleep, waitForTruthy, waitUntil, withTimeout } from '../src/session/wait.js';
+import {
+  sleep,
+  waitForTruthy,
+  waitUntil,
+  waitWithDeadline,
+  withTimeout,
+} from '../src/session/wait.js';
 
 describe('sleep', () => {
   it('returns immediately for non-positive delays', async () => {
@@ -36,6 +42,42 @@ describe('withTimeout', () => {
         fallback: new Error('timeout'),
       }),
     ).rejects.toThrow('boom');
+  });
+});
+
+describe('waitWithDeadline', () => {
+  it('returns a poll result before timeout', async () => {
+    const value = await waitWithDeadline(
+      ({ attempt }) => (attempt === 2 ? 'ready' : null),
+      { timeoutMs: 200, intervalMs: 1, onTimeout: () => 'timeout' },
+    );
+
+    expect(value).toBe('ready');
+  });
+
+  it('passes remaining time to each poll', async () => {
+    const remaining: number[] = [];
+
+    await waitWithDeadline(
+      ({ remainingMs, attempt }) => {
+        remaining.push(remainingMs);
+        return attempt === 1 ? 'ready' : null;
+      },
+      { timeoutMs: 200, intervalMs: 1, onTimeout: () => 'timeout' },
+    );
+
+    expect(remaining[0]).toBeGreaterThan(0);
+    expect(remaining[1]).toBeGreaterThan(0);
+  });
+
+  it('returns the timeout value when polling never succeeds', async () => {
+    const value = await waitWithDeadline(() => null, {
+      timeoutMs: 5,
+      intervalMs: 1,
+      onTimeout: () => 'timeout',
+    });
+
+    expect(value).toBe('timeout');
   });
 });
 

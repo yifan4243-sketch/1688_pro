@@ -8,6 +8,17 @@ export interface WaitUntilOptions {
   intervalMs?: number;
 }
 
+export interface WaitDeadlineState {
+  attempt: number;
+  deadline: number;
+  now: number;
+  remainingMs: number;
+}
+
+export interface WaitWithDeadlineOptions<T> extends WaitUntilOptions {
+  onTimeout: () => T | Promise<T>;
+}
+
 export interface WithTimeoutOptions<TFallback> {
   timeoutMs: number;
   fallback: TFallback;
@@ -30,29 +41,43 @@ export async function withTimeout<T, TFallback = T>(
   }
 }
 
+export async function waitWithDeadline<T>(
+  poll: (state: WaitDeadlineState) => T | null | undefined | Promise<T | null | undefined>,
+  opts: WaitWithDeadlineOptions<T>,
+): Promise<T> {
+  const deadline = Date.now() + opts.timeoutMs;
+  const intervalMs = opts.intervalMs ?? 250;
+  let attempt = 0;
+  while (true) {
+    const now = Date.now();
+    const remainingMs = Math.max(0, deadline - now);
+    if (remainingMs <= 0) return opts.onTimeout();
+    const result = await poll({ attempt, deadline, now, remainingMs });
+    if (result !== null && result !== undefined) return result;
+    attempt++;
+    await sleep(Math.min(intervalMs, remainingMs));
+  }
+}
+
 export async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
   opts: WaitUntilOptions,
 ): Promise<boolean> {
-  const deadline = Date.now() + opts.timeoutMs;
-  const intervalMs = opts.intervalMs ?? 250;
-  while (Date.now() < deadline) {
-    if (await predicate()) return true;
-    await sleep(intervalMs);
-  }
-  return false;
+  return waitWithDeadline(async () => ((await predicate()) ? true : null), {
+    ...opts,
+    onTimeout: () => false,
+  });
 }
 
 export async function waitForTruthy<T>(
   probe: () => T | null | undefined | false | Promise<T | null | undefined | false>,
   opts: WaitUntilOptions,
 ): Promise<T | null> {
-  const deadline = Date.now() + opts.timeoutMs;
-  const intervalMs = opts.intervalMs ?? 250;
-  while (Date.now() < deadline) {
+  return waitWithDeadline(async () => {
     const value = await probe();
-    if (value) return value;
-    await sleep(intervalMs);
-  }
-  return null;
+    return value || null;
+  }, {
+    ...opts,
+    onTimeout: () => null,
+  });
 }
