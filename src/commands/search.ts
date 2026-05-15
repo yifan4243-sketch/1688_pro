@@ -327,12 +327,16 @@ async function fetchSearch(
         }
       }
 
-      let capturedOffers = await capture.wait({
+      let captureResult = await capture.wait({
         timeoutMs: headed ? 180000 : 12000,
         isClosed: () => page.isClosed(),
         isBlocked: isSearchBlocked,
       });
-      let got = capturedOffers.length > 0;
+      let capturedOffers = captureResult.offers;
+      let got = captureResult.status === 'captured';
+      if (captureResult.status === 'browser_closed') {
+        throw new CliError(130, 'CANCELED', 'Browser closed.');
+      }
       // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
       // just stops the loop with whatever has been collected so far.
       if (!got && !headed && pageNum === 1) {
@@ -347,12 +351,16 @@ async function fetchSearch(
           targetPage: () => currentTargetPage,
         });
         await navigateTo(baseUrl);
-        capturedOffers = await capture.wait({
+        captureResult = await capture.wait({
           timeoutMs: 15000,
           isClosed: () => page.isClosed(),
           isBlocked: isSearchBlocked,
         });
-        got = capturedOffers.length > 0;
+        capturedOffers = captureResult.offers;
+        got = captureResult.status === 'captured';
+        if (captureResult.status === 'browser_closed') {
+          throw new CliError(130, 'CANCELED', 'Browser closed.');
+        }
       }
       if (!got) {
         if (pageNum === 1) {

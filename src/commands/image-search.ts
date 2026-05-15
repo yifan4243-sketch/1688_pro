@@ -131,7 +131,7 @@ async function searchByImageId(
   });
 
   try {
-    const { offers } = await capture.waitForAction(
+    const captureResult = await capture.waitForAction(
       async () => {
         await page.goto(RESULT_URL(imageId), {
           waitUntil: 'domcontentloaded',
@@ -144,7 +144,10 @@ async function searchByImageId(
         isBlocked: () => /\/punish|x5secdata=/.test(page.url()),
       },
     );
-    return offers;
+    if (captureResult.status === 'browser_closed') {
+      throw new CliError(130, 'CANCELED', 'Browser closed.');
+    }
+    return captureResult.offers;
   } finally {
     await page.close().catch(() => {});
   }

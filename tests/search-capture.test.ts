@@ -67,7 +67,9 @@ describe('startSearchOfferCapture', () => {
     mockPage.emitResponse(response(searchUrl({ method: 'getOfferList', beginPage: 1 }), body('ignore-page')));
     mockPage.emitResponse(response(searchUrl({ method: 'getOfferList', beginPage: 2 }), body('ok')));
 
-    expect((await wait).map((o) => o.offerId)).toEqual(['ok']);
+    const result = await wait;
+    expect(result.status).toBe('captured');
+    expect(result.offers.map((o) => o.offerId)).toEqual(['ok']);
     expect(capture.diagnostics().matchedCount).toBe(1);
     targetPage = 3;
   });
@@ -87,6 +89,52 @@ describe('startSearchOfferCapture', () => {
       { timeoutMs: 5, intervalMs: 1 },
     );
 
+    expect(result.status).toBe('captured');
     expect(result.offers.map((o) => o.offerId)).toEqual(['one', 'two']);
+  });
+
+  it('returns timeout when no matching offer response arrives', async () => {
+    const capture = startSearchOfferCapture({ page: page() });
+
+    const result = await capture.wait({ timeoutMs: 1, intervalMs: 1 });
+
+    expect(result.status).toBe('timeout');
+    expect(result.offers).toEqual([]);
+  });
+
+  it('returns blocked when the blocked predicate becomes true', async () => {
+    const capture = startSearchOfferCapture({ page: page() });
+
+    const result = await capture.wait({
+      timeoutMs: 50,
+      intervalMs: 1,
+      isBlocked: () => true,
+    });
+
+    expect(result.status).toBe('blocked');
+    expect(result.offers).toEqual([]);
+  });
+
+  it('returns browser_closed when the page is closed', async () => {
+    const capture = startSearchOfferCapture({ page: page() });
+
+    const result = await capture.wait({
+      timeoutMs: 50,
+      intervalMs: 1,
+      isClosed: () => true,
+    });
+
+    expect(result.status).toBe('browser_closed');
+    expect(result.offers).toEqual([]);
+  });
+
+  it('returns stream_closed when the capture is disposed before a response arrives', async () => {
+    const capture = startSearchOfferCapture({ page: page() });
+
+    capture.dispose();
+    const result = await capture.wait({ timeoutMs: 50, intervalMs: 1 });
+
+    expect(result.status).toBe('stream_closed');
+    expect(result.offers).toEqual([]);
   });
 });

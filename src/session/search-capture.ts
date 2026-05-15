@@ -24,8 +24,22 @@ export interface SearchOfferCaptureDiagnostics {
   lastParsedUrl?: string;
 }
 
+export type SearchOfferCaptureWaitStatus =
+  | 'captured'
+  | 'timeout'
+  | 'blocked'
+  | 'browser_closed'
+  | 'stream_closed';
+
+export interface SearchOfferCaptureWaitResult {
+  status: SearchOfferCaptureWaitStatus;
+  offers: Offer[];
+  diagnostics: SearchOfferCaptureDiagnostics;
+}
+
 export interface SearchOfferCaptureResult<TResult> {
   actionResult: TResult;
+  status: SearchOfferCaptureWaitStatus;
   offers: Offer[];
   diagnostics: SearchOfferCaptureDiagnostics;
 }
@@ -100,16 +114,31 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
     intervalMs?: number;
     isBlocked?: () => boolean | Promise<boolean>;
     isClosed?: () => boolean;
-  }): Promise<Offer[]> => {
+  }): Promise<SearchOfferCaptureWaitResult> => {
     const deadline = Date.now() + optsWait.timeoutMs;
     const intervalMs = optsWait.intervalMs ?? 300;
+    let status: SearchOfferCaptureWaitStatus = 'timeout';
     while (Date.now() < deadline) {
-      if (optsWait.isClosed?.()) break;
-      if (offers.length > 0) break;
-      if (await optsWait.isBlocked?.()) break;
+      if (optsWait.isClosed?.()) {
+        status = 'browser_closed';
+        break;
+      }
+      if (offers.length > 0) {
+        status = 'captured';
+        break;
+      }
+      if (await optsWait.isBlocked?.()) {
+        status = 'blocked';
+        break;
+      }
+      if (disposed) {
+        status = 'stream_closed';
+        break;
+      }
       await sleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
     }
-    return offers;
+    if (offers.length > 0) status = 'captured';
+    return { status, offers, diagnostics: diagnostics() };
   };
 
   const waitForAction = async <TResult>(
@@ -123,11 +152,12 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
   ): Promise<SearchOfferCaptureResult<TResult>> => {
     try {
       const actionResult = await action();
-      const responseOffers = await wait(optsWait);
+      const result = await wait(optsWait);
       return {
         actionResult,
-        offers: responseOffers,
-        diagnostics: diagnostics(),
+        status: result.status,
+        offers: result.offers,
+        diagnostics: result.diagnostics,
       };
     } finally {
       dispose();
