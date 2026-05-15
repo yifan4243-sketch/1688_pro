@@ -1,4 +1,4 @@
-# 1688-cli: Alibaba 1688.com CLI - Product Search, Inquiry, Cart, Checkout, Order Tracking & Seller Chat for AI Agents & Humans
+# 1688 cli: Alibaba 1688.com CLI - Product Search, Inquiry, Cart, Checkout, Order Tracking & Seller Chat for AI Agents & Humans
 
 [![npm version](https://img.shields.io/npm/v/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
 [![npm downloads](https://img.shields.io/npm/dm/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
