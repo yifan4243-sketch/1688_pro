@@ -483,6 +483,27 @@ daemon
     });
   });
 
+const profile = program
+  .command('profile')
+  .description('Inspect local 1688 profiles');
+
+profile
+  .command('list')
+  .description('List local profiles')
+  .action(async () => {
+    const { list } = await import('./commands/profile.js');
+    await list();
+  });
+
+profile
+  .command('status')
+  .description('Show profile status')
+  .argument('[name]', 'Profile name', 'default')
+  .action(async (name) => {
+    const { status } = await import('./commands/profile.js');
+    await status(name);
+  });
+
 const debug = program
   .command('debug')
   .description('Inspect recent command events and failure artifacts');

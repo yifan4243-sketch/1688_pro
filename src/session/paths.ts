@@ -47,6 +47,10 @@ export function eventsFile(): string {
   return path.join(root(), 'events.jsonl');
 }
 
+export function configFile(): string {
+  return path.join(root(), 'config.json');
+}
+
 export function loginQrFile(): string {
   return path.join(root(), 'login-qr.png');
 }
