@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.41] - 2026-05-16
 
 ### Added
 - **`1688 inbox` now decodes 1688 IM card messages.** What previously
@@ -33,6 +33,82 @@ This project follows [Semantic Versioning](https://semver.org/).
   preview; remaining 23 cards fall back to `'[卡片消息]'` placeholder
   with `cardCode` still surfaced. Tests in `tests/im-cards.test.ts`
   (14 new) and `tests/inbox.test.ts` (updated).
+
+- **Opt-in JSON v2 response envelope** (`--envelope v2` / `BB1688_JSON_ENVELOPE=v2`).
+  Wraps command output in `{ok, code, data, error, meta}` with a stable
+  `meta.requestId` so agents can correlate output with the event log
+  (see below) and debug bundles. Default JSON shape is unchanged —
+  existing callers keep working bit-for-bit. Implemented in `src/io/output.ts`
+  with coverage in `tests/output.test.ts`.
+
+- **`1688 profile list` / `1688 profile status`.** A minimal profile
+  inventory backed by `~/.1688/profiles/`. `list` enumerates known
+  profiles with login state and last-used hints; `status <name>` reports
+  state file health, lock holder (if any), and the last few command
+  events for that profile. New config loader + validation in
+  `src/session/config.ts`; commands in `src/commands/profile.ts`. Tests:
+  `tests/config.test.ts`, `tests/profile.test.ts`.
+
+- **`1688 doctor --live`.** Extends `1688 doctor` with read-only live
+  checks: daemon reachability, event-log writability, artifact directory
+  writability, and recent risk-control signals from `~/.1688/runs/`.
+  Pure observation — no browser is started, no profile is touched.
+  `src/commands/doctor.ts`, `tests/doctor-live.test.ts`.
+
+- **`1688 debug list / last / show`.** Read-only post-mortem surface for
+  the command event log. `list` paginates recent commands;
+  `last` jumps to the most recent run; `show <requestId>` prints the
+  start/success/error records plus pointers into the matching
+  `~/.1688/runs/<requestId>/` artifact bundle. Powered by the new event
+  system (see below). `src/commands/debug.ts`, `tests/debug.test.ts`.
+
+- **Command request event log** (`~/.1688/events/`). Dispatched commands
+  now record `start`, `success`, and `error` events scoped to a
+  per-invocation `requestId`. Captured stdout/stderr aren't modified —
+  events are written out-of-band so existing JSON output stays
+  bit-for-bit identical. Drives `debug`, `profile status`, and
+  `doctor --live`. `src/session/events.ts`, `src/session/dispatch.ts`,
+  `src/daemon/client.ts`; `tests/events.test.ts`.
+
+- **Navigation-guard classifier (`src/session/navigation-guard.ts`).**
+  Tags unexpected page destinations encountered mid-command — login,
+  risk-control / verification, payment, or off-host external — so
+  commands can decide whether to retry, prompt, or fail with a
+  classified diagnostic instead of a raw selector-timeout. Currently
+  available as a helper; downstream commands will adopt it
+  incrementally. `tests/navigation-guard.test.ts`.
+
+### Changed
+- **`cart-add` / `cart-list` response capture scoped to its triggering
+  action.** Listeners are now armed immediately before the action that
+  causes the mtop response and disposed in `finally`, so capture
+  lifetimes track navigation/click boundaries. Ambiguous add-to-cart
+  confirmations now surface capture diagnostics (which event arrived,
+  which didn't) instead of generic timeouts.
+
+- **`search` capture lifecycle refactor.** Search / image-search /
+  similar listeners are now armed immediately before the triggering
+  action (initial navigation OR pagination click) and torn down in
+  `finally`. Page-close events surface `browser_closed` immediately
+  instead of waiting for polling timeouts. Capture also records timing,
+  final status, and parser failures so failures produce structured
+  diagnostics. Same offer dedup / pagination behavior as 0.1.40 —
+  purely a lifecycle and observability change
+  (`src/session/search-capture.ts`, `src/commands/search.ts`,
+  `image-search.ts`, `similar.ts`).
+
+- **Shared deadline-aware polling helper.** The deadline loop in
+  `src/session/wait.ts` now backs search capture's blocking waits
+  (previously had its own ad-hoc remaining-time math). Behavior
+  unchanged, but timeout handling is consistent and unit-tested in one
+  place (`tests/wait.test.ts`).
+
+### Tests
+- **Replay fixtures for offline parser coverage.** Sanitized
+  `getOfferList` mtop captures, cart `addcargo` success/failure
+  responses, and a risk-control page-state HTML now back
+  `tests/replay-fixtures.test.ts`. Parser and navigation classification
+  changes won't silently drift even if no live env is available.
 
 ## [0.1.40] - 2026-05-15
 
