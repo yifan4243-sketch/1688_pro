@@ -137,7 +137,9 @@ describe('parseConversations', () => {
     expect(conversations[0]!.peer.id).toBe('2218214067327');
   });
 
-  it('classifies non-text content as image/card/other', () => {
+  it('classifies non-text content using the im-cards decoder', () => {
+    // Detailed kind-by-kind coverage lives in im-cards.test.ts; this test
+    // only asserts that parseConversations wires the decoder in correctly.
     const make = (ct: number) =>
       conv({
         cid: `cid-${ct}`,
@@ -146,14 +148,98 @@ describe('parseConversations', () => {
         modifyTime: ct,
         msg: { id: `m${ct}`, createAt: ct, contentType: ct, senderUid: '1' },
       });
-    const body = { userConvs: [make(1), make(2), make(102), make(0), make(99)] };
+    const body = { userConvs: [make(1), make(2), make(101), make(0), make(99)] };
     const { conversations } = parseConversations([body], MY);
     const byCid = Object.fromEntries(conversations.map((c) => [c.cid, c]));
     expect(byCid['cid-1']!.lastMessage.kind).toBe('text');
     expect(byCid['cid-2']!.lastMessage.kind).toBe('image');
-    expect(byCid['cid-102']!.lastMessage.kind).toBe('card');
+    expect(byCid['cid-101']!.lastMessage.kind).toBe('card');
+    // ct=0 → archived (no contentType in raw -> archived path)
+    // The conv() helper writes contentType=0 explicitly; decoder treats
+    // unknown non-1/2/101 ints as 'other'.
     expect(byCid['cid-0']!.lastMessage.kind).toBe('other');
     expect(byCid['cid-99']!.lastMessage.kind).toBe('other');
+  });
+
+  it('marks lastMessage with no contentType as archived', () => {
+    // Server-stripped conversations (~12+ months old). Conv helper requires
+    // contentType, so build the userConv inline.
+    const body = {
+      userConvs: [
+        {
+          type: 1,
+          singleChatUserConversation: {
+            redPoint: 0,
+            modifyTime: 100,
+            singleChatConversation: { cid: 'archived-cid' },
+            lastMessage: {
+              message: {
+                messageId: 'm',
+                createAt: 100,
+                cid: 'archived-cid',
+                content: {}, // no contentType
+                sender: { uid: '1@cntaobao' },
+              },
+            },
+            user_extension: {
+              target: JSON.stringify({ dnick: 'old-peer', id: '1' }),
+            },
+          },
+        },
+      ],
+    };
+    const { conversations } = parseConversations([body], MY);
+    expect(conversations).toHaveLength(1);
+    expect(conversations[0]!.lastMessage.kind).toBe('archived');
+    expect(conversations[0]!.lastMessage.preview).toContain('归档');
+  });
+
+  it('exposes cardTemplate / cardCode / extras on decoded card conversations', () => {
+    const cardData = Buffer.from(
+      JSON.stringify({
+        productTitle: '韩版针织钩花',
+        linkUrl:
+          'https://trade.1688.com/order/order_detail.htm?order_id=3301686771403783779',
+        refundAmt: '订单金额：￥4.90',
+      }),
+      'utf8',
+    ).toString('base64');
+    const body = {
+      userConvs: [
+        {
+          type: 1,
+          singleChatUserConversation: {
+            redPoint: 0,
+            modifyTime: 100,
+            singleChatConversation: { cid: 'card-cid' },
+            lastMessage: {
+              message: {
+                messageId: 'm',
+                createAt: 100,
+                cid: 'card-cid',
+                content: {
+                  contentType: 101,
+                  custom: { summary: '[卡片消息]', data: cardData },
+                },
+                extension: { biMsgType: 'bc_0_170002_xyz' },
+                sender: { uid: '2@cntaobao' },
+              },
+            },
+            user_extension: {
+              target: JSON.stringify({ dnick: 'seller', id: '2' }),
+            },
+          },
+        },
+      ],
+    };
+    const { conversations } = parseConversations([body], MY);
+    const lm = conversations[0]!.lastMessage;
+    expect(lm.kind).toBe('card');
+    expect(lm.cardTemplate).toBe('order_followup');
+    expect(lm.cardCode).toBe('170002');
+    expect(lm.preview).toBe('韩版针织钩花');
+    expect(lm.extras?.orderId).toBe('3301686771403783779');
+    expect(lm.extras?.amount).toBe('订单金额：￥4.90');
   });
 
   it('skips non-single-chat types', () => {
@@ -245,7 +331,7 @@ describe('parseConversations', () => {
     expect(conversations).toHaveLength(0);
   });
 
-  it('image / card kinds get sensible preview placeholders', () => {
+  it('image kind gets sensible preview placeholder', () => {
     const body = {
       userConvs: [
         conv({
@@ -255,18 +341,9 @@ describe('parseConversations', () => {
           modifyTime: 1,
           msg: { id: 'm', createAt: 1, contentType: 2, senderUid: '1' },
         }),
-        conv({
-          cid: 'card',
-          peerId: '2',
-          peerNick: 'p',
-          modifyTime: 2,
-          msg: { id: 'm', createAt: 2, contentType: 102, senderUid: '2' },
-        }),
       ],
     };
     const { conversations } = parseConversations([body], MY);
-    const byCid = Object.fromEntries(conversations.map((c) => [c.cid, c]));
-    expect(byCid['img']!.lastMessage.preview).toBe('[图片]');
-    expect(byCid['card']!.lastMessage.preview).toBe('[卡片]');
+    expect(conversations[0]!.lastMessage.preview).toBe('[图片]');
   });
 });

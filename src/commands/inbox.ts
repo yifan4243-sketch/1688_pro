@@ -4,6 +4,13 @@ import { CliError } from '../io/errors.js';
 import { emit, info } from '../io/output.js';
 import { findImInput } from '../session/im-locators.js';
 import {
+  type CardTemplate,
+  type MessageExtras,
+  type MessageKind,
+  type RawImMessage,
+  decodeLastMessage,
+} from '../session/im-cards.js';
+import {
   IM_BASE,
   type WsFrame,
   collectWsFrames,
@@ -38,7 +45,8 @@ export interface InboxArgs {
   headed?: boolean;
 }
 
-export type MessageKind = 'text' | 'image' | 'card' | 'system' | 'other';
+// Re-export so external callers don't need to know about im-cards.
+export type { MessageKind, CardTemplate, MessageExtras };
 
 export interface Conversation {
   cid: string;
@@ -53,6 +61,12 @@ export interface Conversation {
     preview: string;
     at: string | null;
     fromMe: boolean;
+    /** Semantic card category, set only when `kind === 'card'`. */
+    cardTemplate?: CardTemplate;
+    /** Raw 6-digit template code, e.g. `'170002'`. Set only when `kind === 'card'`. */
+    cardCode?: string;
+    /** Structured fields (orderId/offerId/imgUrl/linkUrl/amount). Populated only when at least one is present. */
+    extras?: MessageExtras;
   };
 }
 
@@ -79,15 +93,10 @@ interface LwpUserConv {
     muteNotification?: number;
     lastMessage?: {
       readStatus?: number;
-      message?: {
+      message?: RawImMessage & {
         messageId?: string | number;
         createAt?: number;
         cid?: string;
-        content?: {
-          contentType?: number;
-          text?: { content?: string };
-          [k: string]: unknown;
-        };
         sender?: { uid?: string };
       };
     };
@@ -121,11 +130,20 @@ export function parseConversations(
       if (!peer) continue;
 
       const msg = s.lastMessage?.message;
-      const content = msg?.content;
-      const kind = classifyKind(content);
-      const preview = extractPreview(content, kind);
+      const decoded = decodeLastMessage(msg);
       const senderUid = (msg?.sender?.uid ?? '').split('@')[0] ?? '';
       const fromMe = senderUid === myMemberId;
+
+      const lastMessage: Conversation['lastMessage'] = {
+        messageId: msg?.messageId != null ? String(msg.messageId) : null,
+        kind: decoded.kind,
+        preview: decoded.preview,
+        at: msEpochToIso(msg?.createAt),
+        fromMe,
+      };
+      if (decoded.cardTemplate) lastMessage.cardTemplate = decoded.cardTemplate;
+      if (decoded.cardCode) lastMessage.cardCode = decoded.cardCode;
+      if (decoded.extras) lastMessage.extras = decoded.extras;
 
       out.push({
         cid,
@@ -134,13 +152,7 @@ export function parseConversations(
         topRank: s.topRank ?? 0,
         muted: (s.muteNotification ?? 0) === 1,
         updatedAt: msEpochToIso(s.modifyTime) ?? '',
-        lastMessage: {
-          messageId: msg?.messageId != null ? String(msg.messageId) : null,
-          kind,
-          preview,
-          at: msEpochToIso(msg?.createAt),
-          fromMe,
-        },
+        lastMessage,
       });
     }
   }
@@ -162,27 +174,6 @@ function parsePeer(targetStr?: string): { nick: string; id: string } | null {
   } catch {
     return null;
   }
-}
-
-function classifyKind(content: { contentType?: number } | undefined): MessageKind {
-  const ct = content?.contentType;
-  if (ct === 1) return 'text';
-  if (ct === 2) return 'image';
-  if (ct === 102 || ct === 105) return 'card';
-  return 'other';
-}
-
-function extractPreview(
-  content: { text?: { content?: string }; [k: string]: unknown } | undefined,
-  kind: MessageKind,
-): string {
-  if (!content) return '';
-  if (kind === 'text') {
-    return (content.text?.content ?? '').slice(0, 200);
-  }
-  if (kind === 'image') return '[图片]';
-  if (kind === 'card') return '[卡片]';
-  return '[非文本消息]';
 }
 
 function msEpochToIso(ms?: number): string | null {
