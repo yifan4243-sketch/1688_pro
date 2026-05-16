@@ -18,22 +18,44 @@
 
 let _forceJson = false;
 let _pretty = false;
+let _jsonV2 = false;
+let _cmd: string | null = null;
 let _getPath: string | null = null;
 let _pickPaths: string[] | null = null;
 
 const jsonModeFromEnv =
   !process.stdout.isTTY || process.env.BB1688_JSON === '1';
 
+export interface CommandEnvelope<T> {
+  ok: boolean;
+  cmd: string | null;
+  requestId: string | null;
+  durationMs: number | null;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  verification?: unknown;
+  warnings?: unknown;
+  artifactDir?: string;
+}
+
 export interface OutputFlags {
   json?: boolean;
+  jsonV2?: boolean;
   pretty?: boolean;
   get?: string;
   pick?: string;
+  cmd?: string;
 }
 
 export function setOutputFlags(o: OutputFlags): void {
-  _forceJson = !!o.json;
+  _forceJson = !!o.json || !!o.jsonV2;
+  _jsonV2 = !!o.jsonV2 || process.env.BB1688_JSON_V2 === '1';
   _pretty = !!o.pretty;
+  _cmd = o.cmd ?? null;
   _getPath = o.get ?? null;
   _pickPaths = o.pick
     ? o.pick
@@ -47,11 +69,45 @@ export function isJson(): boolean {
   return _forceJson || jsonModeFromEnv;
 }
 
+export function isJsonV2(): boolean {
+  return _jsonV2;
+}
+
+export function currentCommandName(): string | null {
+  return _cmd;
+}
+
 function stringify(v: unknown): string {
   return _pretty ? JSON.stringify(v, null, 2) : JSON.stringify(v);
 }
 
+export function makeEnvelope<T>(input: {
+  data?: T;
+  error?: { code: string; message: string; details?: Record<string, unknown> };
+  requestId?: string | null;
+  durationMs?: number | null;
+  cmd?: string | null;
+  verification?: unknown;
+  warnings?: unknown;
+  artifactDir?: string;
+}): CommandEnvelope<T> {
+  const ok = input.error === undefined;
+  return {
+    ok,
+    cmd: input.cmd ?? _cmd,
+    requestId: input.requestId ?? null,
+    durationMs: input.durationMs ?? null,
+    ...(ok ? { data: input.data } : { error: input.error }),
+    ...(input.verification !== undefined ? { verification: input.verification } : {}),
+    ...(input.warnings !== undefined ? { warnings: input.warnings } : {}),
+    ...(input.artifactDir ? { artifactDir: input.artifactDir } : {}),
+  };
+}
+
 export function emit(opts: { human: () => void; data: unknown }): void {
+  if (_jsonV2 && (_getPath !== null || _pickPaths !== null)) {
+    throw new Error('--json-v2 cannot be combined with --get or --pick yet');
+  }
   if (_getPath !== null) {
     const tokens = parsePath(_getPath);
     const result = resolve(opts.data, tokens);
@@ -71,7 +127,9 @@ export function emit(opts: { human: () => void; data: unknown }): void {
     process.stdout.write(stringify(out) + '\n');
     return;
   }
-  if (isJson()) {
+  if (_jsonV2) {
+    process.stdout.write(stringify(makeEnvelope({ data: opts.data })) + '\n');
+  } else if (isJson()) {
     process.stdout.write(stringify(opts.data) + '\n');
   } else {
     opts.human();

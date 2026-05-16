@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { CliError } from './io/errors.js';
-import { setOutputFlags, isJson } from './io/output.js';
+import {
+  currentCommandName,
+  isJson,
+  isJsonV2,
+  makeEnvelope,
+  setOutputFlags,
+} from './io/output.js';
 import updateNotifier from 'update-notifier';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -534,6 +540,7 @@ program
 // Register the four output-shaping flags on every (sub)command so users
 // don't have to remember a parent-command qualifier:
 //   --json            Force JSON output even when stdout is a TTY.
+//   --json-v2         Emit an opt-in response envelope for agent consumers.
 //   --pretty          Pretty-print JSON (2-space indent).
 //   --get <path>      Print one field by dot-path. Scalar → raw line,
 //                     object/array → JSON. Supports a.b[0].c, arr[*].x
@@ -547,6 +554,7 @@ function addOutputFlagsToAll(p: Command): void {
   for (const cmd of p.commands) {
     addOutputFlagsToAll(cmd);
     cmd.option('--json', 'Force JSON output even when stdout is a TTY');
+    cmd.option('--json-v2', 'Emit an opt-in response envelope for agent consumers');
     cmd.option('--pretty', 'Pretty-print JSON output (use with --json or pipe)');
     cmd.option(
       '--get <path>',
@@ -563,15 +571,18 @@ addOutputFlagsToAll(program);
 program.hook('preAction', (_thisCmd, actionCmd) => {
   const opts = actionCmd.optsWithGlobals() as {
     json?: boolean;
+    jsonV2?: boolean;
     pretty?: boolean;
     get?: string;
     pick?: string;
   };
   setOutputFlags({
     json: opts.json,
+    jsonV2: opts.jsonV2,
     pretty: opts.pretty,
     get: opts.get,
     pick: opts.pick,
+    cmd: actionCmd.name(),
   });
 
   // Agent-friendly update notice: in JSON mode, the human banner is
@@ -595,7 +606,24 @@ try {
   await program.parseAsync();
 } catch (e) {
   if (e instanceof CliError) {
-    if (isJson()) {
+    if (isJsonV2()) {
+      process.stderr.write(
+        JSON.stringify(
+          makeEnvelope({
+            cmd: currentCommandName(),
+            error: {
+              code: e.code,
+              message: e.message,
+              details: e.details,
+            },
+            artifactDir: e.details.artifactDir,
+            verification: e.details.category
+              ? { state: e.details.category, currentUrl: e.details.currentUrl }
+              : undefined,
+          }),
+        ) + '\n',
+      );
+    } else if (isJson()) {
       process.stderr.write(
         JSON.stringify({
           ok: false,
