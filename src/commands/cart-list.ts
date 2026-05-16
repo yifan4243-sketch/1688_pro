@@ -73,24 +73,24 @@ export async function executeRaw(ctx: BrowserContext): Promise<CartListResult> {
 
   try {
     info('Loading cart...');
-    try {
-      await page.goto(CART_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    } catch (e) {
-      throw new CliError(
-        9,
-        'NETWORK_ERROR',
-        `Failed to load cart page: ${(e as Error).message}`,
-      );
-    }
-    if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
-      throw new CliError(
-        3,
-        'NOT_LOGGED_IN',
-        'Session expired. Run `1688 login`.',
-      );
-    }
-
-    const model = await capture.wait();
+    const { response: model } = await capture.waitForAction(async () => {
+      try {
+        await page.goto(CART_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      } catch (e) {
+        throw new CliError(
+          9,
+          'NETWORK_ERROR',
+          `Failed to load cart page: ${(e as Error).message}`,
+        );
+      }
+      if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
+        throw new CliError(
+          3,
+          'NOT_LOGGED_IN',
+          'Session expired. Run `1688 login`.',
+        );
+      }
+    });
     if (!model) {
       throw new CliError(
         11,

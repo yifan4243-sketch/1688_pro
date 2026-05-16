@@ -46,6 +46,7 @@ export interface CartAddArgs {
 
 export interface CartAddResult {
   ok: boolean;
+  confirmationStatus: 'confirmed';
   added: CartItem;
   /** True when a brand-new cart row was created. False when the SKU was
    *  already in cart and quantity was merged into the existing row. */
@@ -311,17 +312,13 @@ async function executeCartAdd(
       },
     });
 
-    let addCargoResult: { ok: boolean; ret?: string[] } | null;
-    try {
-      await clickAddCartButton(page);
+    const { response: addCargoResult, diagnostics: addCargoCaptureDiagnostics } =
+      await addCargoCapture.waitForAction(async () => {
+        await clickAddCartButton(page);
 
-      await sleep(600);
-      await clickConfirmDialogButton(page).catch(() => undefined);
-
-      addCargoResult = await addCargoCapture.wait();
-    } finally {
-      addCargoCapture.dispose();
-    }
+        await sleep(600);
+        await clickConfirmDialogButton(page).catch(() => undefined);
+      });
 
     // Also check that our hijack actually fired (sanity).
     const hijackFired = await page.evaluate(() => {
@@ -340,11 +337,26 @@ async function executeCartAdd(
         17,
         'HIJACK_NOT_FIRED',
         'mtop.request hijack did not intercept addCargo. The page may use a different code path now.',
+        { category: 'response_capture', responseCapture: addCargoCaptureDiagnostics },
       );
     }
-    if (addCargoResult && !(addCargoResult as { ok: boolean }).ok) {
-      const r = (addCargoResult as { ret?: string[] }).ret?.[0] ?? 'unknown';
-      throw new CliError(17, 'ADD_FAILED', `addCargo failed: ${r}`);
+    if (!addCargoResult) {
+      throw new CliError(
+        17,
+        'ADD_AMBIGUOUS',
+        'addCargo response was not captured, so the add-to-cart result could not be confirmed.',
+        {
+          category: 'response_capture',
+          retryable: true,
+          responseCapture: addCargoCaptureDiagnostics,
+        },
+      );
+    }
+    if (!addCargoResult.ok) {
+      const r = addCargoResult.ret?.[0] ?? 'unknown';
+      throw new CliError(17, 'ADD_FAILED', `addCargo failed: ${r}`, {
+        responseCapture: addCargoCaptureDiagnostics,
+      });
     }
   } finally {
     await page.close().catch(() => {});
@@ -390,7 +402,7 @@ async function executeCartAdd(
       'addCargo returned success but no new/grown row found in cart (cache lag?). Try `1688 cart list`.',
     );
   }
-  return { ok: true, added, isNewRow, addedQuantity };
+  return { ok: true, confirmationStatus: 'confirmed', added, isNewRow, addedQuantity };
 }
 
 export async function run(opts: CartAddOpts): Promise<void> {
