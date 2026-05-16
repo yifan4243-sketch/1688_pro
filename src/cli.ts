@@ -357,6 +357,7 @@ program
   .command('doctor')
   .description('Check environment, profile, Chromium, and session')
   .option('--no-launch', 'Skip the actual Chromium launch test (faster)')
+  .option('--live', 'Run read-only live probes for daemon, artifacts, and event logging')
   .option('--profile <name>', 'Profile name (default: default)')
   .action(async (opts) => {
     const { run } = await import('./commands/doctor.js');
@@ -474,6 +475,38 @@ daemon
       },
       data: s,
     });
+  });
+
+const debug = program
+  .command('debug')
+  .description('Inspect recent command events and failure artifacts');
+
+debug
+  .command('list')
+  .description('List recent command events')
+  .option('--limit <n>', 'Max requests to show', '20')
+  .option('--failed', 'Only show failed requests')
+  .action(async (opts) => {
+    const { list } = await import('./commands/debug.js');
+    await list(opts);
+  });
+
+debug
+  .command('last')
+  .description('Show the most recent command event')
+  .option('--failed', 'Show the most recent failed request')
+  .action(async (opts) => {
+    const { last } = await import('./commands/debug.js');
+    await last(opts);
+  });
+
+debug
+  .command('show')
+  .description('Show events and artifact location for a request')
+  .argument('<requestId>', 'Request ID')
+  .action(async (requestId) => {
+    const { show } = await import('./commands/debug.js');
+    await show({ requestId });
   });
 
 program

@@ -4,7 +4,14 @@
 import type { BrowserContext } from 'playwright';
 import { withSession } from './context.js';
 import { isDaemonReachable, daemonCall } from '../daemon/client.js';
+import { makeRequestId } from '../daemon/protocol.js';
 import { info } from '../io/output.js';
+import {
+  appendEventBestEffort,
+  endEvent,
+  eventFromError,
+  startEvent,
+} from './events.js';
 
 export interface DispatchOpts {
   headed?: boolean;
@@ -96,6 +103,23 @@ export async function dispatch<TArgs, TData>(
   args: TArgs,
   opts: DispatchOpts = {},
 ): Promise<TData> {
+  const requestId = makeRequestId();
+  const startedAt = Date.now();
+  await appendEventBestEffort(
+    startEvent({ requestId, cmd: name, profile: opts.profile }),
+  );
+
+  const finishOk = async () => {
+    await appendEventBestEffort(
+      endEvent({ requestId, cmd: name, startedAt, profile: opts.profile }),
+    );
+  };
+  const finishError = async (error: unknown) => {
+    await appendEventBestEffort(
+      eventFromError({ requestId, cmd: name, startedAt, profile: opts.profile, error }),
+    );
+  };
+
   const skipDaemon =
     opts.headed === true ||
     !!opts.profile ||
@@ -127,10 +151,15 @@ export async function dispatch<TArgs, TData>(
     }
     if (await isDaemonReachable()) {
       try {
-        return await daemonCall<TData>(name, args);
+        const data = await daemonCall<TData>(name, args, requestId);
+        await finishOk();
+        return data;
       } catch (e) {
         const code = (e as { code?: string }).code;
-        if (code && code !== 'ECONNREFUSED' && code !== 'ENOENT') throw e;
+        if (code && code !== 'ECONNREFUSED' && code !== 'ENOENT') {
+          await finishError(e);
+          throw e;
+        }
       }
     }
   }
@@ -141,11 +170,16 @@ export async function dispatch<TArgs, TData>(
   const daemonMgr = await maybePauseDaemon();
   try {
     const fn = await loadExecutor<TArgs, TData>(name);
-    return await withSession(
+    const data = await withSession(
       { headless: !opts.headed, profile: opts.profile },
       (ctx) => fn(ctx, args),
-      { cmd: name, args },
+      { requestId, cmd: name, args },
     );
+    await finishOk();
+    return data;
+  } catch (error) {
+    await finishError(error);
+    throw error;
   } finally {
     await daemonMgr.resume();
   }
