@@ -3,6 +3,37 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`1688 inbox` now decodes 1688 IM card messages.** What previously
+  rendered as `kind: 'other'` / `preview: '[非文本消息]'` is now broken
+  out into structured fields. The decoder reads two parallel sources
+  (`content.custom.data` base64-JSON and
+  `message.extension.dynamic_msg_content` template JSON), picks the
+  best preview text across `productTitle` / `refundTitle` /
+  `offerSubTitle` / `title` / `summary`, and emits:
+  - `lastMessage.kind` — now `'text' | 'image' | 'card' | 'archived' | 'other'`
+  - `lastMessage.cardTemplate` — semantic name when known
+    (`'order_followup'`, `'refund'`, `'offer'`, `'order_payment_reminder'`,
+    `'address_changed'`, `'evaluation_invite'`, `'coupon'`,
+    `'session_ended'`, etc.)
+  - `lastMessage.cardCode` — raw 6-digit template code (`170002`, `467001`,
+    …) so agents can filter on unmapped templates too
+  - `lastMessage.extras` — `{orderId, offerId, refundId, imgUrl, linkUrl,
+    amount}`, populated only when at least one field resolved (keeps
+    JSON output compact)
+  - New `'archived'` kind marks conversations where the server stripped
+    `content` entirely (observed on all messages > ~12 months old —
+    not a parser failure, just a server retention boundary).
+
+  Decoder is a pure function in `src/session/im-cards.ts` so it's
+  reusable from future commands and easily testable. Live-validated on
+  a 2430-conversation account: 421 of 444 cards (95%) get a meaningful
+  preview; remaining 23 cards fall back to `'[卡片消息]'` placeholder
+  with `cardCode` still surfaced. Tests in `tests/im-cards.test.ts`
+  (14 new) and `tests/inbox.test.ts` (updated).
+
 ## [0.1.40] - 2026-05-15
 
 ### Added
