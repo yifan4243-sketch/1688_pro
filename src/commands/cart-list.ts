@@ -6,6 +6,7 @@ import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { parseMtopJsonp } from '../session/mtop.js';
 import { startResponseCapture } from '../session/response-capture.js';
+import { debugTmpPath } from '../util/temp.js';
 
 export interface CartListOpts {
   profile?: string;
@@ -178,7 +179,7 @@ function parseCart(model: RawModel): CartListResult {
     if (process.env.BB1688_PROBE === '1') {
       try {
         appendFileSync(
-          '/tmp/1688-cart-raw.json',
+          debugTmpPath('1688-cart-raw.json'),
           JSON.stringify({ k, fields: f }, null, 2) + '\n',
         );
       } catch (e) {

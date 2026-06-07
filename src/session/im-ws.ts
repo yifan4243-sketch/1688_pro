@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import type { Page } from 'playwright';
 import { waitUntil } from './wait.js';
+import { debugTmpPath } from '../util/temp.js';
 
 export const IM_BASE =
   'https://air.1688.com/app/ocms-fusion-components-1688/def_cbu_web_im/index.html';
@@ -89,7 +90,7 @@ export async function waitForLwpResponse(
 }
 
 /**
- * Probe support: synchronously dump WS frames to /tmp/1688-ws-*.json.
+ * Probe support: synchronously dump WS frames to the system temp dir.
  *
  * Call from inside the command's `try` block (NOT from `page.on('close', ...)`)
  * so the dump runs before process exit. Headless `page.close()` does not
@@ -113,19 +114,15 @@ export function dumpWsFramesForProbe(
     return payloadHints.test(f.payload);
   });
   try {
-    writeFileSync(
-      '/tmp/1688-ws-frames.json',
-      JSON.stringify(enriched, null, 2),
-    );
-    writeFileSync(
-      '/tmp/1688-ws-interesting.json',
-      JSON.stringify(interesting, null, 2),
-    );
+    const fullPath = debugTmpPath('1688-ws-frames.json');
+    const interestingPath = debugTmpPath('1688-ws-interesting.json');
+    writeFileSync(fullPath, JSON.stringify(enriched, null, 2));
+    writeFileSync(interestingPath, JSON.stringify(interesting, null, 2));
     process.stderr.write(
       `[ws-frames] total=${frames.length} interesting=${interesting.length}\n` +
         `methods seen: ${[...new Set(frames.map((f) => f.method).filter(Boolean))].join(', ')}\n` +
-        `full dump → /tmp/1688-ws-frames.json (${enriched.length} frames)\n` +
-        `interesting dump → /tmp/1688-ws-interesting.json (${interesting.length} frames)\n`,
+        `full dump → ${fullPath} (${enriched.length} frames)\n` +
+        `interesting dump → ${interestingPath} (${interesting.length} frames)\n`,
     );
   } catch (e) {
     process.stderr.write(`[ws-frames] write failed: ${String(e)}\n`);

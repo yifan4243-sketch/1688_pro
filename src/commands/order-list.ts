@@ -4,6 +4,7 @@ import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { startResponseCapture } from '../session/response-capture.js';
+import { debugTmpPath } from '../util/temp.js';
 
 export interface OrderListOpts {
   status?: string;
@@ -143,9 +144,10 @@ export async function executeRaw(
       if (process.env.BB1688_PROBE === '1') {
         try {
           const fs = await import('node:fs/promises');
-          await fs.writeFile('/tmp/1688-order-list-raw.json', text);
+          const file = debugTmpPath('1688-order-list-raw.json');
+          await fs.writeFile(file, text);
           process.stderr.write(
-            `[probe] saved raw order-list response → /tmp/1688-order-list-raw.json (${text.length} bytes)\n`,
+            `[probe] saved raw order-list response → ${file} (${text.length} bytes)\n`,
           );
         } catch {
           /* ignore */

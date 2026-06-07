@@ -46,11 +46,115 @@ program
   .description('Search 1688 by keyword')
   .argument('<keyword>', 'Keyword to search (use quotes for multi-word)')
   .option('--max <n>', 'Maximum number of results', '20')
+  .option('--sort <sort>', 'Sort: relevance | best-selling | price-asc | price-desc', 'relevance')
+  .option('--price-min <n>', 'Minimum unit price')
+  .option('--price-max <n>', 'Maximum unit price')
+  .option('--province <name>', 'Filter supplier province')
+  .option('--city <name>', 'Filter supplier city')
+  .option('--verified <kind>', 'Filter: any | factory | business | super-factory', 'any')
+  .option('--min-turnover <n>', 'Minimum parsed turnover/order count')
+  .option('--exclude-ads', 'Exclude P4P/ad results')
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a browser window (use to pass slider verification)')
   .action(async (keyword, opts) => {
     const { run } = await import('./commands/search.js');
     await run(keyword, opts);
+  });
+
+program
+  .command('research')
+  .description('Run multi-keyword sourcing research with scoring and optional enrichment')
+  .argument('<keywords...>', 'One or more keywords to research')
+  .option('--max-per-query <n>', 'Maximum search results per keyword', '20')
+  .option('--sort <sort>', 'Sort: relevance | best-selling | price-asc | price-desc', 'best-selling')
+  .option('--price-min <n>', 'Minimum unit price')
+  .option('--price-max <n>', 'Maximum unit price')
+  .option('--province <name>', 'Filter supplier province')
+  .option('--city <name>', 'Filter supplier city')
+  .option('--verified <kind>', 'Filter: any | factory | business | super-factory', 'any')
+  .option('--min-turnover <n>', 'Minimum parsed turnover/order count')
+  .option('--exclude-ads', 'Exclude P4P/ad results')
+  .option('--enrich <spec>', 'Enrich top N offers via detail pages: top:N, N, 0, none', '0')
+  .option('--jsonl', 'Emit one JSON object per research item')
+  .option('--csv', 'Emit CSV')
+  .option('--output <file>', 'Write JSONL/CSV export to a file')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (fallback for risk control)')
+  .action(async (keywords, opts) => {
+    const { run } = await import('./commands/research.js');
+    await run({ ...opts, keywords });
+  });
+
+program
+  .command('compare')
+  .description('Compare multiple offer detail pages for sourcing decisions')
+  .argument('<offerIds...>', 'Offer IDs to compare')
+  .option('--csv', 'Emit CSV')
+  .option('--output <file>', 'Write CSV export to a file')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (fallback for risk control)')
+  .action(async (offerIds, opts) => {
+    const { run } = await import('./commands/compare.js');
+    await run({ ...opts, offerIds });
+  });
+
+const supplier = program
+  .command('supplier')
+  .description('Supplier inspection and trust signals');
+
+supplier
+  .command('inspect')
+  .description('Inspect supplier signals from an offerId or b2b-* memberId')
+  .argument('<target>', 'offerId, offer URL, b2b-* memberId, or factory-card URL')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (fallback for risk control)')
+  .action(async (target, opts) => {
+    const { run } = await import('./commands/supplier-inspect.js');
+    await run({ ...opts, target });
+  });
+
+supplier
+  .command('search')
+  .description('Search suppliers from 1688 company search')
+  .argument('<keywords...>', 'One or more supplier/company search keywords')
+  .option('--max <n>', 'Maximum suppliers per keyword', '20')
+  .option('--factory-only', 'Only keep suppliers with factory signals')
+  .option('--province <name>', 'Filter supplier province')
+  .option('--city <name>', 'Filter supplier city')
+  .option('--min-years <n>', 'Minimum supplier service years')
+  .option('--min-repeat-rate <n>', 'Minimum repeat rate, e.g. 0.4 or 40')
+  .option('--min-response-rate <n>', 'Minimum Wangwang response rate, e.g. 0.6 or 60')
+  .option('--enrich <spec>', 'Enrich top N suppliers via supplier inspect: top:N, N, all, 0, none', '0')
+  .option('--jsonl', 'Emit one JSON object per supplier')
+  .option('--csv', 'Emit CSV')
+  .option('--output <file>', 'Write JSONL/CSV export to a file')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (fallback for risk control)')
+  .action(async (keywords, opts) => {
+    const { run } = await import('./commands/supplier-search.js');
+    await run({ ...opts, keywords });
+  });
+
+supplier
+  .command('research')
+  .description('Run supplier research from 1688 company search with scoring and inspect enrichment')
+  .argument('<keywords...>', 'One or more supplier/company search keywords')
+  .option('--max <n>', 'Maximum suppliers per keyword', '20')
+  .option('--factory-only', 'Only keep suppliers with factory signals')
+  .option('--province <name>', 'Filter supplier province')
+  .option('--city <name>', 'Filter supplier city')
+  .option('--min-years <n>', 'Minimum supplier service years')
+  .option('--min-repeat-rate <n>', 'Minimum repeat rate, e.g. 0.4 or 40')
+  .option('--min-response-rate <n>', 'Minimum Wangwang response rate, e.g. 0.6 or 60')
+  .option('--enrich <spec>', 'Enrich top N suppliers via supplier inspect: top:N, N, all, 0, none', 'top:10')
+  .option('--jsonl', 'Emit one JSON object per supplier')
+  .option('--csv', 'Emit CSV')
+  .option('--output <file>', 'Write JSONL/CSV export to a file')
+  .option('--profile <name>', 'Profile name (default: default)')
+  .option('--headed', 'Open a window (fallback for risk control)')
+  .action(async (keywords, opts) => {
+    const { runResearch } = await import('./commands/supplier-search.js');
+    await runResearch({ ...opts, keywords });
   });
 
 program

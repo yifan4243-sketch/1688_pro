@@ -145,6 +145,26 @@ function checkNode(): Check {
   };
 }
 
+export function writePermissionFix(dir: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') {
+    return `Grant write permission to "${dir}" or set BB1688_HOME to a writable directory.`;
+  }
+  return `chmod u+w "${dir}"`;
+}
+
+export function removePathFix(
+  target: string,
+  platform: NodeJS.Platform = process.platform,
+  opts: { recursive?: boolean } = {},
+): string {
+  if (platform === 'win32') {
+    return opts.recursive
+      ? `PowerShell: Remove-Item -Recurse -Force "${target}"`
+      : `PowerShell: Remove-Item -Force "${target}"`;
+  }
+  return opts.recursive ? `rm -rf "${target}"` : `rm "${target}"`;
+}
+
 async function checkYibabaRoot(): Promise<Check> {
   const dir = root();
   try {
@@ -156,7 +176,7 @@ async function checkYibabaRoot(): Promise<Check> {
       name: '1688 home',
       status: 'fail',
       message: `${dir}: ${(e as Error).message}`,
-      fix: `chmod u+w ${dir}`,
+      fix: writePermissionFix(dir),
     };
   }
 }
@@ -243,7 +263,7 @@ async function checkLock(): Promise<Check> {
         name: 'lock',
         status: 'warn',
         message: `stale lock (${Math.round(ageMs / 1000)}s old)`,
-        fix: `rm -rf "${semaphore}"`,
+        fix: removePathFix(semaphore, process.platform, { recursive: true }),
       };
     }
     return {
@@ -279,7 +299,7 @@ async function checkStateFile(): Promise<Check> {
       name: 'state.json',
       status: 'warn',
       message: `unreadable: ${(e as Error).message}`,
-      fix: `rm "${stateFile()}"`,
+      fix: removePathFix(stateFile()),
     };
   }
 }
@@ -482,7 +502,7 @@ async function checkEventLogWrite(): Promise<Check> {
       name: 'live event log',
       status: 'fail',
       message: `unwritable: ${(e as Error).message}`,
-      fix: `chmod u+w ${root()}`,
+      fix: writePermissionFix(root()),
     };
   }
 }
@@ -498,7 +518,7 @@ async function checkArtifactWrite(): Promise<Check> {
       name: 'live artifact write',
       status: 'fail',
       message: `unwritable: ${(e as Error).message}`,
-      fix: `chmod u+w ${runsDir()}`,
+      fix: writePermissionFix(runsDir()),
     };
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});

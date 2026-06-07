@@ -12,6 +12,7 @@ import {
 import { sleep } from '../session/wait.js';
 import { executeRaw as orderGetExecute } from './order-get.js';
 import { readState } from '../session/state.js';
+import { debugTmpPath } from '../util/temp.js';
 
 export interface SellerMessagesOpts {
   target?: string;
@@ -338,22 +339,18 @@ export async function executeRaw(
       });
       // Write full frames to file (truncation-free)
       try {
-        writeFileSync(
-          '/tmp/1688-ws-frames.json',
-          JSON.stringify(enriched, null, 2),
-        );
-        writeFileSync(
-          '/tmp/1688-ws-interesting.json',
-          JSON.stringify(interesting, null, 2),
-        );
+        const fullPath = debugTmpPath('1688-ws-frames.json');
+        const interestingPath = debugTmpPath('1688-ws-interesting.json');
+        writeFileSync(fullPath, JSON.stringify(enriched, null, 2));
+        writeFileSync(interestingPath, JSON.stringify(interesting, null, 2));
       } catch (e) {
         process.stderr.write(`[ws-frames] write failed: ${String(e)}\n`);
       }
       process.stderr.write(
         `[ws-frames] total=${wsFrames.length} interesting=${interesting.length}\n` +
           `methods seen: ${[...new Set(wsFrames.map((f) => f.method).filter(Boolean))].join(', ')}\n` +
-          `full dump → /tmp/1688-ws-frames.json (${enriched.length} frames)\n` +
-          `interesting dump → /tmp/1688-ws-interesting.json (${interesting.length} frames)\n`,
+          `full dump → ${debugTmpPath('1688-ws-frames.json')} (${enriched.length} frames)\n` +
+          `interesting dump → ${debugTmpPath('1688-ws-interesting.json')} (${interesting.length} frames)\n`,
       );
     });
   }

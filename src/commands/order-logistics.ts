@@ -5,6 +5,7 @@ import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { parseMtop } from '../session/mtop.js';
 import { sleep } from '../session/wait.js';
+import { debugTmpPath } from '../util/temp.js';
 
 export interface OrderLogisticsOpts {
   orderId: string;
@@ -134,9 +135,10 @@ async function fetchPageLogistics(
           if (process.env.BB1688_PROBE === '1' && traceResponseCount === 0) {
             try {
               const fs = await import('node:fs/promises');
-              await fs.writeFile('/tmp/1688-logistics-raw.json', text);
+              const file = debugTmpPath('1688-logistics-raw.json');
+              await fs.writeFile(file, text);
               process.stderr.write(
-                `[probe] saved raw logistics response → /tmp/1688-logistics-raw.json\n`,
+                `[probe] saved raw logistics response → ${file}\n`,
               );
             } catch {
               /* ignore */

@@ -6,6 +6,7 @@ import { withRecovery } from '../session/recovery.js';
 import { sleep } from '../session/wait.js';
 import { parseMtop } from '../session/mtop.js';
 import { startResponseCapture } from '../session/response-capture.js';
+import { debugTmpPath } from '../util/temp.js';
 
 export interface OfferOpts {
   offerId: string;
@@ -135,9 +136,10 @@ export async function executeRaw(
       if (process.env.BB1688_PROBE === '1') {
         try {
           const fs = await import('node:fs/promises');
-          await fs.writeFile('/tmp/1688-sku-raw.json', text);
+          const file = debugTmpPath('1688-sku-raw.json');
+          await fs.writeFile(file, text);
           process.stderr.write(
-            `[probe] saved sku → /tmp/1688-sku-raw.json (${text.length} bytes)\n`,
+            `[probe] saved sku → ${file} (${text.length} bytes)\n`,
           );
         } catch {
           /* ignore */
@@ -160,7 +162,9 @@ export async function executeRaw(
         const text = await resp.text();
         const fs = await import('node:fs/promises');
         DETAIL_SEQ++;
-        const file = `/tmp/1688-offerdetail-${String(DETAIL_SEQ).padStart(2, '0')}.json`;
+        const file = debugTmpPath(
+          `1688-offerdetail-${String(DETAIL_SEQ).padStart(2, '0')}.json`,
+        );
         await fs.writeFile(file, text);
         process.stderr.write(
           `[probe] saved offerdetail → ${file} (${text.length} bytes)\n`,
@@ -212,7 +216,7 @@ export async function executeRaw(
               const fs = await import('node:fs/promises');
               const seq = (++mtopSeq).toString().padStart(2, '0');
               const tag = path.split('/').filter(Boolean).pop() ?? 'api';
-              const file = `/tmp/1688-offer-mtop-${seq}-${tag.slice(0, 40)}.json`;
+              const file = debugTmpPath(`1688-offer-mtop-${seq}-${tag.slice(0, 40)}.json`);
               await fs.writeFile(file, body);
               log(`[api ] saved → ${file}`);
             } catch {
@@ -230,7 +234,7 @@ export async function executeRaw(
           try {
             const fs = await import('node:fs/promises');
             const seq = (++htmlSeq).toString().padStart(2, '0');
-            const file = `/tmp/1688-offer-page-${seq}.html`;
+            const file = debugTmpPath(`1688-offer-page-${seq}.html`);
             await fs.writeFile(file, body);
             // Probe for known inline-JSON variables.
             const markers = [

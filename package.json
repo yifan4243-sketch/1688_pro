@@ -36,7 +36,12 @@
   "files": [
     "dist",
     "scripts/postinstall.mjs",
+    "scripts/fix_bin_mode.mjs",
+    "scripts/generate_agent_context.mjs",
+    "scripts/check_agent_map.mjs",
+    "docs",
     "AGENTS.md",
+    "ARCHITECTURE.md",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -46,10 +51,15 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "build": "tsc -p tsconfig.json && node scripts/fix_bin_mode.mjs",
     "test": "vitest run",
+    "test:unit": "vitest run --exclude tests/doctor-live.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "agent-context": "node scripts/generate_agent_context.mjs",
+    "docs-check": "node scripts/generate_agent_context.mjs --check",
+    "agent-map-check": "node scripts/check_agent_map.mjs",
+    "agent-verify": "pnpm typecheck && pnpm test:unit && pnpm docs-check && pnpm agent-map-check",
     "prepublishOnly": "pnpm build",
     "postinstall": "node scripts/postinstall.mjs"
   },

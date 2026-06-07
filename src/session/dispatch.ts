@@ -88,6 +88,14 @@ const REGISTRY: Record<string, () => Promise<Executor<unknown, unknown>>> = {
     import('../commands/similar.js').then(
       (m) => m.execute as Executor<unknown, unknown>,
     ),
+  'supplier-inspect': () =>
+    import('../commands/supplier-inspect.js').then(
+      (m) => m.execute as Executor<unknown, unknown>,
+    ),
+  'supplier-search': () =>
+    import('../commands/supplier-search.js').then(
+      (m) => m.execute as Executor<unknown, unknown>,
+    ),
 };
 
 export async function loadExecutor<TArgs, TData>(

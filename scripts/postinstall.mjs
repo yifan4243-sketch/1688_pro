@@ -21,7 +21,10 @@ if (process.env.CI || process.env.BB1688_SKIP_POSTINSTALL) {
 // Otherwise the old daemon keeps serving stale code until the user runs
 // `1688 daemon stop` manually after every upgrade.
 try {
-  const pidFile = path.join(os.homedir(), '.1688', 'daemon.pid');
+  const pidFile = path.join(
+    process.env.BB1688_HOME ?? path.join(os.homedir(), '.1688'),
+    'daemon.pid',
+  );
   if (fs.existsSync(pidFile)) {
     const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
     if (Number.isInteger(pid) && pid > 0) {
@@ -140,19 +143,24 @@ console.log(
 const env = { ...process.env };
 if (downloadHost) env.PLAYWRIGHT_DOWNLOAD_HOST = downloadHost;
 
-const res = spawnSync('npx', ['playwright', 'install', 'chromium'], {
+const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const res = spawnSync(npxCmd, ['playwright', 'install', 'chromium'], {
   stdio: 'inherit',
   env,
 });
 
 if (res.status !== 0) {
+  const retryCommand =
+    process.platform === 'win32'
+      ? '             $env:PLAYWRIGHT_DOWNLOAD_HOST="https://npmmirror.com/mirrors/playwright"; npx playwright install chromium\n'
+      : '             PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright \\\n' +
+        '               npx playwright install chromium\n';
   console.log(
     '\n1688-cli: Chromium download failed (non-fatal).\n' +
       '          Try running manually:\n' +
       '          1) Install Chrome from https://www.google.com/chrome/ (recommended), or\n' +
       '          2) Force-retry with mirror:\n' +
-      '             PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright \\\n' +
-      '               npx playwright install chromium\n',
+      retryCommand,
   );
 }
 process.exit(0);

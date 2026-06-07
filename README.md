@@ -1,18 +1,18 @@
-# 1688 CLI: AI Agents Friendly Alibaba 1688.com CLI - Product Search, Inquiry, Cart, Checkout, Order Tracking & Seller Chat
+# 1688 CLI: AI Agents Friendly Alibaba 1688.com CLI - Product & Supplier Search, Inquiry, Cart, Checkout, Order Tracking & Seller Chat
 
 [![npm version](https://img.shields.io/npm/v/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
 [![npm downloads](https://img.shields.io/npm/dm/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
 [![license](https://img.shields.io/npm/l/1688-cli.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/1688-cli.svg)](https://nodejs.org/)
 
-Command-line tool for Alibaba 1688.com wholesale: keyword & image search,
-supplier inquiry, cart, checkout, order tracking, and seller chat. Outputs
-JSON when piped (for Codex / Claude Code / other AI agents) and pretty TTY
-text for humans.
+Command-line tool for Alibaba 1688.com wholesale: product search, supplier
+company search, image search, supplier inquiry, cart, checkout, order tracking,
+and seller chat. Outputs JSON when piped (for Codex / Claude Code / other AI
+agents) and pretty TTY text for humans.
 
 The 6 things you can do from the terminal:
 
-1. **Sourcing** — search / similar / image-search / product detail
+1. **Sourcing** — product search, supplier company search, similar, image search, detail
 2. **Pre-sale inquiry** — ask the supplier, watch replies live
 3. **Cart** — collect SKUs (with diff-based add confirmation)
 4. **Checkout** — preview + place the order
@@ -25,9 +25,15 @@ npm i -g 1688-cli
 
 # Sourcing
 1688 search "佛龛柜" --max 10                                 # keyword search
+1688 search "手机壳" --sort best-selling --price-max 50        # sorted/filtered sourcing
+1688 research 手机壳 数据线 --max-per-query 50 --jsonl         # multi-keyword research dataset
+1688 supplier search 键盘 --factory-only --json                # supplier discovery from company search
+1688 supplier research 键盘 --enrich top:5 --csv               # supplier scoring + inspect enrichment
 1688 similar 628196518518 --max 10                            # find similar offers, sorted by price
 1688 image-search ./sample.jpg                                # search by image
 1688 offer 628196518518                                       # product detail
+1688 compare 628196518518 1234567890                          # compare offer details
+1688 supplier inspect 628196518518                            # inspect supplier/factory trust signals
 
 # Pre-sale inquiry (with live watch for AI agents)
 1688 seller inquire 628196518518 "支持定制 logo 吗？"          # ask seller
@@ -92,11 +98,42 @@ follow up.
 
 ```bash
 1688 search 机械键盘 --max 20                    # keyword search
+1688 search 手机壳 --sort best-selling --price-max 50 --exclude-ads
+1688 research 手机壳 数据线 --max-per-query 50 --enrich top:5 --csv
 1688 similar 628196518518 --max 20               # "找同款" — same product, other suppliers, sorted by price
 1688 image-search ./shoe.jpg                     # search by local image
 1688 image-search https://.../img.png            # search by http(s) URL
 1688 offer 628196518518                          # product detail (priceTiers, attributes, packageInfo, SKUs)
+1688 compare 628196518518 1234567890             # compare price/MOQ/SKU/sales signals
+1688 supplier inspect 628196518518                # supplier identity, factory card, trust/service signals
+1688 supplier inspect b2b-22066467246504ba0d      # inspect by supplier memberId
+1688 supplier search 键盘 --factory-only           # company-search supplier discovery, not offer aggregation
+1688 supplier research 键盘 --enrich top:5 --csv   # supplier scoring + optional supplier inspect enrichment
 ```
+
+There are two research paths:
+
+- `1688 research` is offer-first. It searches products, scores offers, and can
+  enrich top offers through detail pages.
+- `1688 supplier search` / `1688 supplier research` are supplier-first. They
+  use 1688's company search source (`companySearchBusinessService`) and do not
+  build suppliers by grouping product-offer results.
+
+Supplier company-search flags:
+
+```bash
+1688 supplier search 键盘 --max 20 --factory-only --province 广东 --city 深圳
+1688 supplier search 键盘 --min-years 3 --min-repeat-rate 0.4 --min-response-rate 0.6
+1688 supplier research 键盘 --enrich top:10 --jsonl
+1688 supplier research 键盘 --enrich top:5 --csv --output suppliers.csv
+```
+
+`supplier search` defaults to no enrichment (`--enrich 0`). `supplier research`
+defaults to `--enrich top:10`, which calls `supplier inspect` for the top
+company-search suppliers when a `memberId` is available. The supplier result
+includes company name, `memberId`, shop URL, location, service years, factory
+signals, repeat/response rates, 3-month order/amount signals, score breakdown,
+and product previews from the company-search payload.
 
 ### 2. Pre-sale inquiry — ask the supplier
 
@@ -129,6 +166,13 @@ can pick up the new cartId reliably even when the same SKU is already in cart
 ```bash
 id=$(1688 cart add 628196518518 --sku 6070845665229 --qty 1 | jq -r '.added.cartId')
 1688 cart remove "$id"
+```
+
+PowerShell equivalent:
+
+```powershell
+$added = 1688 cart add 628196518518 --sku 6070845665229 --qty 1 --json | ConvertFrom-Json
+1688 cart remove $added.added.cartId
 ```
 
 ### 4. Checkout — place the order
@@ -247,6 +291,20 @@ Every command auto-switches to JSON when stdout is piped:
 1688 order list --status waitsellersend | jq '.orders[] | {id: .orderId, paid: .paidAt}'
 1688 fake-shipped --debug             | jq '.orders[].orderId'
 1688 search 雨伞                       | jq '.offers[0:5]'
+1688 supplier search 键盘              | jq '.items[0] | {company: .supplier.companyName, memberId: .supplier.memberId, score}'
+1688 supplier research 键盘 --enrich top:1 | jq '{source,total,enrichedCount,first: .items[0].supplier.companyName}'
+```
+
+Supplier-search JSON explicitly carries source provenance:
+
+```json
+{
+  "source": {
+    "kind": "company-search",
+    "endpoint": "companySearchBusinessService",
+    "offerAggregation": false
+  }
+}
 ```
 
 ### Built-in JSON flags (no `jq` required)
@@ -279,6 +337,33 @@ Force JSON in a TTY (alternative to `--json`):
 BB1688_JSON=1 1688 doctor
 ```
 
+PowerShell:
+
+```powershell
+$env:BB1688_JSON = "1"
+1688 doctor
+Remove-Item Env:\BB1688_JSON
+```
+
+### Windows / PowerShell examples
+
+The npm `1688` shim works from PowerShell and cmd.exe. Prefer built-in
+`--get` / `--pick` when `jq` is not installed:
+
+```powershell
+1688 offer 628196518518 --get supplier.name
+1688 supplier search 键盘 --pick total,source.kind,'items[0].supplier.companyName'
+1688 supplier research 键盘 --csv --output "$env:TEMP\suppliers.csv"
+```
+
+Daemon management is the same command surface:
+
+```powershell
+1688 daemon start
+1688 daemon status --json
+1688 daemon stop
+```
+
 ---
 
 ## Risk control
@@ -287,6 +372,7 @@ If 1688 shows a slider verification (滑块), solve it once with `--headed`:
 
 ```bash
 1688 search 雨伞 --headed     # window opens; drag the slider yourself
+1688 supplier search 键盘 --headed
 1688 search 雨伞              # subsequent calls reuse the verified session
 ```
 
@@ -297,11 +383,15 @@ See also the FAQ entry on [verification challenges](#what-happens-if-1688-shows-
 ## Files & directories
 
 ```
-~/.1688/profiles/default/   Chromium profile (cookies, IndexedDB, session state)
-~/.1688/state.json          cached identity (nick / memberId / timestamps)
-~/.1688/daemon.sock         daemon Unix socket
+~/.1688/profiles/default/   Chromium profile (macOS/Linux)
+~/.1688/state.json          cached identity (macOS/Linux)
+~/.1688/daemon.sock         daemon Unix socket (macOS/Linux)
 ~/.1688/daemon.pid          daemon PID
 ~/.1688/.lock               proper-lockfile (one process at a time)
+
+%USERPROFILE%\.1688\profiles\default\   Chromium profile (Windows)
+%USERPROFILE%\.1688\state.json          cached identity (Windows)
+\\.\pipe\1688-cli-daemon-<hash>         daemon named pipe (Windows)
 ```
 
 ## Environment variables
@@ -311,7 +401,7 @@ BB1688_NO_DAEMON=1          disable daemon, always run inline
 BB1688_JSON=1               force JSON output on TTY
 BB1688_DEBUG=1              verbose internal logs to stderr
 BB1688_FORCE_CHROMIUM=1     skip system Chrome, use bundled Chromium
-BB1688_HOME=<path>          override ~/.1688
+BB1688_HOME=<path>          override ~/.1688 or %USERPROFILE%\.1688
 BB1688_SKIP_POSTINSTALL=1   skip Chromium download during npm install
 PLAYWRIGHT_DOWNLOAD_HOST    custom Playwright mirror
 ```

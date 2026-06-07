@@ -1,4 +1,5 @@
-// Wire protocol for the 1688 daemon. Newline-delimited JSON over a Unix socket.
+// Wire protocol for the 1688 daemon. Newline-delimited JSON over a Unix socket
+// on macOS/Linux or a named pipe on Windows.
 
 export interface Request {
   id: string;

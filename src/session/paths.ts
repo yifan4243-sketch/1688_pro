@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 
 export function root(): string {
   return process.env.BB1688_HOME ?? path.join(os.homedir(), '.1688');
@@ -19,12 +20,26 @@ export function lockFile(): string {
 }
 
 export function socketPath(): string {
+  return socketPathForPlatform(process.platform, root());
+}
+
+export function socketPathForPlatform(platform: NodeJS.Platform, rootPath: string): string {
   // Windows: Node's net.listen()/createConnection() can't bind a Unix-style
-  // filesystem path on win32 (EACCES). Use a named pipe instead.
-  if (process.platform === 'win32') {
-    return '\\\\.\\pipe\\1688-cli-daemon';
+  // filesystem path on win32 (EACCES). Use a named pipe instead. Include a
+  // stable root hash so different users, BB1688_HOME values, and tests do not
+  // collide on one global pipe name.
+  if (platform === 'win32') {
+    return `\\\\.\\pipe\\1688-cli-daemon-${rootHash(rootPath)}`;
   }
-  return path.join(root(), 'daemon.sock');
+  return path.join(rootPath, 'daemon.sock');
+}
+
+export function rootHash(rootPath: string): string {
+  return crypto
+    .createHash('sha1')
+    .update(path.resolve(rootPath).toLowerCase())
+    .digest('hex')
+    .slice(0, 12);
 }
 
 export function pidFile(): string {

@@ -1,8 +1,9 @@
 import type { BrowserContext, Page } from 'playwright';
-import iconv from 'iconv-lite';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
+import { encodeGbkPercent } from '../util/encoding.js';
+import { debugTmpPath } from '../util/temp.js';
 import { withRecovery } from '../session/recovery.js';
 import { clickSearchNextPage } from '../session/search-locators.js';
 import { startSearchOfferCapture } from '../session/search-capture.js';
@@ -17,9 +18,28 @@ import {
 } from '../session/search-mtop.js';
 import { parseMtopJsonp } from '../session/mtop.js';
 import { sleep, waitWithDeadline } from '../session/wait.js';
+import {
+  applySearchControls,
+  hasActiveFilters,
+  normalizeFilters,
+  normalizeSearchSort,
+  normalizeVerifiedFilter,
+  parseOptionalNumber,
+  parsePositiveInt,
+  type SearchFilterSummary,
+  type SearchSort,
+} from './sourcing-utils.js';
 
 export interface SearchOpts {
   max?: string;
+  sort?: string;
+  priceMin?: string;
+  priceMax?: string;
+  province?: string;
+  city?: string;
+  verified?: string;
+  minTurnover?: string;
+  excludeAds?: boolean;
   profile?: string;
   headed?: boolean;
 }
@@ -27,11 +47,16 @@ export interface SearchOpts {
 export interface SearchArgs {
   keyword: string;
   max: number;
+  sort?: SearchSort;
+  filters?: SearchFilterSummary;
   headed?: boolean;
 }
 
 export interface SearchResult {
   keyword: string;
+  sort: SearchSort;
+  filters: SearchFilterSummary;
+  totalBeforeFilter: number;
   total: number;
   offers: Offer[];
 }
@@ -46,14 +71,28 @@ export async function execute(
     ctx,
     { cmd: 'search', args },
     async () => {
+      const sort = args.sort ?? 'relevance';
+      const filters = args.filters ?? normalizeFilters({});
+      const fetchMax = hasActiveFilters(filters)
+        ? Math.min(Math.max(args.max * 3, PAGE_SIZE), PAGE_SIZE * MAX_PAGES)
+        : args.max;
       const offers = await fetchSearch(
         ctx,
         args.keyword,
         args.headed === true,
-        args.max,
+        fetchMax,
+        sort,
       );
-      const slice = offers.slice(0, args.max);
-      return { keyword: args.keyword, total: slice.length, offers: slice };
+      const controlled = applySearchControls(offers, sort, filters);
+      const slice = controlled.slice(0, args.max);
+      return {
+        keyword: args.keyword,
+        sort,
+        filters,
+        totalBeforeFilter: offers.length,
+        total: slice.length,
+        offers: slice,
+      };
     },
     { headed: args.headed === true, maxRetries: 1 },
   );
@@ -64,16 +103,26 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
   if (!kw) {
     throw new CliError(2, 'BAD_INPUT', 'Search keyword is required.');
   }
-  const max = Math.max(1, parseInt(opts.max ?? '20', 10));
+  const max = parsePositiveInt(opts.max, '--max', 20, PAGE_SIZE * MAX_PAGES);
+  const sort = normalizeSearchSort(opts.sort);
+  const filters = normalizeFilters({
+    priceMin: parseOptionalNumber(opts.priceMin, '--price-min'),
+    priceMax: parseOptionalNumber(opts.priceMax, '--price-max'),
+    province: opts.province,
+    city: opts.city,
+    verified: normalizeVerifiedFilter(opts.verified),
+    minTurnover: parseOptionalNumber(opts.minTurnover, '--min-turnover'),
+    excludeAds: opts.excludeAds,
+  });
 
   const data = await dispatch<SearchArgs, SearchResult>(
     'search',
-    { keyword: kw, max, headed: opts.headed },
+    { keyword: kw, max, sort, filters, headed: opts.headed },
     { headed: opts.headed, profile: opts.profile },
   );
 
   emit({
-    human: () => printOffers(data.offers, data.keyword),
+    human: () => printOffers(data),
     data,
   });
 }
@@ -100,16 +149,11 @@ async function fetchSearch(
   keyword: string,
   headed: boolean,
   maxResults: number,
+  sort: SearchSort,
 ): Promise<Offer[]> {
   const page = await ctx.newPage();
 
-  // s.1688.com is GBK-encoded — UTF-8 percent-encoding makes the server
-  // search for mojibake. Encode the keyword as GBK bytes first.
-  const gbkBytes = iconv.encode(keyword, 'gbk');
-  const gbkQs = Array.from(gbkBytes)
-    .map((b) => '%' + b.toString(16).padStart(2, '0').toUpperCase())
-    .join('');
-  const baseUrl = `https://s.1688.com/selloffer/offer_search.htm?keywords=${gbkQs}`;
+  const baseUrl = buildSearchUrl(keyword, sort);
   const pagesWanted = Math.min(
     Math.max(1, Math.ceil(maxResults / PAGE_SIZE)),
     MAX_PAGES,
@@ -198,7 +242,7 @@ async function fetchSearch(
             try {
               const fs = await import('node:fs/promises');
               const seq = (++MTOP_SEQ).toString().padStart(2, '0');
-              const file = `/tmp/1688-mtop-${seq}-${appId || 'unknown'}.json`;
+              const file = debugTmpPath(`1688-mtop-${seq}-${appId || 'unknown'}.json`);
               await fs.writeFile(file, body);
               log(`[mtop] saved → ${file}`);
             } catch {
@@ -232,7 +276,7 @@ async function fetchSearch(
               : /\.html\b/.test(u)
               ? 'html'
               : 'htm';
-            const tmpPath = `/tmp/1688-search-page-${seq}-${tag}.html`;
+            const tmpPath = debugTmpPath(`1688-search-page-${seq}-${tag}.html`);
             await fs.writeFile(tmpPath, body);
             const offerHrefCount = (
               body.match(/detail\.[m.]*1688\.com\/offer\//g) ?? []
@@ -412,6 +456,22 @@ async function fetchSearch(
   }
 
   return allOffers;
+}
+
+export function buildSearchUrl(keyword: string, sort: SearchSort): string {
+  // s.1688.com is GBK-encoded — UTF-8 percent-encoding makes the server
+  // search for mojibake. Encode the keyword as GBK bytes first.
+  const gbkQs = encodeGbkPercent(keyword);
+  const sortType = remoteSortType(sort);
+  const sortQs = sortType ? `&sortType=${encodeURIComponent(sortType)}` : '';
+  return `https://s.1688.com/selloffer/offer_search.htm?keywords=${gbkQs}${sortQs}`;
+}
+
+function remoteSortType(sort: SearchSort): string | null {
+  if (sort === 'best-selling') return 'va_rmdarkgmv30';
+  if (sort === 'price-asc') return 'va_price_asc';
+  if (sort === 'price-desc') return 'va_price_desc';
+  return null;
 }
 
 async function isBlocked(page: Page, retries = 3): Promise<boolean> {
@@ -686,11 +746,17 @@ export async function extractOffers(page: Page): Promise<Offer[]> {
   });
 }
 
-function printOffers(offers: Offer[], keyword: string): void {
+function printOffers(result: SearchResult): void {
+  const { offers, keyword } = result;
   if (offers.length === 0) {
     process.stdout.write(`No offers found for "${keyword}".\n`);
     return;
   }
+  const suffix =
+    result.sort !== 'relevance' || hasActiveFilters(result.filters)
+      ? ` (${offers.length}/${result.totalBeforeFilter}, sort=${result.sort})`
+      : '';
+  process.stdout.write(`Search results for "${keyword}"${suffix}:\n\n`);
   const w = String(offers.length).length;
   offers.forEach((o, i) => {
     const idx = String(i + 1).padStart(w, ' ');
