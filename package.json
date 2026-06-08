@@ -44,6 +44,7 @@
     "scripts/fix_bin_mode.mjs",
     "scripts/generate_agent_context.mjs",
     "scripts/check_agent_map.mjs",
+    "scripts/check_release.mjs",
     "docs",
     "AGENTS.md",
     "ARCHITECTURE.md",
@@ -64,8 +65,9 @@
     "agent-context": "node scripts/generate_agent_context.mjs",
     "docs-check": "node scripts/generate_agent_context.mjs --check",
     "agent-map-check": "node scripts/check_agent_map.mjs",
-    "agent-verify": "pnpm typecheck && pnpm test:unit && pnpm docs-check && pnpm agent-map-check",
-    "prepublishOnly": "pnpm build",
+    "release-check": "node scripts/check_release.mjs",
+    "agent-verify": "pnpm typecheck && pnpm test:unit && pnpm docs-check && pnpm agent-map-check && pnpm release-check",
+    "prepublishOnly": "pnpm release-check && pnpm build",
     "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {

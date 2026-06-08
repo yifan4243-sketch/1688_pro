@@ -1,11 +1,61 @@
 # Playbook: Update CLI Release Behavior
 
-1. Check `package.json`, `CHANGELOG.md`, `README.md`, and update-notifier
-   behavior in `src/cli.ts`.
-2. Preserve the update protocol in `docs/SAFETY.md`: never run a global install
-   command without explicit current-turn user approval.
-3. If daemon behavior changes after upgrade, document whether
-   `1688 daemon reload` is required.
-4. Run `pnpm build`, `pnpm test`, and `pnpm agent-context`.
-5. Update docs when install, postinstall, or release packaging behavior changes.
+Use this playbook for version bumps, npm publishes, GitHub release/tag work,
+postinstall changes, and update-notifier behavior.
 
+## Release Checklist
+
+1. Update `CHANGELOG.md` first.
+   - Keep current in-progress docs/features under `## [Unreleased]`.
+   - Before publishing, move released items into
+     `## [x.y.z] - YYYY-MM-DD`.
+   - Do not describe post-tag work as part of an already-published npm version.
+2. Check `package.json`, `README.md`, npm metadata, and update-notifier behavior
+   in `src/cli.ts`.
+3. Preserve the update protocol in `docs/SAFETY.md`: never run a global install
+   command without explicit current-turn user approval.
+4. If daemon behavior changes after upgrade, document whether
+   `1688 daemon reload` is required.
+5. Run:
+
+   ```bash
+   pnpm agent-context
+   pnpm agent-verify
+   npm pack --dry-run
+   ```
+
+6. Verify the release gate explicitly:
+
+   ```bash
+   pnpm release-check
+   ```
+
+7. Publish only after npm auth is valid:
+
+   ```bash
+   npm whoami
+   npm publish
+   ```
+
+8. Push both branch and tag. Lightweight tags are not pushed by
+   `git push --follow-tags`, so push the release tag explicitly:
+
+   ```bash
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+9. After publish, verify:
+
+   ```bash
+   npm view 1688-cli version dist-tags --json
+   npm view 1688-cli@X.Y.Z readmeFilename version --json
+   git ls-remote --tags origin refs/tags/vX.Y.Z
+   ```
+
+## Omission Tracking
+
+If a release step is missed, record it in
+`docs/records/release-omissions.md` with symptom, cause, fix, and prevention.
+Then update this playbook or a script so the same omission becomes harder to
+repeat.

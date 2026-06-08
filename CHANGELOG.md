@@ -3,6 +3,53 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Docs
+- Split the README sourcing section into two separate user paths:
+  **Product Scraper / Product Research** and **Supplier Scraper / Supplier
+  Research**, with a quick command-selection table.
+- Updated package metadata locally with scraper-oriented description and
+  keywords (`supplier-scraper`, `product-scraper`, `supplier-search`,
+  `sourcing`). These npm metadata changes will appear on npm on the next
+  published version.
+
+## [0.1.42] - 2026-06-08
+
+### Added
+- **Sourcing research workflow.** Added `1688 research` for multi-keyword
+  product research datasets with scoring, JSONL/CSV export, and optional
+  top-N offer enrichment.
+- **Supplier scraper/research workflow.** Added `1688 supplier search` and
+  `1688 supplier research`, backed by 1688 company search
+  (`companySearchBusinessService`) instead of grouping product-offer results.
+  Supplier results include company identity, memberId, location, service
+  years, factory signals, repeat/response rates, order/amount signals,
+  previews, score, and export support.
+- **Supplier inspection.** Added `1688 supplier inspect` for supplier/factory
+  trust signals from an offerId or `b2b-*` memberId.
+- **Offer comparison.** Added `1688 compare <offerId...>` for side-by-side
+  price, MOQ, SKU depth, sales, supplier, freight/package, and score signals.
+- **Agent map and harness.** Added the short `AGENTS.md` entrypoint,
+  `ARCHITECTURE.md`, docs/specs/playbooks, generated agent indexes, completed
+  ExecPlans, and the default `pnpm agent-verify` gate.
+
+### Changed
+- **Search sourcing filters.** Added sorted/filtered sourcing controls such as
+  sort modes, price range, location, verified supplier, minimum turnover/order
+  signals, and optional ad exclusion.
+- **Windows CLI compatibility baseline.** Replaced shell `chmod` in the build
+  with a Node helper, made Windows daemon named pipes root-hashed, made
+  postinstall/doctor hints platform-aware, moved production temp debug paths to
+  `os.tmpdir()`, and added PowerShell/Windows docs.
+- **Documentation packaging.** Published the expanded agent-readable docs and
+  generated indexes in the npm package.
+
+### Tests
+- Added deterministic tests for sourcing scoring/export helpers, supplier
+  inspect/search behavior, Windows path/doctor/bin-mode helpers, and search
+  option handling.
+
 ## [0.1.41] - 2026-05-16
 
 ### Added

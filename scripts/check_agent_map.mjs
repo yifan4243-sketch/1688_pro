@@ -38,6 +38,7 @@ const requiredFiles = [
   'docs/playbooks/debug-risk-control.md',
   'docs/playbooks/add-mtop-capture.md',
   'docs/playbooks/update-cli-release.md',
+  'docs/records/release-omissions.md',
   'docs/generated/command-index.md',
   'docs/generated/module-map.md',
   'docs/generated/test-index.md',
@@ -63,7 +64,7 @@ if (agents.split('\n').length > 220)
   failures.push('AGENTS.md should stay short (<= 220 lines).');
 
 const pkg = JSON.parse(await read('package.json'));
-for (const scriptName of ['agent-context', 'docs-check', 'agent-map-check', 'agent-verify']) {
+for (const scriptName of ['agent-context', 'docs-check', 'agent-map-check', 'release-check', 'agent-verify']) {
   if (!pkg.scripts?.[scriptName]) failures.push(`package.json missing script: ${scriptName}`);
 }
 
