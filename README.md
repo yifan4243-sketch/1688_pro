@@ -12,7 +12,7 @@ Claude Code / other AI agents) and pretty TTY text for humans.
 
 The 6 things you can do from the terminal:
 
-1. **Sourcing** — product search, supplier company search, similar, image search, detail
+1. **Sourcing** — product scraper/research + supplier scraper/research
 2. **Pre-sale inquiry** — ask the supplier, watch replies live
 3. **Cart** — collect SKUs (with diff-based add confirmation)
 4. **Checkout** — preview + place the order
@@ -23,16 +23,18 @@ The 6 things you can do from the terminal:
 npm i -g 1688-cli
 1688 login                                       # scan QR with the 1688 app
 
-# Sourcing
+# Product scraper / product research
 1688 search "佛龛柜" --max 10                                 # keyword search
 1688 search "手机壳" --sort best-selling --price-max 50        # sorted/filtered sourcing
 1688 research 手机壳 数据线 --max-per-query 50 --jsonl         # multi-keyword research dataset
-1688 supplier search 键盘 --factory-only --json                # supplier discovery from company search
-1688 supplier research 键盘 --enrich top:5 --csv               # supplier scoring + inspect enrichment
 1688 similar 628196518518 --max 10                            # find similar offers, sorted by price
 1688 image-search ./sample.jpg                                # search by image
 1688 offer 628196518518                                       # product detail
 1688 compare 628196518518 1234567890                          # compare offer details
+
+# Supplier scraper / supplier research
+1688 supplier search 键盘 --factory-only --json                # supplier discovery from company search
+1688 supplier research 键盘 --enrich top:5 --csv               # supplier scoring + inspect enrichment
 1688 supplier inspect 628196518518                            # inspect supplier/factory trust signals
 
 # Pre-sale inquiry (with live watch for AI agents)
@@ -94,7 +96,13 @@ npm i -g 1688-cli
 Organized by the buyer journey: discover → ask → decide → buy → track →
 follow up.
 
-### 1. Sourcing — find the right supplier
+### 1. Sourcing — Product Scraper and Supplier Scraper
+
+Sourcing has two separate paths. Use **Product Scraper / Product Research**
+when you start from products or offers. Use **Supplier Scraper / Supplier
+Research** when you start from companies, factories, or supplier qualification.
+
+#### Product Scraper / Product Research
 
 ```bash
 1688 search 机械键盘 --max 20                    # keyword search
@@ -105,25 +113,46 @@ follow up.
 1688 image-search https://.../img.png            # search by http(s) URL
 1688 offer 628196518518                          # product detail (priceTiers, attributes, packageInfo, SKUs)
 1688 compare 628196518518 1234567890             # compare price/MOQ/SKU/sales signals
-1688 supplier inspect 628196518518                # supplier identity, factory card, trust/service signals
-1688 supplier inspect b2b-22066467246504ba0d      # inspect by supplier memberId
-1688 supplier search 键盘 --factory-only           # company-search supplier discovery, not offer aggregation
-1688 supplier research 键盘 --enrich top:5 --csv   # supplier scoring + optional supplier inspect enrichment
 ```
 
-There are two research paths:
+`1688 search` and `1688 research` are offer-first. They search product offers,
+score offer results, export datasets, and can enrich top offers through detail
+pages. Use this path when price, MOQ, SKU depth, sales signals, images, and
+offer-level comparison are the first decision points.
 
-- `1688 research` is offer-first. It searches products, scores offers, and can
-  enrich top offers through detail pages.
-- `1688 supplier search` / `1688 supplier research` are supplier-first. They
-  use 1688's company search source (`companySearchBusinessService`) and do not
-  build suppliers by grouping product-offer results.
+#### Supplier Scraper / Supplier Research
 
-In scraper terms, `1688 supplier search` is the read-only 1688 Supplier Scraper:
-it pulls supplier/company records directly from 1688 company search for a
-keyword and filters. `1688 supplier research` is the scored/export workflow on
-top of that supplier scraper, with optional `supplier inspect` enrichment for
-the top companies.
+```bash
+1688 supplier search 键盘 --factory-only           # company-search supplier discovery, not offer aggregation
+1688 supplier search 键盘 --max 20 --province 广东 --city 深圳
+1688 supplier research 键盘 --enrich top:5 --csv   # supplier scoring + optional supplier inspect enrichment
+1688 supplier inspect 628196518518                # supplier identity, factory card, trust/service signals
+1688 supplier inspect b2b-22066467246504ba0d      # inspect by supplier memberId
+```
+
+`1688 supplier search` is the read-only 1688 Supplier Scraper. It pulls
+supplier/company records directly from 1688 company search
+(`companySearchBusinessService`) for a keyword and filters. It does not build
+suppliers by grouping product-offer results.
+
+`1688 supplier research` is the scored/export workflow on top of that supplier
+scraper, with optional `supplier inspect` enrichment for the top companies.
+Use this path when factory identity, service years, repeat/response rates,
+location, company profile, and supplier qualification are the first decision
+points.
+
+#### Which path should I use?
+
+| Need | Command |
+|---|---|
+| Find product offers | `1688 search <keyword...>` |
+| Build a scored product dataset | `1688 research <keyword...>` |
+| Find similar offers from other suppliers | `1688 similar <offerId>` |
+| Inspect one product offer | `1688 offer <offerId>` |
+| Compare product offers | `1688 compare <offerId...>` |
+| Find companies or factories directly | `1688 supplier search <keyword...>` |
+| Build a scored supplier dataset | `1688 supplier research <keyword...>` |
+| Inspect one supplier/factory | `1688 supplier inspect <offerId|memberId>` |
 
 Supplier company-search flags:
 
