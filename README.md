@@ -1,4 +1,4 @@
-# 1688 CLI: AI Agents Friendly Alibaba 1688.com CLI - Product & Supplier Search, Inquiry, Cart, Checkout, Order Tracking & Seller Chat
+# 1688 CLI: AI Agents Friendly Alibaba 1688.com Product Search & Supplier Scraper CLI
 
 [![npm version](https://img.shields.io/npm/v/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
 [![npm downloads](https://img.shields.io/npm/dm/1688-cli.svg)](https://www.npmjs.com/package/1688-cli)
@@ -6,9 +6,9 @@
 [![node](https://img.shields.io/node/v/1688-cli.svg)](https://nodejs.org/)
 
 Command-line tool for Alibaba 1688.com wholesale: product search, supplier
-company search, image search, supplier inquiry, cart, checkout, order tracking,
-and seller chat. Outputs JSON when piped (for Codex / Claude Code / other AI
-agents) and pretty TTY text for humans.
+company search, supplier scraper/research, image search, supplier inquiry, cart,
+checkout, order tracking, and seller chat. Outputs JSON when piped (for Codex /
+Claude Code / other AI agents) and pretty TTY text for humans.
 
 The 6 things you can do from the terminal:
 
@@ -118,6 +118,12 @@ There are two research paths:
 - `1688 supplier search` / `1688 supplier research` are supplier-first. They
   use 1688's company search source (`companySearchBusinessService`) and do not
   build suppliers by grouping product-offer results.
+
+In scraper terms, `1688 supplier search` is the read-only 1688 Supplier Scraper:
+it pulls supplier/company records directly from 1688 company search for a
+keyword and filters. `1688 supplier research` is the scored/export workflow on
+top of that supplier scraper, with optional `supplier inspect` enrichment for
+the top companies.
 
 Supplier company-search flags:
 
