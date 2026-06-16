@@ -10,6 +10,8 @@ import {
 export interface SearchOfferCaptureOptions {
   page: Page;
   requireMethod?: string;
+  requireSortType?: string;
+  allowUnscopedWirelessRecommend?: boolean;
   targetPage?: () => number;
   keep?: 'first' | 'largest';
 }
@@ -149,10 +151,18 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
     lastSeenUrl = url;
     try {
       const meta = readSearchMtopRequestMeta(url);
-      if (!meta || meta.appId !== SEARCH_APP_ID) return;
-      if (opts.requireMethod && meta.method !== opts.requireMethod) return;
-      const targetPage = opts.targetPage?.();
-      if (targetPage !== undefined && (meta.beginPage ?? 1) !== targetPage) return;
+      if (meta) {
+        if (meta.appId !== SEARCH_APP_ID) return;
+        if (opts.requireMethod && meta.method !== opts.requireMethod) return;
+        if (opts.requireSortType && meta.sortType !== opts.requireSortType) return;
+        const targetPage = opts.targetPage?.();
+        if (targetPage !== undefined && (meta.beginPage ?? 1) !== targetPage) return;
+      } else if (
+        !opts.allowUnscopedWirelessRecommend ||
+        !/mtop\.relationrecommend\.wirelessrecommend\.recommend/i.test(url)
+      ) {
+        return;
+      }
       matchedCount++;
       lastMatchedUrl = url;
       const parsed = parseOfferItemsFromMtopText(await resp.text());

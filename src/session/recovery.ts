@@ -435,15 +435,32 @@ async function runRecoveryAction(decision: RecoveryDecision, page: Page | null):
   }
 }
 
-function recoveryDetails(decision: RecoveryDecision, artifactDetails: CliErrorDetails): CliErrorDetails {
+function recoveryDetails(
+  decision: RecoveryDecision,
+  artifactDetails: CliErrorDetails,
+  baseDetails: CliErrorDetails = {},
+): CliErrorDetails {
+  const baseFailureKind =
+    typeof baseDetails.failureKind === 'string'
+      ? baseDetails.failureKind
+      : undefined;
+  const baseRecoveryAction =
+    typeof baseDetails.recoveryAction === 'string'
+      ? baseDetails.recoveryAction
+      : undefined;
   return {
     ...artifactDetails,
-    category: artifactDetails.category ?? decision.failureKind,
-    failureKind: decision.failureKind,
-    recoveryAction: decision.action,
-    recoverHint: artifactDetails.recoverHint ?? decision.recoverHint,
-    retryable: false,
+    category: baseDetails.category ?? artifactDetails.category ?? decision.failureKind,
+    failureKind: baseFailureKind ?? decision.failureKind,
+    recoveryAction: baseRecoveryAction ?? decision.action,
+    recoverHint:
+      baseDetails.recoverHint ?? artifactDetails.recoverHint ?? decision.recoverHint,
+    retryable: baseDetails.retryable ?? false,
   };
+}
+
+function shouldPreserveCliError(error: CliError): boolean {
+  return error.exitCode !== 1 || error.code === 'SIMILAR_UNAVAILABLE';
 }
 
 export async function withRecovery<T>(
@@ -491,8 +508,10 @@ export async function withRecovery<T>(
       }).catch(() => ({}));
 
       if (!willRetry) {
-        if (error instanceof CliError && error.exitCode !== 1) {
-          throw error.withDetails(recoveryDetails(decision, artifactDetails));
+        if (error instanceof CliError && shouldPreserveCliError(error)) {
+          throw error.withDetails(
+            recoveryDetails(decision, artifactDetails, error.details),
+          );
         }
         throw new CliError(
           decision.exitCode,

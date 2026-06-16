@@ -142,6 +142,30 @@ the matching profile-scoped daemon status.
 }
 ```
 
+`similar` uses this shape only when 1688's official same-product endpoint
+returns comparable offers. The command intentionally does not fall back to
+keyword or image search. When the official endpoint returns the current empty
+image-search shell, JSON error output uses:
+
+```ts
+{
+  ok: false,
+  code: "SIMILAR_UNAVAILABLE",
+  message: string,
+  details: {
+    offerId: string,
+    source: "official-similar-page",
+    category: "similar_unavailable",
+    failureKind: "similar_unavailable",
+    recoveryAction: "none",
+    retryable: false,
+    recoverHint: string,
+    artifactDir?: string,
+    currentUrl?: string,
+  }
+}
+```
+
 ## `research`
 
 Normal JSON result:

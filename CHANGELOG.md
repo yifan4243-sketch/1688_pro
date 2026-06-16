@@ -5,6 +5,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.44] - 2026-06-16
+
+### Changed
+- **Search now follows the normal 1688 buyer flow.** Product search warms up
+  on `www.1688.com`, submits the query through the main-site search box when
+  possible, and clicks result-page sort controls for price/sales ordering
+  before capturing the sorted mtop response.
+- **Headed search waits for manual verification.** When `--headed` reaches a
+  risk-control page, the CLI keeps the browser open for manual completion
+  instead of returning early.
+- **Search diagnostics are more precise.** Login redirects are reported as
+  `NOT_LOGGED_IN`, sorted captures filter by `sortType`, and missing homepage
+  or sort controls use short probes so fallback/error paths do not hang.
+- **`similar` no longer suggests fallback behavior.** The command now treats
+  1688's official same-product page as the only valid source. If that official
+  entry point returns the current empty image-search shell, the CLI reports
+  `SIMILAR_UNAVAILABLE` instead of implying `--headed`, keyword search, or
+  image search can provide equivalent same-product results.
+
 ## [0.1.43] - 2026-06-16
 
 ### Added

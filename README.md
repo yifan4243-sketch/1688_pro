@@ -27,7 +27,6 @@ npm i -g 1688-cli
 1688 search "佛龛柜" --max 10                                 # keyword search
 1688 search "手机壳" --sort best-selling --price-max 50        # sorted/filtered sourcing
 1688 research 手机壳 数据线 --max-per-query 50 --jsonl         # multi-keyword research dataset
-1688 similar 628196518518 --max 10                            # find similar offers, sorted by price
 1688 image-search ./sample.jpg                                # search by image
 1688 offer 628196518518                                       # product detail
 1688 compare 628196518518 1234567890                          # compare offer details
@@ -109,7 +108,6 @@ Research** when you start from companies, factories, or supplier qualification.
 1688 search 机械键盘 --max 20                    # keyword search
 1688 search 手机壳 --sort best-selling --price-max 50 --exclude-ads
 1688 research 手机壳 数据线 --max-per-query 50 --enrich top:5 --csv
-1688 similar 628196518518 --max 20               # "找同款" — same product, other suppliers, sorted by price
 1688 image-search ./shoe.jpg                     # search by local image
 1688 image-search https://.../img.png            # search by http(s) URL
 1688 offer 628196518518                          # product detail (priceTiers, attributes, packageInfo, SKUs)
@@ -120,6 +118,12 @@ Research** when you start from companies, factories, or supplier qualification.
 score offer results, export datasets, and can enrich top offers through detail
 pages. Use this path when price, MOQ, SKU depth, sales signals, images, and
 offer-level comparison are the first decision points.
+
+`1688 similar <offerId>` is retained for compatibility with the official
+1688 "找同款" entry point, but that entry point currently returns an empty
+image-search shell for tested offers. The command does not fall back to
+keyword or image search because those results are not strict same-product
+matches.
 
 #### Supplier Scraper / Supplier Research
 
@@ -148,7 +152,7 @@ points.
 |---|---|
 | Find product offers | `1688 search <keyword...>` |
 | Build a scored product dataset | `1688 research <keyword...>` |
-| Find similar offers from other suppliers | `1688 similar <offerId>` |
+| Official same-product matching | `1688 similar <offerId>` (currently unavailable when the official endpoint returns empty) |
 | Inspect one product offer | `1688 offer <offerId>` |
 | Compare product offers | `1688 compare <offerId...>` |
 | Find companies or factories directly | `1688 supplier search <keyword...>` |

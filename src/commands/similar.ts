@@ -1,6 +1,6 @@
-// Find similar offers — uses 1688's "找同款 / 找相似" page which renders
-// results from the same WirelessRecommend.recommend mtop API (appId=32517)
-// that search uses, just seeded by an offerId instead of a keyword.
+// Find similar offers via 1688's official "找同款 / 找相似" page.
+// This command deliberately does not fall back to title search or image search:
+// those are broader sourcing strategies, not same-product matching.
 import type { BrowserContext } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
@@ -8,7 +8,7 @@ import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
 import { sleep } from '../session/wait.js';
 import { captureSearchOffersForAction } from '../session/search-capture.js';
-import { type Offer } from './search.js';
+import { extractOffers, type Offer } from './search.js';
 
 export interface SimilarOpts {
   offerId: string;
@@ -55,6 +55,7 @@ async function executeSimilar(
 ): Promise<SimilarResult> {
   const headed = args.headed === true;
   const page = await ctx.newPage();
+  let succeeded = false;
 
   try {
     info('Warming up s.1688.com...');
@@ -65,7 +66,7 @@ async function executeSimilar(
     await sleep(1500);
 
     const captureResult = await captureSearchOffersForAction(
-      { page, keep: 'largest' },
+      { page, keep: 'largest', allowUnscopedWirelessRecommend: true },
       async () => {
         info(`Finding similar offers for ${args.offerId}...`);
         if (headed) info('A Chrome window has opened — switch focus to it now.');
@@ -90,25 +91,44 @@ async function executeSimilar(
         '1688 risk-control page detected. Run once with --headed to solve the slider; subsequent calls work for hours.',
       );
     }
-    const captured = captureResult.offers;
+    let captured = captureResult.offers;
+    if (captured.length === 0) {
+      await page
+        .evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 0.8)))
+        .catch(() => {});
+      await sleep(800);
+      captured = await extractOffers(page).catch(() => []);
+    }
 
     if (captured.length === 0) {
       throw new CliError(
-        4,
-        'NO_RESULTS',
-        'No similar offers returned. Run once with --headed to solve any slider; subsequent calls work for hours.',
+        1,
+        'SIMILAR_UNAVAILABLE',
+        '1688 official similar-offer entry point did not return comparable offers. This command is currently unavailable until a stable same-product source is found.',
+        {
+          offerId: args.offerId,
+          source: 'official-similar-page',
+          category: 'similar_unavailable',
+          failureKind: 'similar_unavailable',
+          recoveryAction: 'none',
+          retryable: false,
+          recoverHint:
+            '`1688 similar` only returns official same-product results and does not fall back to keyword or image search.',
+        },
       );
     }
 
     // Filter out the seed offer itself from the results.
     const filtered = captured.filter((o) => o.offerId !== args.offerId);
-    return {
+    const result = {
       offerId: args.offerId,
       total: filtered.length,
       offers: filtered.slice(0, args.max),
     };
+    succeeded = true;
+    return result;
   } finally {
-    await page.close().catch(() => {});
+    if (succeeded) await page.close().catch(() => {});
   }
 }
 

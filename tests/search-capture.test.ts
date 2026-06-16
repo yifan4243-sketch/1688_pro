@@ -40,11 +40,20 @@ function response(url: string, body: string): PWResponse {
   } as unknown as PWResponse;
 }
 
-function searchUrl(params: { appId?: string; method?: string; beginPage?: number | string }): string {
+function searchUrl(params: {
+  appId?: string;
+  method?: string;
+  beginPage?: number | string;
+  sortType?: string;
+}): string {
   return `https://h5api.m.1688.com/h5/${SEARCH_MTOP_API}/1.0/?data=${encodeURIComponent(
     JSON.stringify({
       appId: params.appId ?? SEARCH_APP_ID,
-      params: JSON.stringify({ method: params.method, beginPage: params.beginPage }),
+      params: JSON.stringify({
+        method: params.method,
+        beginPage: params.beginPage,
+        sortType: params.sortType,
+      }),
     }),
   )}`;
 }
@@ -91,6 +100,55 @@ describe('startSearchOfferCapture', () => {
     expect(result.diagnostics.endedAt).toBeTruthy();
     expect(capture.diagnostics().matchedCount).toBe(1);
     targetPage = 3;
+  });
+
+  it('ignores default search responses when a sorted response is required', async () => {
+    const mockPage = page();
+    const capture = startSearchOfferCapture({
+      page: mockPage,
+      requireMethod: 'getOfferList',
+      requireSortType: 'va_price_asc',
+      targetPage: () => 1,
+    });
+
+    const wait = capture.wait({ timeoutMs: 50, intervalMs: 1 });
+    mockPage.emitResponse(
+      response(searchUrl({ method: 'getOfferList', beginPage: 1 }), body('default')),
+    );
+    mockPage.emitResponse(
+      response(
+        searchUrl({
+          method: 'getOfferList',
+          beginPage: 1,
+          sortType: 'va_price_asc',
+        }),
+        body('sorted'),
+      ),
+    );
+
+    const result = await wait;
+    expect(result.status).toBe('captured');
+    expect(result.offers.map((o) => o.offerId)).toEqual(['sorted']);
+  });
+
+  it('can capture unscoped WirelessRecommend POST-style responses when enabled', async () => {
+    const mockPage = page();
+    const capture = startSearchOfferCapture({
+      page: mockPage,
+      allowUnscopedWirelessRecommend: true,
+    });
+
+    const wait = capture.wait({ timeoutMs: 50, intervalMs: 1 });
+    mockPage.emitResponse(
+      response(
+        `https://h5api.m.1688.com/h5/${SEARCH_MTOP_API}/2.0/?type=originaljson`,
+        body('similar'),
+      ),
+    );
+
+    const result = await wait;
+    expect(result.status).toBe('captured');
+    expect(result.offers.map((o) => o.offerId)).toEqual(['similar']);
   });
 
   it('keeps the largest matching response when requested', async () => {

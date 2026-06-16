@@ -12,16 +12,21 @@ function mtopUrl(data: unknown): string {
 }
 
 describe('readSearchMtopRequestMeta', () => {
-  it('extracts appId, method, and beginPage from request URLs', () => {
+  it('extracts appId, method, beginPage, and sortType from request URLs', () => {
     const url = mtopUrl({
       appId: SEARCH_APP_ID,
-      params: JSON.stringify({ method: 'getOfferList', beginPage: '2' }),
+      params: JSON.stringify({
+        method: 'getOfferList',
+        beginPage: '2',
+        sortType: 'va_price_asc',
+      }),
     });
 
     expect(readSearchMtopRequestMeta(url)).toEqual({
       appId: SEARCH_APP_ID,
       method: 'getOfferList',
       beginPage: 2,
+      sortType: 'va_price_asc',
     });
   });
 
@@ -35,6 +40,7 @@ describe('readSearchMtopRequestMeta', () => {
       appId: SEARCH_APP_ID,
       method: 'getOfferList',
       beginPage: undefined,
+      sortType: undefined,
     });
   });
 

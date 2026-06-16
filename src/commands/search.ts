@@ -131,6 +131,7 @@ let HTML_SEQ = 0;
 let MTOP_SEQ = 0;
 
 export { SEARCH_APP_ID, SEARCH_MTOP_API, mapOffer };
+export const SEARCH_WARMUP_URL = 'https://www.1688.com/';
 // 1688 search returns 60 offers per page. `--max` auto-paginates by
 // clicking the in-page "next" arrow (which keeps the search-context
 // `pageId` stable — see fetchSearch for why that matters). MAX_PAGES caps
@@ -154,19 +155,21 @@ async function fetchSearch(
   const page = await ctx.newPage();
 
   const baseUrl = buildSearchUrl(keyword, sort);
+  const sortType = remoteSortType(sort);
   const pagesWanted = Math.min(
     Math.max(1, Math.ceil(maxResults / PAGE_SIZE)),
     MAX_PAGES,
   );
 
-  // The search capture must only attach AFTER warmup: the warmup homepage fires
-  // the same WirelessRecommend endpoint/appId for recommendations. The capture
-  // also checks beginPage so stale page-1 responses cannot poison later pages.
+  // The search capture must only attach AFTER warmup: home/search pages can
+  // fire recommendation mtop calls before the real search navigation. The
+  // capture also checks beginPage so stale page-1 responses cannot poison later
+  // pages.
   let currentTargetPage = 1;
 
   async function warmup(delayMs: number): Promise<void> {
     try {
-      await page.goto('https://s.1688.com/', {
+      await page.goto(SEARCH_WARMUP_URL, {
         waitUntil: 'domcontentloaded',
         timeout: 20000,
       });
@@ -189,6 +192,28 @@ async function fetchSearch(
         `Failed to load search page: ${(e as Error).message}`,
       );
     }
+  }
+
+  async function searchFromHomepageOrNavigate(): Promise<void> {
+    if (shouldUseMainSiteSearchSubmit(sort)) {
+      const submitted = await trySubmitSearchFromHomepage(page, keyword);
+      if (submitted) return;
+      info('Homepage search box unavailable — opening search results directly.');
+    }
+    await navigateTo(baseUrl);
+  }
+
+  async function searchThenSortOrNavigate(): Promise<void> {
+    const submitted = await trySubmitSearchFromHomepage(page, keyword);
+    if (submitted) {
+      await sleep(1200);
+      const sorted = await tryClickSearchSort(page, sort);
+      if (sorted) return;
+      info('Search sort control unavailable — opening sorted results directly.');
+    } else {
+      info('Homepage search box unavailable — opening sorted results directly.');
+    }
+    await navigateTo(baseUrl);
   }
 
   // Diagnostic: log every plausible data-bearing call fired during search,
@@ -329,12 +354,15 @@ async function fetchSearch(
     });
   }
 
-  const isSearchBlocked = () => !headed && /\/punish|x5secdata=/.test(page.url());
+  const isSearchBlocked = () =>
+    !headed &&
+    (/\/punish|x5secdata=/.test(page.url()) || isLoginRedirectUrl(page.url()));
 
-  // Stable strategy: always warm up before search. Cookie-presence checks
-  // can't tell whether the WAF has invalidated the session, so we pay a
-  // small constant overhead instead of betting on stale cookies.
-  info('Warming up s.1688.com...');
+  // Stable strategy: always warm up on the main 1688 homepage before search.
+  // Cookie-presence checks can't tell whether the WAF has invalidated the
+  // session, so we pay a small constant overhead instead of betting on stale
+  // cookies.
+  info('Warming up www.1688.com...');
   await warmup(1500);
 
   const allOffers: Offer[] = [];
@@ -349,12 +377,23 @@ async function fetchSearch(
     const capture = startSearchOfferCapture({
       page,
       requireMethod: 'getOfferList',
+      ...(sortType ? { requireSortType: sortType } : {}),
       targetPage: () => currentTargetPage,
     });
     try {
       await action();
+      if (headed && await isBlocked(page, 1)) {
+        const passed = await waitPastBlocking(page, true);
+        if (!passed) {
+          return await capture.wait({
+            timeoutMs: 1,
+            isClosed: () => page.isClosed(),
+            isBlocked: isSearchBlocked,
+          });
+        }
+      }
       return await capture.wait({
-        timeoutMs,
+        timeoutMs: headed ? Math.min(timeoutMs, 15000) : timeoutMs,
         isClosed: () => page.isClosed(),
         isBlocked: isSearchBlocked,
       });
@@ -373,7 +412,11 @@ async function fetchSearch(
         if (headed) {
           info('A Chrome window has opened — switch focus to it now.');
         }
-        await navigateTo(baseUrl);
+        if (sortType) {
+          await searchThenSortOrNavigate();
+        } else {
+          await searchFromHomepageOrNavigate();
+        }
       }, headed ? 180000 : 12000);
     } else {
       try {
@@ -401,6 +444,7 @@ async function fetchSearch(
     if (captureResult.status === 'browser_closed') {
       throw new CliError(130, 'CANCELED', 'Browser closed.');
     }
+    if (!got && pageNum === 1) await detectLoginRedirect(page);
     // Retry only on page 1 — first-contact WAF warmup. A page-2+ failure
     // just stops the loop with whatever has been collected so far.
     if (!got && !headed && pageNum === 1) {
@@ -417,6 +461,7 @@ async function fetchSearch(
       if (captureResult.status === 'browser_closed') {
         throw new CliError(130, 'CANCELED', 'Browser closed.');
       }
+      if (!got) await detectLoginRedirect(page);
     }
     if (!got) {
       if (pageNum === 1) {
@@ -465,6 +510,160 @@ export function buildSearchUrl(keyword: string, sort: SearchSort): string {
   const sortType = remoteSortType(sort);
   const sortQs = sortType ? `&sortType=${encodeURIComponent(sortType)}` : '';
   return `https://s.1688.com/selloffer/offer_search.htm?keywords=${gbkQs}${sortQs}`;
+}
+
+export function shouldUseMainSiteSearchSubmit(sort: SearchSort): boolean {
+  // Homepage search does not preserve remote sortType flags. Keep sorted search
+  // modes on the direct URL path so public behavior stays stable.
+  return sort === 'relevance';
+}
+
+const HOMEPAGE_SEARCH_INPUT_SELECTORS = [
+  'input[name="keywords"]',
+  'input[name="keyword"]',
+  'input[type="search"]',
+  'input[placeholder*="搜索"]',
+  'input[placeholder*="找"]',
+  'input[type="text"]',
+] as const;
+
+const HOMEPAGE_SEARCH_BUTTON_SELECTORS = [
+  'button:has-text("搜索")',
+  'a:has-text("搜索")',
+  'input[type="submit"]',
+  'button[type="submit"]',
+  '.search-button',
+  '.search-btn',
+] as const;
+
+const SEARCH_SORT_TEXT: Record<Exclude<SearchSort, 'relevance'>, string[]> = {
+  'best-selling': ['成交额', '成交', '销量'],
+  'price-asc': ['价格'],
+  'price-desc': ['价格'],
+};
+
+async function trySubmitSearchFromHomepage(
+  page: Page,
+  keyword: string,
+): Promise<boolean> {
+  const input = await findFirstUsableLocator(
+    page,
+    HOMEPAGE_SEARCH_INPUT_SELECTORS,
+    2500,
+  );
+  if (!input) return false;
+
+  const beforeUrl = page.url();
+  try {
+    await input.click({ timeout: 2000 });
+    const selectAll = process.platform === 'darwin' ? 'Meta+A' : 'Control+A';
+    await page.keyboard.press(selectAll).catch(() => {});
+    await page.keyboard.type(keyword, { delay: 50 + Math.random() * 40 });
+
+    await page.keyboard.press('Enter').catch(() => {});
+    if (await waitForLikelySearchNavigation(page, beforeUrl, 2500)) {
+      return true;
+    }
+
+    const button = await findFirstUsableLocator(
+      page,
+      HOMEPAGE_SEARCH_BUTTON_SELECTORS,
+      1500,
+    );
+    if (!button) return false;
+    await button.click({ timeout: 2000 });
+    return await waitForLikelySearchNavigation(page, beforeUrl, 2500);
+  } catch {
+    return false;
+  }
+}
+
+async function tryClickSearchSort(page: Page, sort: SearchSort): Promise<boolean> {
+  if (sort === 'relevance') return true;
+
+  const labels = SEARCH_SORT_TEXT[sort];
+  const clicks = sort === 'price-desc' ? 2 : 1;
+  try {
+    for (let i = 0; i < clicks; i++) {
+      const sortControl = await findFirstUsableTextLocator(page, labels, 2500);
+      if (!sortControl) return false;
+      await sortControl.click({ timeout: 2000 });
+      await sleep(500 + Math.random() * 300);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findFirstUsableLocator(
+  page: Page,
+  selectors: readonly string[],
+  timeoutMs: number,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const selector of selectors) {
+      const locator = page.locator(selector).first();
+      const probeTimeout = locatorProbeTimeout(deadline);
+      if (probeTimeout <= 0) return null;
+      const visible = await locator
+        .isVisible({ timeout: probeTimeout })
+        .catch(() => false);
+      if (!visible) continue;
+      const enabled = await locator
+        .isEnabled({ timeout: locatorProbeTimeout(deadline) })
+        .catch(() => false);
+      if (visible && enabled) return locator;
+    }
+    await sleep(150);
+  }
+  return null;
+}
+
+async function findFirstUsableTextLocator(
+  page: Page,
+  labels: readonly string[],
+  timeoutMs: number,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const label of labels) {
+      const locator = page.getByText(label, { exact: false }).first();
+      const probeTimeout = locatorProbeTimeout(deadline);
+      if (probeTimeout <= 0) return null;
+      const visible = await locator
+        .isVisible({ timeout: probeTimeout })
+        .catch(() => false);
+      if (!visible) continue;
+      const enabled = await locator
+        .isEnabled({ timeout: locatorProbeTimeout(deadline) })
+        .catch(() => false);
+      if (visible && enabled) return locator;
+    }
+    await sleep(150);
+  }
+  return null;
+}
+
+function locatorProbeTimeout(deadline: number): number {
+  return Math.max(0, Math.min(300, deadline - Date.now()));
+}
+
+async function waitForLikelySearchNavigation(
+  page: Page,
+  beforeUrl: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = page.url();
+    if (current !== beforeUrl && /s\.1688\.com|offer_search|keywords=/.test(current)) {
+      return true;
+    }
+    await sleep(150);
+  }
+  return false;
 }
 
 function remoteSortType(sort: SearchSort): string | null {
@@ -580,13 +779,17 @@ function riskControlError(triedHeaded: boolean): CliError {
 }
 
 async function detectLoginRedirect(page: Page): Promise<void> {
-  if (/login\.1688\.com|login\.taobao\.com/.test(page.url())) {
+  if (isLoginRedirectUrl(page.url())) {
     throw new CliError(
       3,
       'NOT_LOGGED_IN',
       'Session expired. Run `1688 login`.',
     );
   }
+}
+
+function isLoginRedirectUrl(url: string): boolean {
+  return /login\.1688\.com|login\.taobao\.com/.test(url);
 }
 
 export async function extractOffers(page: Page): Promise<Offer[]> {

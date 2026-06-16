@@ -10,7 +10,7 @@ checkout -> tracking -> post-sale.
 1688 search <keyword> --sort best-selling --price-max 50 --exclude-ads
 1688 search --headed              # open window if slider verification appears
 1688 research <keyword...>        # multi-keyword research, scoring, export
-1688 similar <offerId>            # find similar offers from other suppliers
+1688 similar <offerId>            # official 1688 same-product entry point; currently may be unavailable
 1688 image-search <pathOrUrl>     # local .jpg/.png/.webp or http(s) URL
 1688 offer <offerId>              # product detail, SKUs, price tiers, package info
 1688 compare <offerId...>         # compare offer details for sourcing
@@ -41,6 +41,12 @@ Research-oriented `search` filters:
 --csv
 --output <file>
 ```
+
+`similar` only returns results from 1688's official same-product page. It does
+not fall back to keyword search or image search, because those are broader
+sourcing strategies rather than strict same-product matching. If 1688 returns
+the current empty image-search shell, the command fails with
+`SIMILAR_UNAVAILABLE`.
 
 Supplier company-search commands:
 

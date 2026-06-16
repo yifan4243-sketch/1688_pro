@@ -64,6 +64,7 @@ export interface SearchMtopRequestMeta {
   appId?: string;
   method?: string;
   beginPage?: number;
+  sortType?: string;
 }
 
 function bool(s?: string): boolean {
@@ -168,21 +169,28 @@ export function mapOffer(item: RawOfferItem): Offer | null {
 
 export function readSearchMtopRequestMeta(url: string): SearchMtopRequestMeta | null {
   if (!url.includes(SEARCH_MTOP_API)) return null;
-  const dataParam = new URLSearchParams(new URL(url).search).get('data') ?? '';
-  const dataObj = JSON.parse(dataParam) as {
-    appId?: unknown;
-    params?: string;
-  };
-  const params = JSON.parse(dataObj.params ?? '{}') as {
-    method?: string;
-    beginPage?: number | string;
-  };
-  const beginPage = params.beginPage === undefined ? undefined : Number(params.beginPage);
-  return {
-    appId: String(dataObj.appId),
-    method: params.method,
-    beginPage,
-  };
+  try {
+    const dataParam = new URLSearchParams(new URL(url).search).get('data') ?? '';
+    if (!dataParam) return null;
+    const dataObj = JSON.parse(dataParam) as {
+      appId?: unknown;
+      params?: string;
+    };
+    const params = JSON.parse(dataObj.params ?? '{}') as {
+      method?: string;
+      beginPage?: number | string;
+      sortType?: string;
+    };
+    const beginPage = params.beginPage === undefined ? undefined : Number(params.beginPage);
+    return {
+      appId: String(dataObj.appId),
+      method: params.method,
+      beginPage,
+      sortType: params.sortType,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function parseOfferItemsFromMtopText(text: string): Offer[] {
