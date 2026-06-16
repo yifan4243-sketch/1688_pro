@@ -5,6 +5,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.45] - 2026-06-16
+
+### Docs
+- Clarified the release workflow: agents prepare GitHub releases but never run
+  `npm publish`; they first check npm auth and then provide either the publish
+  command or the login-plus-publish commands for the human to run manually.
+
 ## [0.1.44] - 2026-06-16
 
 ### Changed

@@ -61,6 +61,37 @@ safety, data retention, account security, or external write actions.
    when the task touches real 1688 browser behavior and the user/session state
    allows it.
 
+## Release Flow
+
+Use `docs/playbooks/update-cli-release.md` for release details. By project
+policy, agents may prepare the release, commit, tag, push, and create the
+GitHub release, but npm publishing is a human-owned step.
+
+For npm, the agent first checks the human's npm login state:
+
+```bash
+npm whoami --registry https://registry.npmjs.org/
+```
+
+If the check succeeds, provide this command:
+
+```bash
+npm publish --registry https://registry.npmjs.org/
+```
+
+If the check fails, provide these commands:
+
+```bash
+npm login --registry https://registry.npmjs.org/
+npm publish --registry https://registry.npmjs.org/
+```
+
+Let npm handle any required interactive authentication or confirmation. Do not
+include `--otp`. `--access public` is not required for the unscoped
+`1688-cli` package.
+
+Do not run `npm publish` from an agent session, even when npm auth is present.
+
 ## Human Approval Boundaries
 
 Ask before doing any of these:
@@ -73,6 +104,7 @@ Ask before doing any of these:
 - Running live/browser actions that can mutate cart, checkout, seller IM, or
   account state.
 - Making a breaking JSON contract change.
+- Publishing to npm. Give the human the command instead.
 
 ## Definition Of Done
 

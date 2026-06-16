@@ -30,12 +30,29 @@ postinstall changes, and update-notifier behavior.
    pnpm release-check
    ```
 
-7. Publish only after npm auth is valid:
+7. Check npm auth, but do not publish from the agent session. npm publishing is
+   human-owned for this project:
 
    ```bash
-   npm whoami
-   npm publish
+   npm whoami --registry https://registry.npmjs.org/
    ```
+
+   If the check succeeds, give the human this command:
+
+   ```bash
+   npm publish --registry https://registry.npmjs.org/
+   ```
+
+   If the check fails, give the human these commands:
+
+   ```bash
+   npm login --registry https://registry.npmjs.org/
+   npm publish --registry https://registry.npmjs.org/
+   ```
+
+   npm will handle any required interactive authentication or confirmation. Do
+   not include `--otp`. `--access public` is not required for the unscoped
+   `1688-cli` package.
 
 8. Push both branch and tag. Lightweight tags are not pushed by
    `git push --follow-tags`, so push the release tag explicitly:
@@ -45,11 +62,11 @@ postinstall changes, and update-notifier behavior.
    git push origin vX.Y.Z
    ```
 
-9. After publish, verify:
+9. After the human confirms npm publish is complete, verify:
 
    ```bash
-   npm view 1688-cli version dist-tags --json
-   npm view 1688-cli@X.Y.Z readmeFilename version --json
+   npm view 1688-cli version dist-tags --registry https://registry.npmjs.org/ --json
+   npm view 1688-cli@X.Y.Z readmeFilename version --registry https://registry.npmjs.org/ --json
    git ls-remote --tags origin refs/tags/vX.Y.Z
    ```
 
