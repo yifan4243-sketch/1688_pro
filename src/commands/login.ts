@@ -6,7 +6,7 @@ import { writeState, readState } from '../session/state.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { nowIso } from '../util/time.js';
-import { loginQrFile, ensureRoot } from '../session/paths.js';
+import { defaultProfileName, loginQrFile, ensureRoot } from '../session/paths.js';
 import { sleep } from '../session/wait.js';
 
 export interface LoginOpts {
@@ -19,19 +19,19 @@ export interface LoginOpts {
 
 async function ensureDaemonStarted(opts: LoginOpts): Promise<void> {
   if (opts.noDaemon) return;
-  if (opts.profile) return; // daemon only serves the default profile
+  const profile = defaultProfileName(opts.profile);
   try {
     const { status, start } = await import('../daemon/manager.js');
-    const st = await status();
+    const st = await status(profile);
     if (st.running) {
-      info(`Daemon already running (pid ${st.pid}).`);
+      info(`Daemon already running for profile "${profile}" (pid ${st.pid}).`);
       return;
     }
-    info('Starting daemon to keep browser warm (reduces risk control hits)...');
-    const { pid } = await start();
-    info(`Daemon ready (pid ${pid}) — next commands will reuse this context.`);
+    info(`Starting daemon for profile "${profile}" to keep browser warm (reduces risk control hits)...`);
+    const { pid } = await start(profile);
+    info(`Daemon ready for profile "${profile}" (pid ${pid}) — next commands will reuse this context.`);
   } catch (e) {
-    info(`(Daemon auto-start skipped: ${(e as Error).message})`);
+    info(`(Daemon auto-start skipped for profile "${profile}": ${(e as Error).message})`);
   }
 }
 
@@ -40,6 +40,7 @@ const WARMUP_URL =
   'https://air.1688.com/app/ctf-page/trade-order-list/buyer-order-list.html';
 
 export async function run(opts: LoginOpts): Promise<void> {
+  const profile = defaultProfileName(opts.profile);
   const timeoutMs = Math.max(30, parseInt(opts.timeout ?? '300', 10)) * 1000;
   const headed = opts.headed === true;
 
@@ -47,8 +48,8 @@ export async function run(opts: LoginOpts): Promise<void> {
     // Try the cached identity first — no browser needed, so this works even
     // while the daemon holds the lock. Falls back to a browser cookie peek
     // only if state.json doesn't have a usable identity.
-    const cached = !opts.profile ? await peekFromState() : null;
-    const existing = cached ?? (await peekIdentity(opts.profile));
+    const cached = await peekFromState(profile);
+    const existing = cached ?? (await peekIdentity(profile));
     if (existing) {
       const name = existing.nick ?? existing.memberId;
       emit({
@@ -109,7 +110,7 @@ export async function run(opts: LoginOpts): Promise<void> {
     nick: identity.nick ?? undefined,
     loggedInAt: nowIso(),
     lastVerifiedAt: nowIso(),
-  });
+  }, profile);
 
   const name = identity.nick ?? identity.memberId;
   emit({
@@ -132,9 +133,9 @@ async function peekIdentity(profile?: string): Promise<Identity | null> {
  * Quick already-logged-in check that doesn't touch the browser, so it works
  * while the daemon holds the lock. Reads only the cached state.json.
  */
-async function peekFromState(): Promise<Identity | null> {
+async function peekFromState(profile?: string): Promise<Identity | null> {
   try {
-    const s = await readState();
+    const s = await readState(profile);
     if (!s.memberId || !s.nick) return null;
     return { memberId: s.memberId, nick: s.nick };
   } catch {

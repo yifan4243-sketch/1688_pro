@@ -477,11 +477,13 @@ program
 program
   .command('serve')
   .description('Run the 1688 daemon in the foreground')
+  .option('--profile <name>', 'Profile name (default: default)')
   .option('--idle-timeout <minutes>', 'Idle timeout in minutes', '30')
   .option('--no-prewarm', 'Skip pre-warming Chromium at startup')
   .action(async (opts) => {
     const { start } = await import('./daemon/server.js');
     await start({
+      profile: opts.profile,
       idleTimeoutMs: Math.max(1, parseInt(opts.idleTimeout, 10)) * 60_000,
       prewarm: opts.prewarm !== false,
     });
@@ -494,70 +496,86 @@ const daemon = program
 daemon
   .command('start')
   .description('Start the daemon as a background process')
-  .action(async () => {
+  .option('--profile <name>', 'Profile name (default: default)')
+  .action(async (opts) => {
     const { start } = await import('./daemon/manager.js');
     const { emit } = await import('./io/output.js');
-    const { pid } = await start();
+    const { pid, profile } = await start(opts.profile);
     emit({
-      human: () => process.stdout.write(`Daemon started (pid ${pid}).\n`),
-      data: { ok: true, pid },
+      human: () =>
+        process.stdout.write(
+          `Daemon started for profile "${profile}" (pid ${pid}).\n`,
+        ),
+      data: { ok: true, profile, pid },
     });
   });
 
 daemon
   .command('stop')
   .description('Stop the running daemon')
-  .action(async () => {
+  .option('--profile <name>', 'Profile name (default: default)')
+  .action(async (opts) => {
     const { stop } = await import('./daemon/manager.js');
     const { emit } = await import('./io/output.js');
-    const { stopped } = await stop();
+    const { stopped, profile } = await stop(opts.profile);
     emit({
       human: () =>
-        process.stdout.write(stopped ? 'Daemon stopped.\n' : 'Daemon was not running.\n'),
-      data: { ok: true, stopped },
+        process.stdout.write(
+          stopped
+            ? `Daemon stopped for profile "${profile}".\n`
+            : `Daemon was not running for profile "${profile}".\n`,
+        ),
+      data: { ok: true, profile, stopped },
     });
   });
 
 daemon
   .command('reload')
   .description('Restart the daemon (stop + start) to pick up new code')
-  .action(async () => {
-    const fs = await import('node:fs/promises');
-    const { stop, start, status } = await import('./daemon/manager.js');
-    const { lockFile } = await import('./session/paths.js');
+  .option('--profile <name>', 'Profile name (default: default)')
+  .action(async (opts) => {
+    const { stop, start, status, cleanupLock } = await import(
+      './daemon/manager.js'
+    );
+    const { defaultProfileName } = await import('./session/paths.js');
     const { emit, info } = await import('./io/output.js');
-    const before = await status();
+    const profile = defaultProfileName(opts.profile);
+    const before = await status(profile);
     if (before.running) {
-      info('Stopping daemon...');
-      await stop();
+      info(`Stopping daemon for profile "${profile}"...`);
+      await stop(profile);
     }
     // Force-clean stale lock — we own the lifecycle here, so this is safe.
     // proper-lockfile sometimes leaves the `.lock.lock` dir behind if the daemon
     // exits before its release callback runs to completion.
-    info('Cleaning stale lock...');
-    await fs.rm(lockFile() + '.lock', { recursive: true, force: true });
-    info('Starting daemon...');
-    const { pid } = await start();
+    info(`Cleaning stale lock for profile "${profile}"...`);
+    await cleanupLock(profile);
+    info(`Starting daemon for profile "${profile}"...`);
+    const { pid } = await start(profile);
     emit({
-      human: () => process.stdout.write(`Daemon reloaded (pid ${pid}).\n`),
-      data: { ok: true, pid, wasRunning: before.running },
+      human: () =>
+        process.stdout.write(
+          `Daemon reloaded for profile "${profile}" (pid ${pid}).\n`,
+        ),
+      data: { ok: true, profile, pid, wasRunning: before.running },
     });
   });
 
 daemon
   .command('status')
   .description('Show daemon status')
-  .action(async () => {
+  .option('--profile <name>', 'Profile name (default: default)')
+  .action(async (opts) => {
     const { status } = await import('./daemon/manager.js');
     const { emit } = await import('./io/output.js');
-    const s = await status();
+    const s = await status(opts.profile);
     emit({
       human: () => {
         if (!s.running) {
-          process.stdout.write('Daemon: not running\n');
+          process.stdout.write(`Daemon (${s.profile}): not running\n`);
           return;
         }
-        process.stdout.write(`Daemon: running (pid ${s.pid})\n`);
+        process.stdout.write(`Daemon (${s.profile}): running (pid ${s.pid})\n`);
         if (s.version) {
           const suffix = s.versionMatches === false ? ' (restart recommended)' : '';
           process.stdout.write(`  version: ${s.version}${suffix}\n`);

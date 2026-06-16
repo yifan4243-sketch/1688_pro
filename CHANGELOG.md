@@ -5,6 +5,32 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.43] - 2026-06-16
+
+### Added
+- **Profile-scoped daemons.** Added one-daemon-per-profile runtime support:
+  `1688 serve --profile <name>` and
+  `1688 daemon start|stop|status|reload --profile <name>` now manage the
+  selected profile's daemon independently.
+- **Profile-scoped runtime artifacts.** Daemon socket or Windows named pipe,
+  pid, version, log, lock, and cached identity state are now scoped per
+  profile. Different profiles can run in parallel without contending on one
+  global lock.
+- **Profile-aware command dispatch.** Commands such as
+  `1688 search "实木床头柜" --profile acc-a` now try the `acc-a` daemon first
+  instead of falling back inline solely because `--profile` was present.
+- **Profile diagnostics.** `doctor --profile <name>` and
+  `profile status <name>` now report that profile's daemon, lock, login state,
+  and recent command state.
+
+### Changed
+- `login --profile <name>` now writes that profile's state and can auto-start
+  the same profile daemon after login.
+- Inline fallback and checkout-confirm daemon pausing now stop only the
+  selected profile daemon, leaving other profile daemons running.
+- Default profile behavior remains compatible: commands without `--profile`
+  continue to use `default` and the historical default daemon artifact paths.
+
 ### Docs
 - Split the README sourcing section into two separate user paths:
   **Product Scraper / Product Research** and **Supplier Scraper / Supplier
@@ -13,6 +39,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   keywords (`supplier-scraper`, `product-scraper`, `supplier-search`,
   `sourcing`). These npm metadata changes will appear on npm on the next
   published version.
+- Documented multi-profile daemon usage, default-profile compatibility,
+  profile-scoped files, and Windows named-pipe behavior.
+
+### Tests
+- Added deterministic coverage for profile-scoped daemon paths, Windows pipe
+  names, profile state separation, and profile status diagnostics.
 
 ## [0.1.42] - 2026-06-08
 

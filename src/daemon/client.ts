@@ -1,25 +1,27 @@
 import net from 'node:net';
 import fs from 'node:fs/promises';
-import { socketPath } from '../session/paths.js';
+import { defaultProfileName, socketPath } from '../session/paths.js';
 import { CliError } from '../io/errors.js';
 import { makeRequestId, type Response } from './protocol.js';
 
 const PING_TIMEOUT_MS = 800;
 const CALL_TIMEOUT_MS = 5 * 60 * 1000;
 
-export async function isDaemonReachable(): Promise<boolean> {
+export async function isDaemonReachable(profile?: string): Promise<boolean> {
+  const profileName = defaultProfileName(profile);
+  const sockPath = socketPath(profileName);
   // On Unix the socket is a file we can stat; on Windows the named pipe
   // (`\\.\pipe\...`) has no filesystem entry, so skip the existence check
   // and just try to connect.
   if (process.platform !== 'win32') {
     try {
-      await fs.access(socketPath());
+      await fs.access(sockPath);
     } catch {
       return false;
     }
   }
   return new Promise((resolve) => {
-    const sock = net.createConnection(socketPath());
+    const sock = net.createConnection(sockPath);
     const timer = setTimeout(() => {
       sock.destroy();
       resolve(false);
@@ -40,9 +42,12 @@ export async function daemonCall<T>(
   cmd: string,
   args: unknown,
   requestId = makeRequestId(),
+  profile?: string,
 ): Promise<T> {
+  const profileName = defaultProfileName(profile);
+  const sockPath = socketPath(profileName);
   return new Promise<T>((resolve, reject) => {
-    const sock = net.createConnection(socketPath());
+    const sock = net.createConnection(sockPath);
     let buf = '';
     let settled = false;
     const timer = setTimeout(() => {

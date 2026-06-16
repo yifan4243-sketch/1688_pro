@@ -12,7 +12,7 @@ place orders. Treat write actions as explicit user-authorized operations.
 | 2 | Bad invocation | Fix arguments or report the bad input. |
 | 3 | Not logged in / session expired | Tell the user to run `1688 login`; do not loop. |
 | 4 | Risk control / slider verification | Tell the user to rerun once with `--headed`; do not silently retry. |
-| 5 | Another 1688 command is running | Wait only if the task naturally allows it; otherwise report lock busy. |
+| 5 | Another 1688 command is running for the selected profile | Wait only if the task naturally allows it; otherwise report lock busy. |
 | 6 | Chromium missing | Report dependency issue. |
 | 7 | Login wait timeout | Report timeout. |
 | 8 | Login finished but cookies missing | Report login cookie issue. |
@@ -97,4 +97,3 @@ Rules:
   command.
 - In non-interactive loops, do not upgrade automatically.
 - After an approved package update, run `1688 daemon reload`.
-

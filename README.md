@@ -60,9 +60,10 @@ agent's tooling. `1688-cli` is a single command:
 
 - **Real Chrome under the hood** (`channel:'chrome'`). Same browser you'd
   use manually — your session is real, not a synthetic Chromium.
-- **Persistent profile** at `~/.1688/`. One login lasts for weeks.
-- **Long-running daemon** — first command warms the browser, subsequent
-  commands reuse it (no relaunch per call).
+- **Persistent profiles** under `~/.1688/`. One login lasts for weeks, and
+  multiple buyer profiles can stay isolated.
+- **Profile-scoped daemon** — each profile can keep its own warm browser
+  context, so subsequent commands reuse it without relaunching Chrome.
 - **JSON-or-text dual mode** — `1688 order list | jq` works; `1688 order list`
   in your terminal pretty-prints.
 - **Designed for AI agents.** See [AGENTS.md](./AGENTS.md) for the contract.
@@ -263,6 +264,37 @@ $added = 1688 cart add 628196518518 --sku 6070845665229 --qty 1 --json | Convert
 1688 daemon start | stop | status | reload
 ```
 
+### Profiles
+
+Every command uses the `default` profile unless you pass `--profile <name>`.
+Default behavior is backwards-compatible: `1688 search 雨伞` uses the default
+profile, default daemon, default lock, and default cached identity.
+
+Use profiles when you operate more than one buyer account or want isolated
+cookie/session state:
+
+```bash
+1688 login --profile acc-a --headed
+1688 login --profile acc-b --headed
+
+1688 daemon start  --profile acc-a
+1688 daemon start  --profile acc-b
+1688 daemon status --profile acc-a
+1688 daemon status --profile acc-b
+
+1688 search "实木床头柜" --profile acc-a
+1688 search "实木床头柜" --profile acc-b
+
+1688 profile list
+1688 profile status acc-a
+1688 doctor --profile acc-a
+```
+
+Each profile has its own persistent browser directory, daemon process,
+socket/named pipe, pid/version/log files, state file, and lock. Different
+profiles can run in parallel; commands for one profile do not wait on another
+profile's lock. Within one profile, daemon work remains serialized and paced.
+
 ---
 
 ## FAQ
@@ -292,9 +324,10 @@ keys required.
 #### Does this tool require any 1688 developer account or API keys?
 
 No. Login is a one-time QR scan with your normal 1688 mobile app — the
-same flow as logging into 1688 on a fresh browser. The session is stored
-in your local profile (`~/.1688/profiles/default/`) and reused across
-commands, so you only re-scan when 1688 invalidates it.
+same flow as logging into 1688 on a fresh browser. The default session is
+stored in your local profile (`~/.1688/profiles/default/`) and reused across
+commands, so you only re-scan when 1688 invalidates it. Named profiles use
+their own directories under `~/.1688/profiles/<name>/`.
 
 #### What happens if 1688 shows a verification challenge (滑块)?
 
@@ -397,6 +430,10 @@ Daemon management is the same command surface:
 1688 daemon start
 1688 daemon status --json
 1688 daemon stop
+
+1688 daemon start --profile acc-a
+1688 daemon status --profile acc-a --json
+1688 daemon stop --profile acc-a
 ```
 
 ---
@@ -424,9 +461,15 @@ See also the FAQ entry on [verification challenges](#what-happens-if-1688-shows-
 ~/.1688/daemon.pid          daemon PID
 ~/.1688/.lock               proper-lockfile (one process at a time)
 
+~/.1688/profiles/<name>/state.json       named-profile cached identity
+~/.1688/profiles/<name>/daemon.sock      named-profile daemon Unix socket
+~/.1688/profiles/<name>/daemon.pid       named-profile daemon PID
+~/.1688/profiles/<name>/.lock            named-profile lock
+
 %USERPROFILE%\.1688\profiles\default\   Chromium profile (Windows)
 %USERPROFILE%\.1688\state.json          cached identity (Windows)
 \\.\pipe\1688-cli-daemon-<hash>         daemon named pipe (Windows)
+\\.\pipe\1688-cli-daemon-<hash>-<hash>  named-profile daemon pipe (Windows)
 ```
 
 ## Environment variables

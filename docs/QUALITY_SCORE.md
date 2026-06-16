@@ -14,7 +14,8 @@ Overall: 6 / 10
 - Commands expose JSON automatically when piped and support `--json`,
   `--pretty`, `--get`, and `--pick`.
 - Real browser/session behavior is centralized under `src/session`.
-- The daemon gives agents a warm, shared browser context.
+- Profile-scoped daemons give agents warm browser contexts without forcing
+  unrelated profiles through one global lock.
 - Checkout and feedback write actions already have explicit safety protocols.
 - Deterministic Vitest coverage exists for output, mtop parsing, recovery,
   page-state, inbox cards, and fixtures through `pnpm test:unit`.

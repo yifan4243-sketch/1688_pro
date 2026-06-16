@@ -3,11 +3,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  defaultProfileName,
   pidFile,
   socketPath,
   daemonLogFile,
   daemonVersionFile,
   ensureRoot,
+  ensureProfileRuntimeDir,
+  lockFile,
 } from '../session/paths.js';
 import { daemonCall, isDaemonReachable } from './client.js';
 import { CliError } from '../io/errors.js';
@@ -15,6 +18,7 @@ import { waitUntil } from '../session/wait.js';
 import pkg from '../../package.json' with { type: 'json' };
 
 export interface DaemonStatus {
+  profile: string;
   running: boolean;
   pid?: number;
   reachable?: boolean;
@@ -24,12 +28,14 @@ export interface DaemonStatus {
   stats?: unknown;
 }
 
-export async function status(): Promise<DaemonStatus> {
-  const pid = await readPid();
-  const version = await readDaemonVersion();
+export async function status(profile?: string): Promise<DaemonStatus> {
+  const profileName = defaultProfileName(profile);
+  const pid = await readPid(profileName);
+  const version = await readDaemonVersion(profileName);
   const expectedVersion = pkg.version;
   if (pid === null) {
     return {
+      profile: profileName,
       running: false,
       version,
       expectedVersion,
@@ -39,17 +45,18 @@ export async function status(): Promise<DaemonStatus> {
   const alive = isProcessAlive(pid);
   if (!alive) {
     return {
+      profile: profileName,
       running: false,
       version,
       expectedVersion,
       versionMatches: version === expectedVersion,
     };
   }
-  const reachable = await isDaemonReachable();
+  const reachable = await isDaemonReachable(profileName);
   let stats: unknown = undefined;
   if (reachable) {
     try {
-      stats = await daemonCall('status', {});
+      stats = await daemonCall('status', {}, undefined, profileName);
     } catch {
       /* ignore */
     }
@@ -61,6 +68,7 @@ export async function status(): Promise<DaemonStatus> {
   const resolvedVersion =
     typeof statsVersion === 'string' ? statsVersion : version;
   return {
+    profile: profileName,
     running: true,
     pid,
     reachable,
@@ -71,17 +79,21 @@ export async function status(): Promise<DaemonStatus> {
   };
 }
 
-export async function start(): Promise<{ pid: number }> {
+export async function start(
+  profile?: string,
+): Promise<{ pid: number; profile: string }> {
+  const profileName = defaultProfileName(profile);
   await ensureRoot();
-  const existing = await status();
+  await ensureProfileRuntimeDir(profileName);
+  const existing = await status(profileName);
   if (existing.running) {
     if (existing.versionMatches === false) {
-      await stop();
+      await stop(profileName);
     } else {
       throw new CliError(
         5,
         'DAEMON_RUNNING',
-        `Daemon already running (pid ${existing.pid}).`,
+        `Daemon already running for profile "${profileName}" (pid ${existing.pid}).`,
       );
     }
   }
@@ -93,59 +105,68 @@ export async function start(): Promise<{ pid: number }> {
   const cliPath = path.join(path.dirname(here), '..', 'cli.js');
 
   // Detach from the parent; redirect output to a log file.
-  const logFd = await fs.open(daemonLogFile(), 'a');
-  const child = spawn(process.execPath, [cliPath, 'serve'], {
-    detached: true,
-    stdio: ['ignore', logFd.fd, logFd.fd],
-    env: { ...process.env, BB1688_DAEMON_BG: '1' },
-  });
+  const logFd = await fs.open(daemonLogFile(profileName), 'a');
+  const child = spawn(
+    process.execPath,
+    [cliPath, 'serve', '--profile', profileName],
+    {
+      detached: true,
+      stdio: ['ignore', logFd.fd, logFd.fd],
+      env: { ...process.env, BB1688_DAEMON_BG: '1' },
+    },
+  );
   child.unref();
   await logFd.close();
 
-  const reachable = await waitUntil(isDaemonReachable, {
+  const reachable = await waitUntil(() => isDaemonReachable(profileName), {
     timeoutMs: 15000,
     intervalMs: 250,
   });
   if (reachable) {
-    const pid = (await readPid()) ?? child.pid ?? -1;
-    return { pid };
+    const pid = (await readPid(profileName)) ?? child.pid ?? -1;
+    return { pid, profile: profileName };
   }
   throw new CliError(
     9,
     'DAEMON_START_TIMEOUT',
-    'Daemon did not start within 15s. Check ~/.1688/daemon.log.',
+    `Daemon for profile "${profileName}" did not start within 15s. Check ${daemonLogFile(profileName)}.`,
   );
 }
 
-export async function ensureFreshDaemon(): Promise<{
+export async function ensureFreshDaemon(profile?: string): Promise<{
   pid: number;
+  profile: string;
   restarted: boolean;
 }> {
-  const existing = await status();
+  const profileName = defaultProfileName(profile);
+  const existing = await status(profileName);
   if (!existing.running) {
-    const started = await start();
+    const started = await start(profileName);
     return { ...started, restarted: false };
   }
 
   if (existing.versionMatches === false) {
-    await stop();
-    const started = await start();
+    await stop(profileName);
+    const started = await start(profileName);
     return { ...started, restarted: true };
   }
 
-  return { pid: existing.pid ?? -1, restarted: false };
+  return { pid: existing.pid ?? -1, profile: profileName, restarted: false };
 }
 
-export async function stop(): Promise<{ stopped: boolean }> {
-  const pid = await readPid();
+export async function stop(
+  profile?: string,
+): Promise<{ stopped: boolean; profile: string }> {
+  const profileName = defaultProfileName(profile);
+  const pid = await readPid(profileName);
   if (pid === null || !isProcessAlive(pid)) {
-    await cleanupArtifacts();
-    return { stopped: false };
+    await cleanupArtifacts(profileName);
+    return { stopped: false, profile: profileName };
   }
   // Prefer asking via socket; fall back to SIGTERM.
-  if (await isDaemonReachable()) {
+  if (await isDaemonReachable(profileName)) {
     try {
-      await daemonCall('shutdown', {});
+      await daemonCall('shutdown', {}, undefined, profileName);
     } catch {
       /* will fall through to SIGTERM */
     }
@@ -167,16 +188,25 @@ export async function stop(): Promise<{ stopped: boolean }> {
       /* ignore */
     }
   }
-  await cleanupArtifacts();
-  return { stopped: true };
+  await cleanupArtifacts(profileName);
+  return { stopped: true, profile: profileName };
 }
 
-async function cleanupArtifacts(): Promise<void> {
+export async function cleanupLock(profile?: string): Promise<void> {
+  await fs.rm(lockFile(profile) + '.lock', { recursive: true, force: true });
+}
+
+async function cleanupArtifacts(profile?: string): Promise<void> {
+  const profileName = defaultProfileName(profile);
   // Windows named pipes have no filesystem entry — skip the socket path.
   const targets =
     process.platform === 'win32'
-      ? [pidFile(), daemonVersionFile()]
-      : [socketPath(), pidFile(), daemonVersionFile()];
+      ? [pidFile(profileName), daemonVersionFile(profileName)]
+      : [
+          socketPath(profileName),
+          pidFile(profileName),
+          daemonVersionFile(profileName),
+        ];
   for (const p of targets) {
     try {
       await fs.unlink(p);
@@ -186,9 +216,9 @@ async function cleanupArtifacts(): Promise<void> {
   }
 }
 
-async function readPid(): Promise<number | null> {
+async function readPid(profile?: string): Promise<number | null> {
   try {
-    const s = await fs.readFile(pidFile(), 'utf8');
+    const s = await fs.readFile(pidFile(profile), 'utf8');
     const n = parseInt(s.trim(), 10);
     return Number.isInteger(n) ? n : null;
   } catch {
@@ -196,9 +226,9 @@ async function readPid(): Promise<number | null> {
   }
 }
 
-async function readDaemonVersion(): Promise<string | null> {
+async function readDaemonVersion(profile?: string): Promise<string | null> {
   try {
-    const s = await fs.readFile(daemonVersionFile(), 'utf8');
+    const s = await fs.readFile(daemonVersionFile(profile), 'utf8');
     return s.trim() || null;
   } catch {
     return null;

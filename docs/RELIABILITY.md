@@ -6,20 +6,28 @@ and recoverable for agents.
 
 ## Daemon
 
-The daemon routes commands through one persistent Chromium context.
+Each daemon routes commands for one profile through one persistent Chromium
+context. Different profiles use different daemon processes, locks, sockets or
+named pipes, pid/version/log files, state files, and persistent browser
+directories.
 
 Benefits:
 
 - Saves Chrome cold-start time.
-- Keeps one continuous logged-in session.
+- Keeps one continuous logged-in session per profile.
 - Adds inter-command jitter.
+- Allows different profiles to run at the same time without sharing one
+  process lock.
 
 Use `1688 daemon start` near the beginning of a session with multiple 1688
-commands. The daemon auto-stops after inactivity. Run `1688 daemon reload`
-after package updates.
+commands. Use `1688 daemon start --profile <name>` for a non-default profile.
+The daemon auto-stops after inactivity. Run `1688 daemon reload --profile
+<name>` after package updates or after manually resolving profile-specific
+browser issues.
 
 `login`, `logout`, and `doctor` stay inline because they need interactive UI,
-browser windows, or environment checks.
+browser windows, or environment checks. `login --profile <name>` can
+auto-start that profile daemon after the login state is available.
 
 ## Watch Mode
 

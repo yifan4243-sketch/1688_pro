@@ -79,8 +79,9 @@ by `scripts/generate_agent_context.mjs`.
 
 ## Browser And Session Model
 
-- The tool uses a persistent browser profile under `~/.1688`.
-- The daemon reuses one browser context and adds jitter between commands.
+- The tool uses persistent browser profiles under `~/.1688`.
+- Each daemon is bound to one profile, reuses that profile's browser context,
+  and adds jitter between commands.
 - Commands should handle login redirects, risk-control pages, and browser
   closure through structured exit codes.
 - `--headed` is the manual escape hatch for slider verification.

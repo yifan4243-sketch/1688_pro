@@ -686,7 +686,7 @@ export async function run(opts: SellerMessagesOpts): Promise<void> {
   const limit = Math.min(200, Math.max(1, parseInt(opts.limit ?? '20', 10)));
   const sinceMs = opts.since ? Date.parse(opts.since) : 0;
 
-  const state = await readState();
+  const state = await readState(opts.profile);
   if (!state.nick) {
     throw new CliError(
       3,

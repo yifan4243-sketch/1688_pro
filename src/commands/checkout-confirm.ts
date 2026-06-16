@@ -135,7 +135,7 @@ export async function run(opts: CheckoutConfirmOpts): Promise<void> {
     );
   }
 
-  await withDaemonPaused(async () => {
+  await withDaemonPaused(opts.profile, async () => {
     await withSession(
       { headless: true, profile: opts.profile },
       async (ctx) => {
@@ -192,7 +192,7 @@ async function runConfirmedInline(
   cartIds: string[],
   profile?: string,
 ): Promise<CheckoutConfirmResult> {
-  return withDaemonPaused(() =>
+  return withDaemonPaused(profile, () =>
     withSession({ headless: true, profile }, (ctx) =>
       execute(ctx, { cartIds, headed: false }),
       { cmd: 'checkout-confirm', args: { cartIds } },
@@ -200,12 +200,12 @@ async function runConfirmedInline(
   );
 }
 
-async function withDaemonPaused<T>(fn: () => Promise<T>): Promise<T> {
+async function withDaemonPaused<T>(profile: string | undefined, fn: () => Promise<T>): Promise<T> {
   let daemonWasRunning = false;
-  if (await isDaemonReachable()) {
-    info('Pausing daemon temporarily (will restart after)...');
+  if (await isDaemonReachable(profile)) {
+    info('Pausing daemon temporarily for checkout confirmation (will restart after)...');
     const { stop } = await import('../daemon/manager.js');
-    await stop();
+    await stop(profile);
     daemonWasRunning = true;
   }
 
@@ -216,11 +216,11 @@ async function withDaemonPaused<T>(fn: () => Promise<T>): Promise<T> {
       info('Restarting daemon...');
       try {
         const { start } = await import('../daemon/manager.js');
-        await start();
+        await start(profile);
       } catch (e) {
         process.stderr.write(
           `WARN: daemon failed to restart: ${(e as Error).message}. ` +
-            'Run `1688 daemon start` manually.\n',
+            'Run `1688 daemon start --profile <name>` manually.\n',
         );
       }
     }

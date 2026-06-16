@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setOutputFlags } from '../src/io/output.js';
 import { appendEvent, endEvent } from '../src/session/events.js';
-import { profilePath } from '../src/session/paths.js';
+import { lockFile, profilePath } from '../src/session/paths.js';
+import { writeState } from '../src/session/state.js';
 import { list, status } from '../src/commands/profile.js';
 
 let tmpHome: string;
@@ -47,7 +48,37 @@ describe('profile inventory', () => {
   it('shows status for default profile even before directory exists', async () => {
     await status('default');
 
-    const out = JSON.parse(stdout) as { profile: { name: string; exists: boolean } };
-    expect(out.profile).toMatchObject({ name: 'default', exists: false });
+    const out = JSON.parse(stdout) as { profile: { name: string; exists: boolean; daemon: { profile: string; running: boolean } } };
+    expect(out.profile).toMatchObject({
+      name: 'default',
+      exists: false,
+      daemon: { profile: 'default', running: false },
+    });
+  });
+
+  it('reports lock and login state for the selected profile only', async () => {
+    await fs.mkdir(profilePath('work'), { recursive: true });
+    await fs.writeFile(lockFile('work'), '');
+    await fs.mkdir(lockFile('work') + '.lock');
+    await writeState({ version: 1, memberId: 'work-id', nick: 'work-nick' }, 'work');
+
+    await status('work');
+
+    const out = JSON.parse(stdout) as {
+      profile: {
+        name: string;
+        locked: boolean;
+        loggedIn: boolean;
+        daemon: { profile: string; running: boolean };
+      };
+      state: { memberId?: string };
+    };
+    expect(out.profile).toMatchObject({
+      name: 'work',
+      locked: true,
+      loggedIn: true,
+      daemon: { profile: 'work', running: false },
+    });
+    expect(out.state.memberId).toBe('work-id');
   });
 });

@@ -20,6 +20,92 @@ without an explicit breaking-change decision.
 { loggedIn: false }
 ```
 
+## `daemon status`
+
+`daemon status` is profile-scoped. When `--profile` is omitted, `profile` is
+`default`.
+
+```ts
+{
+  profile: string,
+  running: boolean,
+  pid?: number,
+  reachable?: boolean,
+  version?: string | null,
+  expectedVersion?: string,
+  versionMatches?: boolean,
+  stats?: {
+    profile: string,
+    version: string,
+    startedAt: string,
+    pid: number,
+    commandCount: number,
+    lastRequestAt: string | null,
+    lastError: string | null,
+    uptimeMs: number,
+    activeClients: number,
+    browser: {
+      profile: string | null,
+      browserAlive: boolean,
+      pageCount: number,
+      currentUrl: string | null,
+      pageState: object | null,
+      loggedIn: boolean | null,
+    },
+    health: object,
+  },
+}
+```
+
+## `profile status`
+
+```ts
+{
+  profile: {
+    name: string,
+    path: string,
+    exists: boolean,
+    locked: boolean,
+    loggedIn: boolean,
+    recentRequestId: string | null,
+    recentStatus: string | null,
+    recentErrorCode: string | null,
+    daemon: {
+      profile: string,
+      running: boolean,
+      pid?: number,
+      reachable?: boolean,
+      version?: string | null,
+      expectedVersion?: string,
+      versionMatches?: boolean,
+    },
+  },
+  state: {
+    version: 1,
+    memberId?: string,
+    nick?: string,
+    loggedInAt?: string,
+    lastVerifiedAt?: string,
+  } | null,
+}
+```
+
+## `doctor`
+
+`doctor --profile <name>` checks that profile's directory, lock, state,
+daemon, and live daemon socket. JSON output includes the selected `profile` and
+the matching profile-scoped daemon status.
+
+```ts
+{
+  ok: boolean,
+  profile: string,
+  checks: Array<{ name: string, status: "ok" | "warn" | "fail", message: string, fix?: string }>,
+  version: VersionInfo,
+  daemon: DaemonStatus | null,
+}
+```
+
 ## `search`, `similar`, `image-search`
 
 ```ts

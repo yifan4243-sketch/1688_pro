@@ -182,7 +182,7 @@ export async function run(opts: SellerChatOpts): Promise<void> {
     );
   }
 
-  const state = await readState();
+  const state = await readState(opts.profile);
   if (!state.nick) {
     throw new CliError(
       3,

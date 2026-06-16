@@ -1,11 +1,12 @@
-// Routes a command either through the daemon (fast) or inline (slow but
-// self-contained). Headed mode and explicit `--profile` always go inline.
+// Routes a command either through the selected profile daemon (fast) or inline
+// (slow but self-contained). Headed mode stays inline.
 
 import type { BrowserContext } from 'playwright';
 import { withSession } from './context.js';
 import { isDaemonReachable, daemonCall } from '../daemon/client.js';
 import { makeRequestId } from '../daemon/protocol.js';
 import { info } from '../io/output.js';
+import { defaultProfileName } from './paths.js';
 import {
   appendEventBestEffort,
   endEvent,
@@ -111,26 +112,26 @@ export async function dispatch<TArgs, TData>(
   args: TArgs,
   opts: DispatchOpts = {},
 ): Promise<TData> {
+  const profile = defaultProfileName(opts.profile);
   const requestId = makeRequestId();
   const startedAt = Date.now();
   await appendEventBestEffort(
-    startEvent({ requestId, cmd: name, profile: opts.profile }),
+    startEvent({ requestId, cmd: name, profile }),
   );
 
   const finishOk = async () => {
     await appendEventBestEffort(
-      endEvent({ requestId, cmd: name, startedAt, profile: opts.profile }),
+      endEvent({ requestId, cmd: name, startedAt, profile }),
     );
   };
   const finishError = async (error: unknown) => {
     await appendEventBestEffort(
-      eventFromError({ requestId, cmd: name, startedAt, profile: opts.profile, error }),
+      eventFromError({ requestId, cmd: name, startedAt, profile, error }),
     );
   };
 
   const skipDaemon =
     opts.headed === true ||
-    !!opts.profile ||
     opts.noDaemon === true ||
     process.env.BB1688_NO_DAEMON === '1';
 
@@ -138,28 +139,28 @@ export async function dispatch<TArgs, TData>(
     // Auto-start daemon if not running. Keeps the "warm browser" promise
     // after `npm i -g` (postinstall kills the daemon) without requiring the
     // user to re-run `1688 login` or `daemon start` manually.
-    if (!(await isDaemonReachable())) {
+    if (!(await isDaemonReachable(profile))) {
       try {
         const { ensureFreshDaemon } = await import('../daemon/manager.js');
-        info('Starting daemon (one-time)...');
-        await ensureFreshDaemon();
+        info(`Starting daemon for profile "${profile}" (one-time)...`);
+        await ensureFreshDaemon(profile);
       } catch {
         // Couldn't start — fall through to inline.
       }
     } else {
       try {
         const { ensureFreshDaemon } = await import('../daemon/manager.js');
-        const result = await ensureFreshDaemon();
+        const result = await ensureFreshDaemon(profile);
         if (result.restarted) {
-          info('Restarted daemon to match current CLI version.');
+          info(`Restarted daemon for profile "${profile}" to match current CLI version.`);
         }
       } catch {
         // Couldn't refresh — fall through to the normal daemon/inline logic.
       }
     }
-    if (await isDaemonReachable()) {
+    if (await isDaemonReachable(profile)) {
       try {
-        const data = await daemonCall<TData>(name, args, requestId);
+        const data = await daemonCall<TData>(name, args, requestId, profile);
         await finishOk();
         return data;
       } catch (e) {
@@ -175,11 +176,11 @@ export async function dispatch<TArgs, TData>(
   // Inline path. If a daemon is alive, it holds the lock — we must pause it
   // for the duration so this inline call can grab the lock and open its own
   // browser context on the shared profile. Restart on exit.
-  const daemonMgr = await maybePauseDaemon();
+  const daemonMgr = await maybePauseDaemon(profile);
   try {
     const fn = await loadExecutor<TArgs, TData>(name);
     const data = await withSession(
-      { headless: !opts.headed, profile: opts.profile },
+      { headless: !opts.headed, profile },
       (ctx) => fn(ctx, args),
       { requestId, cmd: name, args },
     );
@@ -193,20 +194,20 @@ export async function dispatch<TArgs, TData>(
   }
 }
 
-async function maybePauseDaemon(): Promise<{ resume: () => Promise<void> }> {
+async function maybePauseDaemon(profile: string): Promise<{ resume: () => Promise<void> }> {
   try {
     const { status, stop, start } = await import('../daemon/manager.js');
-    const st = await status();
+    const st = await status(profile);
     if (!st.running) return { resume: async () => {} };
-    info('Pausing daemon for inline run...');
-    await stop();
+    info(`Pausing daemon for profile "${profile}" for inline run...`);
+    await stop(profile);
     return {
       resume: async () => {
         try {
-          info('Resuming daemon...');
-          await start();
+          info(`Resuming daemon for profile "${profile}"...`);
+          await start(profile);
         } catch (e) {
-          info(`(Daemon resume failed: ${(e as Error).message})`);
+          info(`(Daemon resume failed for profile "${profile}": ${(e as Error).message})`);
         }
       },
     };

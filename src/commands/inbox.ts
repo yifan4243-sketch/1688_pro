@@ -390,7 +390,7 @@ export async function executeRaw(
 
 export async function run(opts: InboxOpts): Promise<void> {
   const limit = Math.min(200, Math.max(1, parseInt(opts.limit ?? '20', 10)));
-  const state = await readState();
+  const state = await readState(opts.profile);
   if (!state.nick || !state.memberId) {
     throw new CliError(
       3,

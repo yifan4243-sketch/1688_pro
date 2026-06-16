@@ -84,7 +84,7 @@ This is a heuristic index of exported TypeScript interfaces that are likely to m
 | `SupplierSearchArgs` | `src/commands/supplier-search.ts` | `keywords: string[];`<br>`maxPerQuery: number;`<br>`enrichTop?: number;`<br>`filters?: SupplierFilters;`<br>`headed?: boolean;` |
 | `SupplierSearchOpts` | `src/commands/supplier-search.ts` | `keywords: string[];`<br>`max?: string;`<br>`enrich?: string;`<br>`factoryOnly?: boolean;`<br>`province?: string;`<br>`city?: string;`<br>`minYears?: string;`<br>`minRepeatRate?: string;`<br>`minResponseRate?: string;`<br>`jsonl?: boolean;`<br>`csv?: boolean;`<br>`output?: string;`<br>`profile?: string;`<br>`headed?: boolean;` |
 | `SupplierSearchResult` | `src/commands/supplier-search.ts` | `queries: string[];`<br>`source: {`<br>`kind: 'company-search';`<br>`endpoint: 'companySearchBusinessService';`<br>`offerAggregation: false;`<br>`filters: SupplierFilters;`<br>`maxPerQuery: number;`<br>`enrichTop: number;`<br>`totalBeforeFilter: number;`<br>`total: number;`<br>`enrichedCount: number;`<br>`items: SupplierSearchItem[];` |
-| `WhoamiArgs` | `src/commands/whoami.ts` | `verify?: boolean;` |
+| `WhoamiArgs` | `src/commands/whoami.ts` | `verify?: boolean;`<br>`profile?: string;` |
 | `WhoamiOpts` | `src/commands/whoami.ts` | `verify?: boolean;`<br>`profile?: string;` |
 | `WhoamiResult` | `src/commands/whoami.ts` | `loggedIn: boolean;`<br>`memberId?: string;`<br>`nick?: string \| null;`<br>`lastVerifiedAt?: string \| null;` |
 | `FakeShippedOpts` | `src/commands/workflows.ts` | `days?: string;`<br>`limit?: string;`<br>`maxPages?: string;`<br>`maxCheck?: string;`<br>`debug?: boolean;` |

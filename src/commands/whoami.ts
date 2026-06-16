@@ -6,6 +6,7 @@ import { readState, writeState } from '../session/state.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { nowIso, relative } from '../util/time.js';
+import { defaultProfileName } from '../session/paths.js';
 
 export interface WhoamiOpts {
   verify?: boolean;
@@ -14,6 +15,7 @@ export interface WhoamiOpts {
 
 export interface WhoamiArgs {
   verify?: boolean;
+  profile?: string;
 }
 
 export interface WhoamiResult {
@@ -34,14 +36,15 @@ export async function execute(
     const ok = await verifyOnline(ctx);
     if (!ok) return { loggedIn: false };
   }
-  const state = await readState();
+  const profile = defaultProfileName(args.profile);
+  const state = await readState(profile);
   const lastVerifiedAt = args.verify ? nowIso() : state.lastVerifiedAt;
   await writeState({
     ...state,
     memberId: id.memberId,
     nick: id.nick ?? undefined,
     lastVerifiedAt,
-  });
+  }, profile);
   return {
     loggedIn: true,
     memberId: id.memberId,
@@ -51,10 +54,11 @@ export async function execute(
 }
 
 export async function run(opts: WhoamiOpts): Promise<void> {
+  const profile = defaultProfileName(opts.profile);
   const data = await dispatch<WhoamiArgs, WhoamiResult>(
     'whoami',
-    { verify: opts.verify },
-    { profile: opts.profile },
+    { verify: opts.verify, profile },
+    { profile },
   );
 
   if (!data.loggedIn) {

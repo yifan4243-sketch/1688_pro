@@ -1,10 +1,12 @@
 import net from 'node:net';
 import fs from 'node:fs/promises';
 import {
+  defaultProfileName,
   socketPath,
   pidFile,
   daemonVersionFile,
   ensureRoot,
+  ensureProfileRuntimeDir,
 } from '../session/paths.js';
 import {
   getSharedContext,
@@ -19,6 +21,7 @@ import type { Request, Response } from './protocol.js';
 import pkg from '../../package.json' with { type: 'json' };
 
 interface ServerOpts {
+  profile?: string;
   idleTimeoutMs?: number;
   prewarm?: boolean;
 }
@@ -35,6 +38,7 @@ interface DaemonHealth {
 }
 
 interface ServerStats {
+  profile: string;
   version: string;
   startedAt: string;
   pid: number;
@@ -45,6 +49,7 @@ interface ServerStats {
 }
 
 const stats: ServerStats = {
+  profile: 'default',
   version: pkg.version,
   startedAt: new Date().toISOString(),
   pid: process.pid,
@@ -71,35 +76,38 @@ let server: net.Server | null = null;
 let shuttingDown = false;
 
 export async function start(opts: ServerOpts = {}): Promise<void> {
+  const profile = defaultProfileName(opts.profile);
   const idleMs = opts.idleTimeoutMs ?? 30 * 60 * 1000;
   await ensureRoot();
+  await ensureProfileRuntimeDir(profile);
+  stats.profile = profile;
 
   // Clean any stale socket. If pidfile points to a live process, refuse.
-  await refuseIfAlive();
+  await refuseIfAlive(profile);
   // Windows named pipes have no filesystem entry — skip the unlink.
   if (process.platform !== 'win32') {
     try {
-      await fs.unlink(socketPath());
+      await fs.unlink(socketPath(profile));
     } catch {
       /* not present, fine */
     }
   }
 
-  await fs.writeFile(pidFile(), String(process.pid));
-  await fs.writeFile(daemonVersionFile(), pkg.version);
+  await fs.writeFile(pidFile(profile), String(process.pid));
+  await fs.writeFile(daemonVersionFile(profile), pkg.version);
 
-  log(`pid ${process.pid}, socket ${socketPath()}`);
+  log(`profile ${profile}, pid ${process.pid}, socket ${socketPath(profile)}`);
 
   if (opts.prewarm) {
     log('prewarming Chromium...');
-    await getSharedContext();
+    await getSharedContext(profile);
     log('Chromium ready');
   }
 
   server = net.createServer((sock) => handleClient(sock));
   await new Promise<void>((resolve, reject) => {
     server!.once('error', reject);
-    server!.listen(socketPath(), () => {
+    server!.listen(socketPath(profile), () => {
       server!.off('error', reject);
       resolve();
     });
@@ -113,7 +121,7 @@ export async function start(opts: ServerOpts = {}): Promise<void> {
       Date.now() - lastActivityMs > idleMs
     ) {
       log(`idle for ${Math.round(idleMs / 60000)}min — shutting down`);
-      void shutdown();
+      void shutdown(profile);
     }
   }, 10_000);
   idleTimer.unref();
@@ -121,7 +129,7 @@ export async function start(opts: ServerOpts = {}): Promise<void> {
   for (const sig of ['SIGTERM', 'SIGINT'] as const) {
     process.on(sig, () => {
       log(`received ${sig}`);
-      void shutdown();
+      void shutdown(profile);
     });
   }
 }
@@ -187,7 +195,7 @@ async function handleRequest(req: Request): Promise<Response> {
       };
     }
     if (req.cmd === 'shutdown') {
-      setTimeout(() => void shutdown(), 50);
+      setTimeout(() => void shutdown(stats.profile), 50);
       return { id: req.id, ok: true, data: { stopping: true } };
     }
     if (DAEMON_BLOCKED_COMMANDS.has(req.cmd)) {
@@ -204,7 +212,7 @@ async function handleRequest(req: Request): Promise<Response> {
       requestId: req.id,
       cmd: req.cmd,
       args: req.args,
-    });
+    }, stats.profile);
     recordSuccess();
     return { id: req.id, ok: true, data };
   } catch (e) {
@@ -241,10 +249,10 @@ async function enforceHealthPause(): Promise<void> {
   throw new CliError(
     9,
     'DAEMON_PAUSED',
-    `Daemon is paused until ${pausedUntil} after repeated 1688 failures.`,
+    `Daemon for profile "${stats.profile}" is paused until ${pausedUntil} after repeated 1688 failures.`,
     {
       category: 'daemon_health',
-      recoverHint: 'Wait for the pause to expire, or run `1688 daemon reload` after manually resolving login/risk-control issues.',
+      recoverHint: `Wait for the pause to expire, or run \`1688 daemon reload --profile ${stats.profile}\` after manually resolving login/risk-control issues.`,
       retryable: true,
       pausedUntil,
       failureKind: stats.health.lastFailureKind,
@@ -293,10 +301,10 @@ function recordFailure(e: unknown): void {
   }
 }
 
-async function refuseIfAlive(): Promise<void> {
+async function refuseIfAlive(profile: string): Promise<void> {
   let pidStr: string;
   try {
-    pidStr = await fs.readFile(pidFile(), 'utf8');
+    pidStr = await fs.readFile(pidFile(profile), 'utf8');
   } catch {
     return;
   }
@@ -307,7 +315,7 @@ async function refuseIfAlive(): Promise<void> {
     throw new CliError(
       5,
       'DAEMON_RUNNING',
-      `Daemon already running (pid ${pid}). Use \`1688 daemon stop\` first.`,
+      `Daemon already running for profile "${profile}" (pid ${pid}). Use \`1688 daemon stop --profile ${profile}\` first.`,
     );
   } catch (e) {
     if ((e as CliError).code === 'DAEMON_RUNNING') throw e;
@@ -315,28 +323,28 @@ async function refuseIfAlive(): Promise<void> {
   }
 }
 
-async function shutdown(): Promise<void> {
+async function shutdown(profile = stats.profile): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  log('shutting down');
+  log(`shutting down profile ${profile}`);
   if (server) {
     await new Promise<void>((r) => server!.close(() => r()));
   }
   await releaseSharedContext();
   if (process.platform !== 'win32') {
     try {
-      await fs.unlink(socketPath());
+      await fs.unlink(socketPath(profile));
     } catch {
       /* ignore */
     }
   }
   try {
-    await fs.unlink(pidFile());
+    await fs.unlink(pidFile(profile));
   } catch {
     /* ignore */
   }
   try {
-    await fs.unlink(daemonVersionFile());
+    await fs.unlink(daemonVersionFile(profile));
   } catch {
     /* ignore */
   }

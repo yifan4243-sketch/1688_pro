@@ -148,10 +148,16 @@ given.
 1688 login --force
 1688 logout [--yes]
 1688 whoami [--verify]
-1688 doctor [--no-launch]
-1688 daemon start | stop | status | reload
-1688 serve
+1688 doctor [--no-launch] [--profile <name>]
+1688 daemon start | stop | status | reload [--profile <name>]
+1688 serve [--profile <name>]
+1688 profile list
+1688 profile status [name]
 ```
+
+All account, browser, daemon, and buyer-workflow commands default to the
+`default` profile. Passing `--profile <name>` uses that profile's persistent
+browser directory, state file, daemon process, lock, and daemon artifacts.
 
 ## Output Flags
 

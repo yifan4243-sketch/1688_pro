@@ -4,6 +4,7 @@ import { clearState } from '../session/state.js';
 import { emit, info, isJson } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { confirm } from '../io/prompt.js';
+import { defaultProfileName } from '../session/paths.js';
 
 export interface LogoutOpts {
   yes?: boolean;
@@ -13,13 +14,14 @@ export interface LogoutOpts {
 const LOGOUT_URL = 'https://login.1688.com/member/logout.htm';
 
 export async function run(opts: LogoutOpts): Promise<void> {
+  const profile = defaultProfileName(opts.profile);
   const pre = await withSession(
-    { headless: true, profile: opts.profile },
+    { headless: true, profile },
     async (ctx) => parseIdentity(await ctx.cookies()),
   );
 
   if (!pre) {
-    await clearState();
+    await clearState(profile);
     emit({
       human: () => info('Not logged in.'),
       data: { ok: true, wasLoggedIn: false },
@@ -44,7 +46,7 @@ export async function run(opts: LogoutOpts): Promise<void> {
   }
 
   await withSession(
-    { headless: true, profile: opts.profile },
+    { headless: true, profile },
     async (ctx) => {
       const page = await ctx.newPage();
       try {
@@ -68,7 +70,7 @@ export async function run(opts: LogoutOpts): Promise<void> {
     },
   );
 
-  await clearState();
+  await clearState(profile);
 
   emit({
     human: () => process.stdout.write('Logged out.\n'),

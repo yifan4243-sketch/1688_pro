@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import type { BrowserContext } from 'playwright';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import { profilePath } from './paths.js';
+import { defaultProfileName, profilePath } from './paths.js';
 import { acquireLock } from './lock.js';
 import { CliError } from '../io/errors.js';
 import { clearStaleSingleton } from './context.js';
@@ -30,8 +30,10 @@ const LAUNCH_OPTS = {
 let sharedCtx: BrowserContext | null = null;
 let lockRelease: (() => Promise<void>) | null = null;
 let opChain: Promise<unknown> = Promise.resolve();
+let sharedProfile: string | null = null;
 
 export interface SharedContextStatus {
+  profile: string | null;
   browserAlive: boolean;
   pageCount: number;
   currentUrl: string | null;
@@ -39,13 +41,24 @@ export interface SharedContextStatus {
   loggedIn: boolean | null;
 }
 
-export async function getSharedContext(): Promise<BrowserContext> {
-  if (sharedCtx) return sharedCtx;
-  lockRelease = await acquireLock();
-  const dir = profilePath('default');
+export async function getSharedContext(profile?: string): Promise<BrowserContext> {
+  const profileName = defaultProfileName(profile);
+  if (sharedCtx) {
+    if (sharedProfile !== profileName) {
+      throw new CliError(
+        5,
+        'DAEMON_PROFILE_MISMATCH',
+        `Daemon shared context is bound to profile "${sharedProfile}", not "${profileName}".`,
+      );
+    }
+    return sharedCtx;
+  }
+  lockRelease = await acquireLock(profileName);
+  const dir = profilePath(profileName);
   await fs.mkdir(dir, { recursive: true });
   await clearStaleSingleton(dir);
   sharedCtx = await launchPreferringChrome(dir, true);
+  sharedProfile = profileName;
   await sharedCtx.addInitScript(() => {
     try {
       Object.defineProperty(navigator, 'languages', {
@@ -61,6 +74,7 @@ export async function getSharedContext(): Promise<BrowserContext> {
 export async function runOnSharedCtx<T>(
   fn: (ctx: BrowserContext) => Promise<T>,
   meta?: RunMeta,
+  profile?: string,
 ): Promise<T> {
   // Append to serial queue. Each op waits for the previous one to finish.
   const prev = opChain;
@@ -72,7 +86,7 @@ export async function runOnSharedCtx<T>(
   });
   opChain = prev.then(async () => {
     try {
-      const ctx = await getSharedContext();
+      const ctx = await getSharedContext(profile);
       resolveOp(await fn(ctx));
     } catch (e) {
       const ctx = sharedCtx;
@@ -89,6 +103,7 @@ export async function runOnSharedCtx<T>(
 export async function getSharedContextStatus(): Promise<SharedContextStatus> {
   if (!sharedCtx) {
     return {
+      profile: sharedProfile,
       browserAlive: false,
       pageCount: 0,
       currentUrl: null,
@@ -101,6 +116,7 @@ export async function getSharedContextStatus(): Promise<SharedContextStatus> {
   const page = pages.at(-1) ?? null;
   const pageState = page ? await detectPageState(page).catch(() => null) : null;
   return {
+    profile: sharedProfile,
     browserAlive: true,
     pageCount: pages.length,
     currentUrl: page?.url() ?? null,
@@ -120,6 +136,7 @@ export async function releaseSharedContext(): Promise<void> {
     await sharedCtx.close().catch(() => {});
     sharedCtx = null;
   }
+  sharedProfile = null;
   if (lockRelease) {
     await lockRelease().catch(() => {});
     lockRelease = null;

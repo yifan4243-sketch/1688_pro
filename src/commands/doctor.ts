@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { chromium } from 'playwright';
 import {
+  defaultProfileName,
   root,
   stateFile,
   lockFile,
@@ -100,21 +101,22 @@ interface Check {
 }
 
 export async function run(opts: DoctorOpts): Promise<void> {
+  const profile = defaultProfileName(opts.profile);
   const checks: Check[] = [];
   checks.push(checkNode());
   checks.push(await checkYibabaRoot());
-  checks.push(await checkProfile(opts.profile));
+  checks.push(await checkProfile(profile));
   checks.push(await checkChromiumCache());
-  checks.push(await checkLock());
-  checks.push(await checkStateFile());
+  checks.push(await checkLock(profile));
+  checks.push(await checkStateFile(profile));
   if (opts.launch !== false) {
     checks.push(await checkChromiumLaunch());
   }
-  checks.push(await checkSession());
-  const daemon = await checkDaemonHealth();
+  checks.push(await checkSession(profile));
+  const daemon = await checkDaemonHealth(profile);
   checks.push(daemon.check);
   if (opts.live) {
-    checks.push(...(await checkLiveProbes(daemon.status)));
+    checks.push(...(await checkLiveProbes(daemon.status, profile)));
   }
   const upd = await checkUpdate();
   checks.push(upd.check);
@@ -125,7 +127,7 @@ export async function run(opts: DoctorOpts): Promise<void> {
     human: () => printHuman(checks),
     // `version` is surfaced at top-level so agents can read it without
     // having to scan `checks[]`. See AGENTS.md → Update awareness.
-    data: { ok: !failed, checks, version: upd.version, daemon: daemon.status },
+    data: { ok: !failed, profile, checks, version: upd.version, daemon: daemon.status },
   });
 
   if (failed) throw new CliError(6, 'DOCTOR_FAILED', '');
@@ -240,21 +242,21 @@ async function checkChromiumCache(): Promise<Check> {
   }
 }
 
-async function checkLock(): Promise<Check> {
+async function checkLock(profile: string): Promise<Check> {
   // proper-lockfile uses `<lock>.lock` as the semaphore directory.
-  const semaphore = lockFile() + '.lock';
+  const semaphore = lockFile(profile) + '.lock';
   try {
     const st = await fs.stat(semaphore);
     const ageMs = Date.now() - st.mtimeMs;
 
     // Lock held — but if it's the daemon holding it, that's expected.
     const { status: daemonStatus } = await import('../daemon/manager.js');
-    const ds = await daemonStatus();
+    const ds = await daemonStatus(profile);
     if (ds.running && ds.pid) {
       return {
         name: 'lock',
         status: 'ok',
-        message: `held by daemon (pid ${ds.pid})`,
+        message: `held by daemon for profile "${profile}" (pid ${ds.pid})`,
       };
     }
 
@@ -269,7 +271,7 @@ async function checkLock(): Promise<Check> {
     return {
       name: 'lock',
       status: 'warn',
-      message: 'another 1688 command appears to be running',
+      message: `another 1688 command appears to be running for profile "${profile}"`,
     };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -283,9 +285,9 @@ async function checkLock(): Promise<Check> {
   }
 }
 
-async function checkStateFile(): Promise<Check> {
+async function checkStateFile(profile: string): Promise<Check> {
   try {
-    const s = await readState();
+    const s = await readState(profile);
     if (s.version !== 1) {
       return {
         name: 'state.json',
@@ -293,13 +295,13 @@ async function checkStateFile(): Promise<Check> {
         message: `unexpected version ${s.version}`,
       };
     }
-    return { name: 'state.json', status: 'ok', message: stateFile() };
+    return { name: 'state.json', status: 'ok', message: stateFile(profile) };
   } catch (e) {
     return {
       name: 'state.json',
       status: 'warn',
       message: `unreadable: ${(e as Error).message}`,
-      fix: removePathFix(stateFile()),
+      fix: removePathFix(stateFile(profile)),
     };
   }
 }
@@ -362,6 +364,7 @@ interface DaemonHealthSnapshot {
 }
 
 interface DoctorDaemonStatus {
+  profile?: string;
   running: boolean;
   reachable?: boolean;
   pid?: number;
@@ -371,17 +374,17 @@ interface DoctorDaemonStatus {
   stats?: unknown;
 }
 
-async function checkDaemonHealth(): Promise<{
+async function checkDaemonHealth(profile: string): Promise<{
   check: Check;
   status: DoctorDaemonStatus | null;
 }> {
   try {
     const { status } = await import('../daemon/manager.js');
-    const st = (await status()) as DoctorDaemonStatus;
+    const st = (await status(profile)) as DoctorDaemonStatus;
     if (!st.running) {
       return {
         status: st,
-        check: { name: 'daemon', status: 'ok', message: 'not running' },
+        check: { name: 'daemon', status: 'ok', message: `not running for profile "${profile}"` },
       };
     }
     if (!st.reachable) {
@@ -390,8 +393,8 @@ async function checkDaemonHealth(): Promise<{
         check: {
           name: 'daemon',
           status: 'warn',
-          message: `pid ${st.pid ?? '?'} not reachable`,
-          fix: '1688 daemon reload',
+          message: `profile "${profile}" pid ${st.pid ?? '?'} not reachable`,
+          fix: `1688 daemon reload --profile ${profile}`,
         },
       };
     }
@@ -401,8 +404,8 @@ async function checkDaemonHealth(): Promise<{
         check: {
           name: 'daemon',
           status: 'warn',
-          message: `version ${st.version ?? '?'} != CLI ${st.expectedVersion ?? '?'}`,
-          fix: '1688 daemon reload',
+          message: `profile "${profile}" version ${st.version ?? '?'} != CLI ${st.expectedVersion ?? '?'}`,
+          fix: `1688 daemon reload --profile ${profile}`,
         },
       };
     }
@@ -418,7 +421,7 @@ async function checkDaemonHealth(): Promise<{
           name: 'daemon',
           status: 'warn',
           message: `paused until ${health.pausedUntil} (${health.lastFailureKind ?? 'unknown'})`,
-          fix: 'Resolve login/risk-control if needed, or wait for pause to expire.',
+          fix: `Resolve login/risk-control for profile "${profile}" if needed, or wait for pause to expire.`,
         },
       };
     }
@@ -437,7 +440,7 @@ async function checkDaemonHealth(): Promise<{
       check: {
         name: 'daemon',
         status: 'ok',
-        message: `running pid ${st.pid ?? '?'}${health?.lastSuccessfulActionAt ? `, last success ${health.lastSuccessfulActionAt}` : ''}`,
+        message: `profile "${profile}" running pid ${st.pid ?? '?'}${health?.lastSuccessfulActionAt ? `, last success ${health.lastSuccessfulActionAt}` : ''}`,
       },
     };
   } catch (e) {
@@ -454,30 +457,31 @@ async function checkDaemonHealth(): Promise<{
 
 async function checkLiveProbes(
   daemon: DoctorDaemonStatus | null,
+  profile: string,
 ): Promise<Check[]> {
   const checks: Check[] = [];
-  checks.push(checkDaemonLiveProbe(daemon));
-  checks.push(await checkEventLogWrite());
+  checks.push(checkDaemonLiveProbe(daemon, profile));
+  checks.push(await checkEventLogWrite(profile));
   checks.push(await checkArtifactWrite());
-  checks.push(await checkRecentRiskEvent());
+  checks.push(await checkRecentRiskEvent(profile));
   return checks;
 }
 
-function checkDaemonLiveProbe(daemon: DoctorDaemonStatus | null): Check {
+function checkDaemonLiveProbe(daemon: DoctorDaemonStatus | null, profile: string): Check {
   if (!daemon?.running) {
     return {
       name: 'live daemon socket',
       status: 'warn',
-      message: 'daemon not running; commands will use inline browser sessions',
-      fix: '1688 daemon start',
+      message: `daemon not running for profile "${profile}"; commands will use inline browser sessions`,
+      fix: `1688 daemon start --profile ${profile}`,
     };
   }
   if (!daemon.reachable) {
     return {
       name: 'live daemon socket',
       status: 'fail',
-      message: `daemon pid ${daemon.pid ?? '?'} is not reachable`,
-      fix: '1688 daemon reload',
+      message: `daemon for profile "${profile}" pid ${daemon.pid ?? '?'} is not reachable`,
+      fix: `1688 daemon reload --profile ${profile}`,
     };
   }
   return {
@@ -487,7 +491,7 @@ function checkDaemonLiveProbe(daemon: DoctorDaemonStatus | null): Check {
   };
 }
 
-async function checkEventLogWrite(): Promise<Check> {
+async function checkEventLogWrite(profile: string): Promise<Check> {
   try {
     await appendEvent({
       ts: new Date().toISOString(),
@@ -495,6 +499,7 @@ async function checkEventLogWrite(): Promise<Check> {
       cmd: 'doctor',
       phase: 'end',
       status: 'ok',
+      profile,
     });
     return { name: 'live event log', status: 'ok', message: 'writable' };
   } catch (e) {
@@ -525,11 +530,15 @@ async function checkArtifactWrite(): Promise<Check> {
   }
 }
 
-async function checkRecentRiskEvent(): Promise<Check> {
+async function checkRecentRiskEvent(profile: string): Promise<Check> {
   const recent = await readRecentEvents(50);
   const risk = [...recent]
     .reverse()
-    .find((e) => e.verification?.state === 'risk_control' || e.errorCode === 'RISK_CONTROL');
+    .find(
+      (e) =>
+        (e.profile === profile || (!e.profile && profile === 'default')) &&
+        (e.verification?.state === 'risk_control' || e.errorCode === 'RISK_CONTROL'),
+    );
   if (!risk) {
     return { name: 'live recent risk', status: 'ok', message: 'no recent risk-control event' };
   }
@@ -541,22 +550,22 @@ async function checkRecentRiskEvent(): Promise<Check> {
   };
 }
 
-async function checkSession(): Promise<Check> {
+async function checkSession(profile: string): Promise<Check> {
   try {
-    const s = await readState();
+    const s = await readState(profile);
     if (s.memberId) {
       const name = s.nick ?? s.memberId;
       return {
         name: 'session',
         status: 'ok',
-        message: `${name} (memberId: ${s.memberId}, cached)`,
+        message: `${name} (memberId: ${s.memberId}, profile "${profile}", cached)`,
       };
     }
     return {
       name: 'session',
       status: 'warn',
-      message: 'not logged in',
-      fix: '1688 login',
+      message: `not logged in for profile "${profile}"`,
+      fix: `1688 login --profile ${profile}`,
     };
   } catch {
     return { name: 'session', status: 'warn', message: 'unknown' };

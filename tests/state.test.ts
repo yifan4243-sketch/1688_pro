@@ -33,6 +33,18 @@ describe('state read/write', () => {
     expect(s).toEqual({ version: 1 });
   });
 
+  it('stores non-default profile state separately', async () => {
+    await writeState({ version: 1, memberId: 'default' });
+    await writeState({ version: 1, memberId: 'work', nick: 'work-nick' }, 'work');
+
+    expect(stateFile('work')).toBe(path.join(tmpHome, 'profiles', 'work', 'state.json'));
+    expect((await readState()).memberId).toBe('default');
+    expect(await readState('work')).toMatchObject({
+      memberId: 'work',
+      nick: 'work-nick',
+    });
+  });
+
   it('round-trips data', async () => {
     await writeState({
       version: 1,

@@ -45,7 +45,7 @@ export async function withSession<T>(
   fn: (ctx: BrowserContext) => Promise<T>,
   meta?: RunMeta,
 ): Promise<T> {
-  const release = await acquireLock();
+  const release = await acquireLock(opts.profile);
   const dir = profilePath(opts.profile);
   await fs.mkdir(dir, { recursive: true });
   await clearStaleSingleton(dir);

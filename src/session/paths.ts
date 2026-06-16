@@ -11,27 +11,45 @@ export function profilesDir(): string {
   return path.join(root(), 'profiles');
 }
 
-export function stateFile(): string {
-  return path.join(root(), 'state.json');
+export function defaultProfileName(profile?: string): string {
+  const name = profile?.trim();
+  return name ? name : 'default';
 }
 
-export function lockFile(): string {
-  return path.join(root(), '.lock');
+export function profileRuntimeDir(profile?: string): string {
+  const name = defaultProfileName(profile);
+  return name === 'default' ? root() : profilePath(name);
 }
 
-export function socketPath(): string {
-  return socketPathForPlatform(process.platform, root());
+export function stateFile(profile?: string): string {
+  return path.join(profileRuntimeDir(profile), 'state.json');
 }
 
-export function socketPathForPlatform(platform: NodeJS.Platform, rootPath: string): string {
+export function lockFile(profile?: string): string {
+  return path.join(profileRuntimeDir(profile), '.lock');
+}
+
+export function socketPath(profile?: string): string {
+  return socketPathForPlatform(process.platform, root(), profile);
+}
+
+export function socketPathForPlatform(
+  platform: NodeJS.Platform,
+  rootPath: string,
+  profile?: string,
+): string {
+  const name = defaultProfileName(profile);
   // Windows: Node's net.listen()/createConnection() can't bind a Unix-style
   // filesystem path on win32 (EACCES). Use a named pipe instead. Include a
-  // stable root hash so different users, BB1688_HOME values, and tests do not
-  // collide on one global pipe name.
+  // stable root hash so different users and BB1688_HOME values do not collide,
+  // and include the profile hash so profiles under one root can run together.
   if (platform === 'win32') {
-    return `\\\\.\\pipe\\1688-cli-daemon-${rootHash(rootPath)}`;
+    const base = `\\\\.\\pipe\\1688-cli-daemon-${rootHash(rootPath)}`;
+    return name === 'default' ? base : `${base}-${profileHash(name)}`;
   }
-  return path.join(rootPath, 'daemon.sock');
+  const dir =
+    name === 'default' ? rootPath : path.join(rootPath, 'profiles', name);
+  return path.join(dir, 'daemon.sock');
 }
 
 export function rootHash(rootPath: string): string {
@@ -42,16 +60,24 @@ export function rootHash(rootPath: string): string {
     .slice(0, 12);
 }
 
-export function pidFile(): string {
-  return path.join(root(), 'daemon.pid');
+export function profileHash(profile: string): string {
+  return crypto
+    .createHash('sha1')
+    .update(defaultProfileName(profile).toLowerCase())
+    .digest('hex')
+    .slice(0, 12);
 }
 
-export function daemonVersionFile(): string {
-  return path.join(root(), 'daemon.version');
+export function pidFile(profile?: string): string {
+  return path.join(profileRuntimeDir(profile), 'daemon.pid');
 }
 
-export function daemonLogFile(): string {
-  return path.join(root(), 'daemon.log');
+export function daemonVersionFile(profile?: string): string {
+  return path.join(profileRuntimeDir(profile), 'daemon.version');
+}
+
+export function daemonLogFile(profile?: string): string {
+  return path.join(profileRuntimeDir(profile), 'daemon.log');
 }
 
 export function runsDir(): string {
@@ -71,9 +97,13 @@ export function loginQrFile(): string {
 }
 
 export function profilePath(name = 'default'): string {
-  return path.join(profilesDir(), name);
+  return path.join(profilesDir(), defaultProfileName(name));
 }
 
 export async function ensureRoot(): Promise<void> {
   await fs.mkdir(root(), { recursive: true });
+}
+
+export async function ensureProfileRuntimeDir(profile?: string): Promise<void> {
+  await fs.mkdir(profileRuntimeDir(profile), { recursive: true });
 }
