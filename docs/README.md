@@ -19,7 +19,8 @@ This directory is the canonical knowledge base for agents and humans working on
 ## Domain Knowledge
 
 - Specs: [`specs/`](specs/)
-- Repeatable playbooks: [`playbooks/`](playbooks/)
+- Repeatable playbooks: [playbooks/](playbooks/)
+- Amazon FBA sourcing playbook: [playbooks/amazon-fba-sourcing.md](playbooks/amazon-fba-sourcing.md)
 - Records and postmortems: [`records/`](records/)
 - Generated repository indexes: [`generated/`](generated/)
 - Long-running plans: [`exec-plans/`](exec-plans/)
