@@ -5,6 +5,8 @@
 [![license](https://img.shields.io/npm/l/1688-cli.svg)](./LICENSE)
 [![node](https://img.shields.io/node/v/1688-cli.svg)](https://nodejs.org/)
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 Command-line tool for Alibaba 1688.com wholesale: product search, supplier
 company search, supplier scraper/research, image search, supplier inquiry, cart,
 checkout, order tracking, and seller chat. Outputs JSON when piped (for Codex /
