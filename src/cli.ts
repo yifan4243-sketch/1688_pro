@@ -54,6 +54,9 @@ program
   .option('--verified <kind>', 'Filter: any | factory | business | super-factory', 'any')
   .option('--min-turnover <n>', 'Minimum parsed turnover/order count')
   .option('--exclude-ads', 'Exclude P4P/ad results')
+  .option('--deeppro', 'After search, deep collect each offer using pro inline mode (retry up to 3x)')
+  .option('--deeppro-delay-min <seconds>', 'Minimum delay between deeppro offer collections', '6')
+  .option('--deeppro-delay-max <seconds>', 'Maximum delay between deeppro offer collections', '10')
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a browser window (use to pass slider verification)')
   .action(async (keyword, opts) => {

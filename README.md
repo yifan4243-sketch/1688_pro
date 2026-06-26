@@ -146,6 +146,42 @@ Batch output shape:
 - Progress lines are written to stderr so `--json --pretty` stdout stays clean.
 ```
 
+#### Deep pro search
+
+Search first, then deep collect returned offer IDs in pro inline mode.
+Each offer is retried up to 2 times after the first failed attempt.
+
+```bash
+node .\dist\cli.js search "修枝剪" --max 30 --deeppro --json --pretty
+```
+
+Output includes a `deeppro` envelope alongside normal search results:
+
+```json
+{
+  "keyword": "修枝剪",
+  "total": 30,
+  "offers": [ /* normal search results */ ],
+  "deeppro": {
+    "enabled": true,
+    "total": 30,
+    "success": 27,
+    "failed": 3,
+    "offers": [ /* full OfferResult deep collects */ ],
+    "failures": [
+      { "offerId": "...", "code": "RISK_CONTROL", "message": "...", "attempts": 3 }
+    ]
+  }
+}
+```
+
+- `--max` controls how many search results are deep-collected.
+- `--deeppro` uses pro inline collection for every offer, bypassing daemon health pause.
+- `--deeppro-delay-min` / `--deeppro-delay-max` control the pause between offers (default 6–10 s).
+- Each offer is retried up to 3 times total (1 initial + 2 retries).
+- Progress is written to stderr; stdout remains clean JSON.
+- `RISK_CONTROL` still means 1688 itself showed a verification challenge.
+
 `1688 search` and `1688 research` are offer-first. They search product offers,
 score offer results, export datasets, and can enrich top offers through detail
 pages. Use this path when price, MOQ, SKU depth, sales signals, images, and
