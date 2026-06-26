@@ -92,6 +92,47 @@ npm i -g 1688-cli
 
 ---
 
+## Command reference
+
+| Command | Description |
+|---|---|
+| `1688 login` | Scan QR code to log in; auto-starts daemon |
+| `1688 search <keyword>` | Keyword product search with filters |
+| `1688 research <keywords...>` | Multi-keyword sourcing with scoring and enrichment |
+| `1688 compare <offerIds...>` | Compare multiple offer detail pages |
+| `1688 supplier inspect <target>` | Supplier identity, factory card, trust signals |
+| `1688 supplier search <keywords...>` | Company-search supplier discovery |
+| `1688 supplier research <keywords...>` | Scored supplier dataset with inspect enrichment |
+| `1688 image-search <path\|url>` | Search by local image or http(s) URL |
+| `1688 offer <offerIds...>` | Single or batch product detail (SKUs, package, images) |
+| `1688 similar <offerId>` | Find similar / 找同款 offers (official entry point) |
+| `1688 inbox` | List recent 旺旺 IM conversations |
+| `1688 seller inquire` | Pre-sale inquiry: send product link + question |
+| `1688 seller messages` | Read seller conversation messages |
+| `1688 seller chat` | Send message to seller (order or pre-sale) |
+| `1688 checkout prepare` | Preview total/address/items for checkout (read-only) |
+| `1688 checkout confirm` | Place an order for selected cart items |
+| `1688 cart list` | List items in your cart |
+| `1688 cart add` | Add one item to cart by offerId + SKU |
+| `1688 cart remove` | Remove one item from cart by cartId |
+| `1688 shipped <orderId>` | Order detail + logistics merged |
+| `1688 stuck` | Orders paid but not shipped after N days |
+| `1688 fake-shipped` | Orders marked shipped but courier never collected |
+| `1688 seller-history <seller>` | All orders from a seller + stats |
+| `1688 order list` | List buyer orders by status |
+| `1688 order get <orderId>` | Show one order by orderId |
+| `1688 order logistics <orderId>` | Shipping status + tracking number |
+| `1688 whoami` | Show the current logged-in account |
+| `1688 logout` | Log out and clear local session |
+| `1688 doctor` | Check environment, profile, Chromium, and session |
+| `1688 serve` | Run the 1688 daemon in the foreground |
+| `1688 daemon start\|stop\|reload\|status` | Manage the background daemon |
+| `1688 profile list\|status` | Inspect local 1688 profiles |
+| `1688 debug list\|last\|show` | Inspect recent command events and artifacts |
+| `1688 feedback` | Submit feedback or a bug report |
+
+---
+
 ## Commands
 
 Organized by the buyer journey: discover → ask → decide → buy → track →
@@ -151,8 +192,19 @@ Search first, then deep collect returned offer IDs in pro inline mode.
 Each offer is retried up to 2 times after the first failed attempt.
 
 ```bash
+# Official npm install
+1688 search "修枝剪" --max 30 --deeppro --json --pretty
+
+# Local dev build
 node .\dist\cli.js search "修枝剪" --max 30 --deeppro --json --pretty
+
+# Price-filtered deep search
+1688 search "修枝剪" --max 15 --price-min 5 --price-max 20 --deeppro --json --pretty
 ```
+
+> `--price-min` / `--price-max` filter the search-page card prices.
+> DEEPPRO detail-page prices may exceed the search-page range because
+> SKUs are fully expanded on the detail page.
 
 Output includes a `deeppro` envelope alongside normal search results:
 
@@ -366,6 +418,66 @@ Each profile has its own persistent browser directory, daemon process,
 socket/named pipe, pid/version/log files, state file, and lock. Different
 profiles can run in parallel; commands for one profile do not wait on another
 profile's lock. Within one profile, daemon work remains serialized and paced.
+
+### Inbox — 旺旺 conversations
+
+```bash
+1688 inbox --limit 20                    # recent conversations (newest first)
+1688 inbox --unread                       # only unread conversations
+1688 inbox --profile acc-a                # scoped to a named profile
+```
+
+### Debug — inspect command events
+
+```bash
+1688 debug list                           # recent command events
+1688 debug list --limit 50 --failed       # failed events with more history
+1688 debug last                           # most recent command event
+1688 debug last --failed                  # most recent failed event
+1688 debug show <requestId>               # full event + artifact location
+```
+
+### Feedback — submit bug reports
+
+```bash
+1688 feedback "search --deeppro failed on Windows" --bug --no-open
+1688 feedback "offer batch should support --csv export" --submit
+```
+
+### Serve — foreground daemon
+
+```bash
+1688 serve --profile default              # run daemon in foreground
+1688 serve --idle-timeout 60              # custom idle timeout (minutes)
+1688 serve --no-prewarm                   # skip Chromium pre-warm at startup
+```
+
+### Doctor — environment check
+
+```bash
+1688 doctor                               # full check with Chromium launch
+1688 doctor --no-launch                   # skip Chromium launch test (faster)
+1688 doctor --live                        # read-only live probes (daemon, artifacts, event logging)
+1688 doctor --profile acc-a               # check a specific profile
+```
+
+### Login — options
+
+```bash
+1688 login                                # scan QR, auto-start daemon
+1688 login --timeout 300                  # wait up to 5 minutes for QR scan
+1688 login --no-daemon                    # login without auto-starting daemon
+1688 login --headed                       # open real browser window instead of terminal QR
+1688 login --force                        # re-login even if session already exists
+```
+
+### Output shape principles
+
+- **Normal search** (no `--deeppro`): returns `{ offers: Offer[] }` — behaviour unchanged.
+- **Single offer**: returns one `OfferResult` — original shape preserved.
+- **Batch offer**: returns `{ mode: "batch", offers: OfferResult[], failures: OfferFailure[] }`.
+- **Search `--deeppro`**: returns normal `offers[]` + `deeppro: { offers: OfferResult[], failures: DeepProFailure[] }`.
+- **Progress** lines are written to `stderr`; **JSON** output is written to `stdout`.
 
 ---
 
