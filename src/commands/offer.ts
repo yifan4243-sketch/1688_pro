@@ -12,6 +12,7 @@ export interface OfferOpts {
   offerId: string;
   profile?: string;
   headed?: boolean;
+  pro?: boolean;
 }
 
 export interface OfferArgs {
@@ -794,7 +795,7 @@ export async function run(opts: OfferOpts): Promise<void> {
   const data = await dispatch<OfferArgs, OfferResult>(
     'offer',
     { offerId: opts.offerId, headed: opts.headed },
-    { headed: opts.headed, profile: opts.profile },
+    { headed: opts.headed, profile: opts.profile, noDaemon: opts.pro === true },
   );
   emit({
     human: () => printOffer(data),

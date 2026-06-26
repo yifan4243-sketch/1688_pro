@@ -175,6 +175,7 @@ program
   .argument('<offerId>', 'Offer ID (digits)')
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a browser window (fallback for risk control)')
+  .option('--pro', 'Run offer collection inline and bypass daemon health pause')
   .action(async (offerId, opts) => {
     const { run } = await import('./commands/offer.js');
     await run({ ...opts, offerId });
