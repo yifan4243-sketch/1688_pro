@@ -40,6 +40,7 @@ export interface SearchOpts {
   verified?: string;
   minTurnover?: string;
   excludeAds?: boolean;
+  idsOnly?: boolean;
   profile?: string;
   headed?: boolean;
 }
@@ -50,6 +51,7 @@ export interface SearchArgs {
   sort?: SearchSort;
   filters?: SearchFilterSummary;
   headed?: boolean;
+  idsOnly?: boolean;
 }
 
 export interface SearchResult {
@@ -85,6 +87,16 @@ export async function execute(
       );
       const controlled = applySearchControls(offers, sort, filters);
       const slice = controlled.slice(0, args.max);
+      if (args.idsOnly) {
+        return {
+          keyword: args.keyword,
+          sort,
+          filters,
+          totalBeforeFilter: offers.length,
+          total: slice.length,
+          offers: slice.map((o) => ({ offerId: o.offerId } as Offer)),
+        };
+      }
       return {
         keyword: args.keyword,
         sort,
@@ -117,7 +129,7 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
 
   const data = await dispatch<SearchArgs, SearchResult>(
     'search',
-    { keyword: kw, max, sort, filters, headed: opts.headed },
+    { keyword: kw, max, sort, filters, headed: opts.headed, idsOnly: opts.idsOnly },
     { headed: opts.headed, profile: opts.profile },
   );
 
@@ -953,6 +965,15 @@ function printOffers(result: SearchResult): void {
   const { offers, keyword } = result;
   if (offers.length === 0) {
     process.stdout.write(`No offers found for "${keyword}".\n`);
+    return;
+  }
+  // ponytail: ids-only → simple list, rest is identical
+  const isIdsOnly = offers.every((o) => Object.keys(o).length === 1 && 'offerId' in o);
+  if (isIdsOnly) {
+    process.stdout.write(`Offer IDs for "${keyword}" (${offers.length}):\n`);
+    for (const o of offers) {
+      process.stdout.write(`- ${o.offerId}\n`);
+    }
     return;
   }
   const suffix =

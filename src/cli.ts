@@ -54,6 +54,7 @@ program
   .option('--verified <kind>', 'Filter: any | factory | business | super-factory', 'any')
   .option('--min-turnover <n>', 'Minimum parsed turnover/order count')
   .option('--exclude-ads', 'Exclude P4P/ad results')
+  .option('--ids-only', 'Only emit offerId for each search result')
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a browser window (use to pass slider verification)')
   .action(async (keyword, opts) => {

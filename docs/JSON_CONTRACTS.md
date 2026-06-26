@@ -142,6 +142,21 @@ the matching profile-scoped daemon status.
 }
 ```
 
+### `search --ids-only`
+
+When `--ids-only` is passed, each offer object only contains `offerId`:
+
+```ts
+{
+  keyword: string,
+  sort: "relevance" | "best-selling" | "price-asc" | "price-desc",
+  filters: object,
+  totalBeforeFilter: number,
+  total: number,
+  offers: Array<{ offerId: string }>
+}
+```
+
 `similar` uses this shape only when 1688's official same-product endpoint
 returns comparable offers. The command intentionally does not fall back to
 keyword or image search. When the official endpoint returns the current empty
