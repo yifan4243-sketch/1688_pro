@@ -137,10 +137,12 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
     excludeAds: opts.excludeAds,
   });
 
+  // --deeppro bypasses daemon for the initial search too, so DAEMON_PAUSED
+  // can't block the search before deep collection even starts.
   const data = await dispatch<SearchArgs, SearchResult>(
     'search',
     { keyword: kw, max, sort, filters, headed: opts.headed },
-    { headed: opts.headed, profile: opts.profile },
+    { headed: opts.headed, profile: opts.profile, noDaemon: opts.deeppro === true },
   );
 
   // --deeppro: deep collect each search result in pro inline mode.

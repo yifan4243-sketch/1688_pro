@@ -144,7 +144,6 @@ Batch output shape:
 - `--pro` bypasses daemon health pause for each offer.
 - `RISK_CONTROL` per-offer failures appear in `failures[]`, don't stop the batch.
 - Progress lines are written to stderr so `--json --pretty` stdout stays clean.
-```
 
 #### Deep pro search
 
