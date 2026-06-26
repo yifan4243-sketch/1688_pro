@@ -104,13 +104,16 @@ export async function execute(
           .map((o) => String(o.offerId || '').trim())
           .filter(Boolean);
 
+        process.stderr.write(
+          `\n已获取 ${offerIds.length} 个 offerID，开始进行深度采集\n`,
+        );
+
         const deepOffers: OfferResult[] = [];
         const failures: SearchDeepFailure[] = [];
 
         for (let i = 0; i < offerIds.length; i++) {
           const offerId = offerIds[i]!;
-
-          info(`Deep collecting offer ${i + 1}/${offerIds.length}: ${offerId}`);
+          process.stderr.write(`[${i + 1}/${offerIds.length}] 开始采集 ${offerId}\n`);
 
           try {
             const detail = await executeOffer(ctx, {
@@ -118,8 +121,28 @@ export async function execute(
               headed: args.headed,
             });
             deepOffers.push(detail);
+
+            const title = (detail.title || '').slice(0, 60);
+            const price =
+              detail.priceRange ??
+              (detail.priceMin !== null
+                ? `¥${detail.priceMin}` +
+                  (detail.priceMax !== null && detail.priceMax !== detail.priceMin
+                    ? `-${detail.priceMax}`
+                    : '')
+                : '?');
+            process.stderr.write(
+              `[${i + 1}/${offerIds.length}] ${offerId} 采集成功：` +
+                `标题=${title}，SKU=${detail.skus.length}，` +
+                `包装=${detail.packageInfo.length}，` +
+                `图片=${detail.images.length}，` +
+                `价格=${price}\n`,
+            );
           } catch (error) {
             const err = error as Error & { code?: string; exitCode?: number };
+            process.stderr.write(
+              `[${i + 1}/${offerIds.length}] ${offerId} 采集失败：${err.message || String(error)}\n`,
+            );
             failures.push({
               offerId,
               code: err.code,
@@ -130,7 +153,7 @@ export async function execute(
 
           if (i < offerIds.length - 1) {
             const delay = randomInt(3000, 8000);
-            info(`Waiting ${delay}ms before next offer...`);
+            process.stderr.write(`等待 ${delay}ms 后继续...\n`);
             await sleep(delay);
           }
         }

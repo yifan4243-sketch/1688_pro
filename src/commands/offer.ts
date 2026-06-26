@@ -284,9 +284,32 @@ export async function executeRaw(
       );
     }
 
+    // Detect captcha / risk-control intercept before wasting time on SKU capture.
+    if (/\/punish|x5secdata=|punish\.1688\.com/.test(page.url())) {
+      throw new CliError(
+        4,
+        'RISK_CONTROL',
+        'Aliyun risk control triggered (slider verification). ' +
+          'Run once with --headed to solve it manually.',
+      );
+    }
+
     const sku = await skuCapture.wait();
     const pageInfo = await readPageInfo(page);
-    return assemble(args.offerId, url, sku, pageInfo);
+    const result = assemble(args.offerId, url, sku, pageInfo);
+
+    // Guard against captcha pages that slipped past URL detection (e.g.
+    // inline interception that 1688 serves without a redirect).
+    if (isCaptchaResult(result)) {
+      throw new CliError(
+        4,
+        'RISK_CONTROL',
+        `Captcha interception for offer ${args.offerId}. ` +
+          'Run once with --headed to solve it manually.',
+      );
+    }
+
+    return result;
   } finally {
     skuCapture.dispose();
     page.off('response', onResp);
@@ -845,4 +868,22 @@ function printOffer(o: OfferResult): void {
       process.stdout.write(`  ${price.padEnd(10)} ${stock.padEnd(15)} ${s.specs}\n`);
     }
   }
+}
+
+/** Detect fake results from captcha / risk-control intercept pages. */
+function isCaptchaResult(result: OfferResult): boolean {
+  if (result.title === 'Captcha Interception') return true;
+  if (/captcha|验证|滑块|风控/i.test(result.title)) return true;
+  // No real product has zero SKUs, zero images, and no main image.
+  // A captcha page scraped as fallback produces exactly this shape.
+  if (
+    result.skus.length === 0 &&
+    result.images.length === 0 &&
+    !result.mainImage &&
+    !result.priceMin &&
+    !result.priceMax
+  ) {
+    return true;
+  }
+  return false;
 }
