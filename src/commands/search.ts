@@ -73,6 +73,10 @@ export interface SearchResult {
   deepSuccess?: number;
   deepFailed?: number;
   failures?: SearchDeepFailure[];
+  status?: 'ok' | 'partial' | 'failed';
+  stoppedEarly?: boolean;
+  stopReason?: string;
+  stoppedOfferId?: string;
 }
 
 export type { Offer };
@@ -104,13 +108,19 @@ export async function execute(
           .map((o) => String(o.offerId || '').trim())
           .filter(Boolean);
 
+        process.stderr.write(
+          `\n已获取 ${offerIds.length} 个 offerID，开始进行深度采集\n`,
+        );
+
         const deepOffers: OfferResult[] = [];
         const failures: SearchDeepFailure[] = [];
+        let stoppedEarly = false;
+        let stopReason: string | undefined;
+        let stoppedOfferId: string | undefined;
 
         for (let i = 0; i < offerIds.length; i++) {
           const offerId = offerIds[i]!;
-
-          info(`Deep collecting offer ${i + 1}/${offerIds.length}: ${offerId}`);
+          process.stderr.write(`[${i + 1}/${offerIds.length}] 开始采集 ${offerId}\n`);
 
           try {
             const detail = await executeOffer(ctx, {
@@ -118,21 +128,56 @@ export async function execute(
               headed: args.headed,
             });
             deepOffers.push(detail);
+
+            const title = (detail.title || '').slice(0, 60);
+            const price =
+              detail.priceRange ??
+              (detail.priceMin !== null
+                ? `¥${detail.priceMin}` +
+                  (detail.priceMax !== null && detail.priceMax !== detail.priceMin
+                    ? `-${detail.priceMax}`
+                    : '')
+                : '?');
+            process.stderr.write(
+              `[${i + 1}/${offerIds.length}] ${offerId} 采集成功：` +
+                `标题=${title}，SKU=${detail.skus.length}，` +
+                `包装=${detail.packageInfo.length}，` +
+                `图片=${detail.images.length}，` +
+                `价格=${price}\n`,
+            );
           } catch (error) {
             const err = error as Error & { code?: string; exitCode?: number };
+
+            // Sanitise: don't leak long x5secdata / captcha URLs into failures.
+            const sanitised = sanitiseErrorMessage(err.message || String(error));
+            process.stderr.write(
+              `[${i + 1}/${offerIds.length}] ${offerId} 采集失败：${sanitised}\n`,
+            );
+
             failures.push({
               offerId,
-              code: err.code,
-              message: err.message || String(error),
+              code: err.code || 'DEEP_COLLECT_FAILED',
+              message: sanitised,
             });
-            throw error;
+
+            stoppedEarly = true;
+            stopReason = err.code || 'DEEP_COLLECT_FAILED';
+            stoppedOfferId = offerId;
+            break;
           }
 
           if (i < offerIds.length - 1) {
             const delay = randomInt(3000, 8000);
-            info(`Waiting ${delay}ms before next offer...`);
+            process.stderr.write(`等待 ${delay}ms 后继续...\n`);
             await sleep(delay);
           }
+        }
+
+        if (stoppedEarly) {
+          process.stderr.write(
+            `\n已停止继续采集，已保留 ${deepOffers.length} 个成功结果，` +
+              `失败 ${failures.length} 个。\n`,
+          );
         }
 
         return {
@@ -145,8 +190,17 @@ export async function execute(
           deepTotal: offerIds.length,
           deepSuccess: deepOffers.length,
           deepFailed: failures.length,
+          status:
+            failures.length === 0
+              ? 'ok'
+              : deepOffers.length > 0
+                ? 'partial'
+                : 'failed',
+          stoppedEarly,
+          stopReason,
+          stoppedOfferId,
           offers: deepOffers,
-          failures,
+          failures: failures.length > 0 ? failures : undefined,
         };
       }
       return {
@@ -1030,10 +1084,17 @@ function printOffers(result: SearchResult): void {
       result.sort !== 'relevance' || hasActiveFilters(result.filters)
         ? ` (sort=${result.sort})`
         : '';
+    const statusTag =
+      result.status === 'partial'
+        ? ' [PARTIAL]'
+        : result.status === 'failed'
+          ? ' [FAILED]'
+          : '';
     process.stdout.write(
-      `Deep results for "${keyword}"${suffix}: ` +
+      `Deep results for "${keyword}"${suffix}${statusTag}: ` +
         `${deep.deepSuccess ?? offers.length}/${deep.deepTotal ?? offers.length} ok` +
         (deep.deepFailed ? `, ${deep.deepFailed} failed` : '') +
+        (deep.stoppedEarly ? ` (stopped: ${deep.stopReason ?? 'error'})` : '') +
         '\n\n',
     );
     for (let i = 0; i < offers.length; i++) {
@@ -1091,4 +1152,13 @@ function randomInt(min: number, max: number): number {
   const lo = Math.min(min, max);
   const hi = Math.max(min, max);
   return Math.floor(lo + Math.random() * (hi - lo + 1));
+}
+
+/** Strip long risk-control URLs from error messages before surfacing. */
+function sanitiseErrorMessage(message: string): string {
+  if (/x5secdata|punish|captcha|verify|nocaptcha/i.test(message)) {
+    // Replace the URL-riddled raw message with a clean one.
+    return '1688 触发滑块验证，请使用 --headed 手动处理。';
+  }
+  return message;
 }
