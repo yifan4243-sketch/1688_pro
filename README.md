@@ -28,7 +28,8 @@ npm i -g 1688-cli
 1688 search "手机壳" --sort best-selling --price-max 50        # sorted/filtered sourcing
 1688 research 手机壳 数据线 --max-per-query 50 --jsonl         # multi-keyword research dataset
 1688 image-search ./sample.jpg                                # search by image
-1688 offer 628196518518                                       # product detail
+1688 offer 628196518518                                       # single product detail
+1688 offer 628196518518 1234567890 --json --pretty --pro      # batch product detail, bypass daemon
 1688 compare 628196518518 1234567890                          # compare offer details
 
 # Supplier scraper / supplier research
@@ -110,8 +111,39 @@ Research** when you start from companies, factories, or supplier qualification.
 1688 research 手机壳 数据线 --max-per-query 50 --enrich top:5 --csv
 1688 image-search ./shoe.jpg                     # search by local image
 1688 image-search https://.../img.png            # search by http(s) URL
-1688 offer 628196518518                          # product detail (priceTiers, attributes, packageInfo, SKUs)
+1688 offer 628196518518                          # single product detail (priceTiers, attributes, packageInfo, SKUs)
+1688 offer 628196518518 1234567890 --pro --json  # batch product detail, bypass daemon
 1688 compare 628196518518 1234567890             # compare price/MOQ/SKU/sales signals
+```
+
+#### Batch offer collection
+
+Pass multiple offer IDs to collect them in sequence. Single ID keeps the
+original JSON shape; multiple IDs return a batch envelope:
+
+```bash
+1688 offer 967417789506 --json --pretty                      # single → OfferResult
+1688 offer 967417789506 --json --pretty --pro                # single, bypass daemon pause
+1688 offer 967417789506 817273094122 --json --pretty --pro   # batch → OfferBatchResult
+```
+
+Batch output shape:
+
+```json
+{
+  "mode": "batch",
+  "total": 2,
+  "success": 2,
+  "failed": 0,
+  "offerIds": ["967417789506", "817273094122"],
+  "offers": [ /* ... */ ],
+  "failures": []
+}
+```
+
+- `--pro` bypasses daemon health pause for each offer.
+- `RISK_CONTROL` per-offer failures appear in `failures[]`, don't stop the batch.
+- Progress lines are written to stderr so `--json --pretty` stdout stays clean.
 ```
 
 `1688 search` and `1688 research` are offer-first. They search product offers,
@@ -154,6 +186,7 @@ points.
 | Build a scored product dataset | `1688 research <keyword...>` |
 | Official same-product matching | `1688 similar <offerId>` (currently unavailable when the official endpoint returns empty) |
 | Inspect one product offer | `1688 offer <offerId>` |
+| Batch collect product offers | `1688 offer <offerId...>` |
 | Compare product offers | `1688 compare <offerId...>` |
 | Find companies or factories directly | `1688 supplier search <keyword...>` |
 | Build a scored supplier dataset | `1688 supplier research <keyword...>` |
