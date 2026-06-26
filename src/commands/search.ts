@@ -108,19 +108,14 @@ export async function execute(
           .map((o) => String(o.offerId || '').trim())
           .filter(Boolean);
 
-        process.stderr.write(
-          `\n已获取 ${offerIds.length} 个 offerID，开始进行深度采集\n`,
-        );
+        progress(`已获取 ${offerIds.length} 个 offerID，开始进行深度采集`);
 
         const deepOffers: OfferResult[] = [];
         const failures: SearchDeepFailure[] = [];
-        let stoppedEarly = false;
-        let stopReason: string | undefined;
-        let stoppedOfferId: string | undefined;
 
         for (let i = 0; i < offerIds.length; i++) {
           const offerId = offerIds[i]!;
-          process.stderr.write(`[${i + 1}/${offerIds.length}] 开始采集 ${offerId}\n`);
+          progress(`[${i + 1}/${offerIds.length}] 开始采集 ${offerId}`);
 
           try {
             const detail = await executeOffer(ctx, {
@@ -138,47 +133,42 @@ export async function execute(
                     ? `-${detail.priceMax}`
                     : '')
                 : '?');
-            process.stderr.write(
+            progress(
               `[${i + 1}/${offerIds.length}] ${offerId} 采集成功：` +
                 `标题=${title}，SKU=${detail.skus.length}，` +
                 `包装=${detail.packageInfo.length}，` +
                 `图片=${detail.images.length}，` +
-                `价格=${price}\n`,
+                `价格=${price}`,
             );
           } catch (error) {
             const err = error as Error & { code?: string; exitCode?: number };
-
-            // Sanitise: don't leak long x5secdata / captcha URLs into failures.
             const sanitised = sanitiseErrorMessage(err.message || String(error));
-            process.stderr.write(
-              `[${i + 1}/${offerIds.length}] ${offerId} 采集失败：${sanitised}\n`,
+            const code = err.code || 'DEEP_COLLECT_FAILED';
+            progress(
+              `[${i + 1}/${offerIds.length}] ${offerId} 采集失败：${code} - ${sanitised}`,
             );
 
             failures.push({
               offerId,
-              code: err.code || 'DEEP_COLLECT_FAILED',
+              code,
               message: sanitised,
             });
 
-            stoppedEarly = true;
-            stopReason = err.code || 'DEEP_COLLECT_FAILED';
-            stoppedOfferId = offerId;
-            break;
+            // Continue to next offerId — don't stop the batch.
+            continue;
           }
 
           if (i < offerIds.length - 1) {
             const delay = randomInt(3000, 8000);
-            process.stderr.write(`等待 ${delay}ms 后继续...\n`);
+            progress(`等待 ${delay}ms 后继续...`);
             await sleep(delay);
           }
         }
 
-        if (stoppedEarly) {
-          process.stderr.write(
-            `\n已停止继续采集，已保留 ${deepOffers.length} 个成功结果，` +
-              `失败 ${failures.length} 个。\n`,
-          );
-        }
+        progress(
+          `深度采集完成：成功 ${deepOffers.length}/${offerIds.length}` +
+            (failures.length > 0 ? `，失败 ${failures.length}` : ''),
+        );
 
         return {
           keyword: args.keyword,
@@ -196,9 +186,7 @@ export async function execute(
               : deepOffers.length > 0
                 ? 'partial'
                 : 'failed',
-          stoppedEarly,
-          stopReason,
-          stoppedOfferId,
+          stoppedEarly: false,
           offers: deepOffers,
           failures: failures.length > 0 ? failures : undefined,
         };
@@ -233,10 +221,13 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
     excludeAds: opts.excludeAds,
   });
 
+  // --ids-only deep collection is a long interactive task that needs real-time
+  // stderr progress. Bypass the daemon so progress writes reach the terminal
+  // immediately instead of being trapped in the daemon process.
   const data = await dispatch<SearchArgs, SearchResult>(
     'search',
     { keyword: kw, max, sort, filters, headed: opts.headed, idsOnly: opts.idsOnly },
-    { headed: opts.headed, profile: opts.profile },
+    { headed: opts.headed, profile: opts.profile, noDaemon: opts.idsOnly },
   );
 
   emit({
@@ -1155,9 +1146,14 @@ function randomInt(min: number, max: number): number {
 }
 
 /** Strip long risk-control URLs from error messages before surfacing. */
+/** Write progress to stderr so it is visible even with --json on stdout. */
+function progress(message: string): void {
+  process.stderr.write(`[deep-collect] ${message}\n`);
+}
+
+/** Strip long risk-control URLs from error messages before surfacing. */
 function sanitiseErrorMessage(message: string): string {
   if (/x5secdata|punish|captcha|verify|nocaptcha/i.test(message)) {
-    // Replace the URL-riddled raw message with a clean one.
     return '1688 触发滑块验证，请使用 --headed 手动处理。';
   }
   return message;
