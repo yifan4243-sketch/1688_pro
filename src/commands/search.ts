@@ -18,6 +18,7 @@ import {
 } from '../session/search-mtop.js';
 import { parseMtopJsonp } from '../session/mtop.js';
 import { sleep, waitWithDeadline } from '../session/wait.js';
+import { execute as executeOffer, type OfferResult } from './offer.js';
 import {
   applySearchControls,
   hasActiveFilters,
@@ -54,13 +55,24 @@ export interface SearchArgs {
   idsOnly?: boolean;
 }
 
+export interface SearchDeepFailure {
+  offerId: string;
+  code: string | undefined;
+  message: string;
+}
+
 export interface SearchResult {
   keyword: string;
   sort: SearchSort;
   filters: SearchFilterSummary;
   totalBeforeFilter: number;
   total: number;
-  offers: Offer[];
+  offers: Offer[] | OfferResult[];
+  offerIds?: string[];
+  deepTotal?: number;
+  deepSuccess?: number;
+  deepFailed?: number;
+  failures?: SearchDeepFailure[];
 }
 
 export type { Offer };
@@ -88,13 +100,53 @@ export async function execute(
       const controlled = applySearchControls(offers, sort, filters);
       const slice = controlled.slice(0, args.max);
       if (args.idsOnly) {
+        const offerIds = slice
+          .map((o) => String(o.offerId || '').trim())
+          .filter(Boolean);
+
+        const deepOffers: OfferResult[] = [];
+        const failures: SearchDeepFailure[] = [];
+
+        for (let i = 0; i < offerIds.length; i++) {
+          const offerId = offerIds[i]!;
+
+          info(`Deep collecting offer ${i + 1}/${offerIds.length}: ${offerId}`);
+
+          try {
+            const detail = await executeOffer(ctx, {
+              offerId,
+              headed: args.headed,
+            });
+            deepOffers.push(detail);
+          } catch (error) {
+            const err = error as Error & { code?: string; exitCode?: number };
+            failures.push({
+              offerId,
+              code: err.code,
+              message: err.message || String(error),
+            });
+            throw error;
+          }
+
+          if (i < offerIds.length - 1) {
+            const delay = randomInt(3000, 8000);
+            info(`Waiting ${delay}ms before next offer...`);
+            await sleep(delay);
+          }
+        }
+
         return {
           keyword: args.keyword,
           sort,
           filters,
           totalBeforeFilter: offers.length,
-          total: slice.length,
-          offers: slice.map((o) => ({ offerId: o.offerId } as Offer)),
+          total: deepOffers.length,
+          offerIds,
+          deepTotal: offerIds.length,
+          deepSuccess: deepOffers.length,
+          deepFailed: failures.length,
+          offers: deepOffers,
+          failures,
         };
       }
       return {
@@ -963,11 +1015,41 @@ export async function extractOffers(page: Page): Promise<Offer[]> {
 
 function printOffers(result: SearchResult): void {
   const { offers, keyword } = result;
+
+  // ponytail: detect deep-collected offers by OfferResult shape (has skus)
+  const isDeep = offers.length > 0 && 'skus' in (offers[0] ?? {});
+
   if (offers.length === 0) {
     process.stdout.write(`No offers found for "${keyword}".\n`);
     return;
   }
-  // ponytail: ids-only → simple list, rest is identical
+
+  if (isDeep) {
+    const deep = result;
+    const suffix =
+      result.sort !== 'relevance' || hasActiveFilters(result.filters)
+        ? ` (sort=${result.sort})`
+        : '';
+    process.stdout.write(
+      `Deep results for "${keyword}"${suffix}: ` +
+        `${deep.deepSuccess ?? offers.length}/${deep.deepTotal ?? offers.length} ok` +
+        (deep.deepFailed ? `, ${deep.deepFailed} failed` : '') +
+        '\n\n',
+    );
+    for (let i = 0; i < offers.length; i++) {
+      const o = offers[i] as OfferResult;
+      process.stdout.write(`${o.offerId} | ${o.title.slice(0, 80)}\n`);
+      process.stdout.write(
+        `  SKUs: ${o.skus.length} | packages: ${o.packageInfo.length}` +
+          (o.priceRange ? ` | price: ${o.priceRange}` : '') +
+          '\n',
+      );
+      if (i < offers.length - 1) process.stdout.write('\n');
+    }
+    return;
+  }
+
+  // ponytail: ids-only stub → simple list
   const isIdsOnly = offers.every((o) => Object.keys(o).length === 1 && 'offerId' in o);
   if (isIdsOnly) {
     process.stdout.write(`Offer IDs for "${keyword}" (${offers.length}):\n`);
@@ -976,6 +1058,8 @@ function printOffers(result: SearchResult): void {
     }
     return;
   }
+
+  // default: search card display
   const suffix =
     result.sort !== 'relevance' || hasActiveFilters(result.filters)
       ? ` (${offers.length}/${result.totalBeforeFilter}, sort=${result.sort})`
@@ -984,20 +1068,27 @@ function printOffers(result: SearchResult): void {
   const w = String(offers.length).length;
   offers.forEach((o, i) => {
     const idx = String(i + 1).padStart(w, ' ');
-    const price = o.price.text || '(n/a)';
-    process.stdout.write(`${idx}. ${o.title}\n`);
+    const card = o as Offer;
+    const price = card.price.text || '(n/a)';
+    process.stdout.write(`${idx}. ${card.title}\n`);
     const pad = ' '.repeat(w + 2);
     process.stdout.write(`${pad}${price}`);
-    if (o.turnover) process.stdout.write(`  ·  ${o.turnover}`);
+    if (card.turnover) process.stdout.write(`  ·  ${card.turnover}`);
     process.stdout.write('\n');
     const supBits = [
-      o.supplier.name,
-      o.supplier.years ? `${o.supplier.years}年` : null,
+      card.supplier.name,
+      card.supplier.years ? `${card.supplier.years}年` : null,
     ]
       .filter(Boolean)
       .join(' · ');
     if (supBits) process.stdout.write(`${pad}${supBits}\n`);
-    process.stdout.write(`${pad}${o.url}\n`);
+    process.stdout.write(`${pad}${card.url}\n`);
     if (i < offers.length - 1) process.stdout.write('\n');
   });
+}
+
+function randomInt(min: number, max: number): number {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  return Math.floor(lo + Math.random() * (hi - lo + 1));
 }

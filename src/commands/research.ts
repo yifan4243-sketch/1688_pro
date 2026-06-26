@@ -3,7 +3,7 @@ import path from 'node:path';
 import { dispatch } from '../session/dispatch.js';
 import { emit } from '../io/output.js';
 import { CliError } from '../io/errors.js';
-import type { SearchArgs, SearchResult } from './search.js';
+import type { Offer, SearchArgs, SearchResult } from './search.js';
 import type { OfferArgs, OfferResult } from './offer.js';
 import {
   detailSummary,
@@ -75,7 +75,7 @@ export async function run(opts: ResearchOpts): Promise<void> {
       { keyword: query, max: maxPerQuery, sort, filters, headed: opts.headed },
       { headed: opts.headed, profile: opts.profile },
     );
-    result.offers.forEach((offer, i) => {
+    (result.offers as Offer[]).forEach((offer, i) => {
       if (itemsByOffer.has(offer.offerId)) return;
       const item = makeResearchItem({
         sourceKeyword: query,
