@@ -145,20 +145,22 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         ))}
       </div>
 
-      {/* Command picker */}
-      <div className="form-field">
-        <label className="form-label">任务类型</label>
-        <select
-          className="glass-select"
-          value={activeCmdId}
-          onChange={(e) => selectCommand(e.target.value)}
-        >
+      {/* Command picker — Apple segmented control */}
+      <div className="command-picker">
+        <span className="command-picker-label">任务类型</span>
+        <div className="command-segmented-picker">
           {groupCommands.map((cmd) => (
-            <option key={cmd.id} value={cmd.id}>
-              {cmd.label} · {cmd.id}
-            </option>
+            <button
+              key={cmd.id}
+              type="button"
+              className={`command-segment ${cmd.id === activeCmdId ? 'active' : ''}`}
+              onClick={() => selectCommand(cmd.id)}
+              title={cmd.id}
+            >
+              {cmd.label}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* Form */}
