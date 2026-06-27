@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>1688 to Ozon Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="side-nav" aria-label="Workflow">
+        <div class="brand-block">
+          <div class="brand-mark">1688</div>
+          <div>
+            <h1>1688 to Ozon</h1>
+            <p>Desktop Studio</p>
+          </div>
+        </div>
+
+        <nav class="nav-stack" id="groupNav"></nav>
+
+        <section class="status-panel">
+          <h2>运行状态</h2>
+          <div class="status-row"><span>CLI</span><strong id="cliState">待检测</strong></div>
+          <div class="status-row"><span>Profile</span><strong id="profileState">default</strong></div>
+          <div class="status-row"><span>Daemon</span><strong class="muted" id="daemonState">待连接</strong></div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">1688 CLI 全功能接入</p>
+            <h2 id="workspaceTitle">采集/找货</h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" type="button" id="refreshRuntime">刷新状态</button>
+            <button class="ghost-button" type="button" id="loadHistory">历史记录</button>
+          </div>
+        </header>
+
+        <section class="content-grid">
+          <section class="task-panel" aria-label="Command settings">
+            <div class="section-head">
+              <h3>命令面板</h3>
+              <span>结构化调用 CLI</span>
+            </div>
+
+            <label class="field">
+              <span>Profile</span>
+              <input id="profileInput" value="default" />
+            </label>
+
+            <div class="command-list" id="commandList"></div>
+          </section>
+
+          <section class="results-panel" aria-label="Command result">
+            <div class="section-head">
+              <h3 id="commandTitle">选择命令</h3>
+              <span id="resultCount">等待执行</span>
+            </div>
+
+            <form id="commandForm" class="command-form"></form>
+
+            <div class="run-bar">
+              <button class="primary-button" type="button" id="runCommand">执行命令</button>
+              <button class="ghost-button" type="button" id="copyCommand">复制命令</button>
+            </div>
+
+            <div class="command-preview">
+              <span>CLI 预览</span>
+              <code id="argvPreview">选择命令后显示</code>
+            </div>
+
+            <div class="alert" id="statusAlert" hidden></div>
+            <div class="card-list" id="resultHost"></div>
+          </section>
+
+          <aside class="ozon-panel" aria-label="Ozon placeholder">
+            <div class="section-head">
+              <h3>Ozon 上架卡片</h3>
+              <span>本轮预留</span>
+            </div>
+
+            <article class="ozon-draft-card">
+              <div class="draft-state ready">1688 已接入</div>
+              <h4>Ozon / DeepSeek 下一步</h4>
+              <p>本轮只接 1688 CLI。商品结果会保留旧版 1688 卡片结构，下一轮再把选中的商品转成 Ozon 上架卡片。</p>
+              <dl>
+                <div><dt>AI</dt><dd>DeepSeek 生成俄语标题、描述、富文本</dd></div>
+                <div><dt>MCP</dt><dd>Ozon ProductAPI_ImportProductsV3</dd></div>
+                <div><dt>历史</dt><dd>%APPDATA%/1688-to-ozon-studio/history</dd></div>
+              </dl>
+            </article>
+
+            <section class="capability-panel">
+              <h4>最近任务</h4>
+              <div id="historyList" class="capability-list"></div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="confirmModal" hidden>
+      <div class="modal">
+        <h3>确认执行写操作</h3>
+        <p id="confirmText"></p>
+        <code id="confirmCommand"></code>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" id="cancelConfirm">取消</button>
+          <button class="primary-button danger" type="button" id="approveConfirm">确认执行</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
