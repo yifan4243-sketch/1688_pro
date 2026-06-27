@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, AccountData } from '../../services/api';
 import ResultRenderer from '../Results/ResultRenderer';
+import LiveCollectionRenderer from '../Results/LiveCollectionRenderer';
+import { ProgressOfferCardItem } from '../Results/ProgressOfferCard';
 import '../../components/Results/results.css';
 
 interface Props {
@@ -23,6 +25,11 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingPayload, setPendingPayload] = useState<CommandPayload | null>(null);
   const [placeholderCount, setPlaceholderCount] = useState(0);
+
+  // Live two-stage DEEPPRO state
+  const [liveCards, setLiveCards] = useState<ProgressOfferCardItem[]>([]);
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveLogs, setLiveLogs] = useState<string[]>([]);
 
   const api = getApi();
   const command = registry.commands[activeCmdId];
@@ -125,6 +132,135 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     }
   };
 
+  // Two-stage desktop DEEPPRO: search first, then offer --pro per offerId
+  const runDesktopDeepPro = async () => {
+    const max = Number(options.max || 20);
+    if (!max || max < 1) return;
+    setPlaceholderCount(max);
+    setLiveMode(true);
+    setLiveCards(Array.from({ length: max }, (_, i) => ({ slotIndex: i, status: 'waiting' as const })));
+    setRunning(true);
+    setAlert({ text: '正在搜索基础商品...', kind: 'info' });
+
+    // Stage 1: basic search without deeppro
+    const basicSearchPayload = collectPayload(false);
+    basicSearchPayload.options = { ...basicSearchPayload.options, deeppro: false };
+
+    let searchRecord: CommandRecord;
+    try {
+      searchRecord = await api.commands.run(basicSearchPayload);
+    } catch (e) {
+      setAlert({ text: '基础搜索失败: ' + (e as Error).message, kind: 'error' });
+      setRunning(false);
+      setLiveMode(false);
+      return;
+    }
+
+    const data = searchRecord.stdoutJson as Record<string, unknown> | undefined;
+    const baseOffers = (data?.offers as Array<Record<string, unknown>>) || [];
+    const keyword = String(data?.keyword ?? '');
+
+    // Build base cards immediately
+    const baseCards: ProgressOfferCardItem[] = [];
+    for (let i = 0; i < max; i++) {
+      const offer = baseOffers[i];
+      if (offer && offer.offerId && offer.title) {
+        const p = offer.price as Record<string, unknown> | undefined;
+        baseCards.push({
+          slotIndex: i,
+          offerId: String(offer.offerId),
+          title: String(offer.title),
+          price: p?.text ? String(p.text) : p?.min != null ? `¥${p.min}` + (p.max != null && p.max !== p.min ? `-${p.max}` : '') : '',
+          image: String(offer.image || ''),
+          status: 'basic-ready',
+          raw: offer,
+        });
+      } else {
+        baseCards.push({ slotIndex: i, status: 'waiting' as const });
+      }
+    }
+    setLiveCards(baseCards);
+    setAlert({ text: `基础搜索完成，共 ${baseOffers.length} 个商品，开始深度采集...`, kind: 'info' });
+
+    const deepOffers: Record<string, unknown>[] = [];
+    const failures: Record<string, unknown>[] = [];
+
+    // Stage 2: offer --pro for each base card
+    for (let i = 0; i < baseCards.length; i++) {
+      const card = baseCards[i]!;
+      if (!card.offerId) continue;
+
+      // Mark as collecting
+      baseCards[i] = { ...card, status: 'deep-collecting' };
+      setLiveCards([...baseCards]);
+
+      const delayMs = (Math.random() * (Number(options.deepproDelayMax || 3) - Number(options.deepproDelayMin || 1)) + Number(options.deepproDelayMin || 1)) * 1000;
+      if (i > 0) await new Promise((r) => setTimeout(r, delayMs));
+
+      try {
+        const offerPayload: CommandPayload = {
+          commandId: 'offer',
+          args: { offerIds: card.offerId },
+          options: { pro: true, headed: !!options.headed },
+          profile: activeProfile,
+        };
+        const offerRecord = await api.commands.run(offerPayload);
+        const deep = offerRecord.stdoutJson as Record<string, unknown> | undefined;
+
+        if (deep && deep.title && deep.title !== 'Captcha Interception' && !/captcha|验证码|滑块|风控/i.test(String(deep.title))) {
+          baseCards[i] = {
+            ...card,
+            title: String(deep.title || card.title),
+            price: String(deep.priceRange || card.price),
+            image: String(deep.mainImage || (deep.images as string[])?.[0] || card.image),
+            status: 'deep-success' as const,
+            raw: deep,
+          };
+          deepOffers.push(deep);
+        } else {
+          const reason = !deep ? '返回结果为空' : deep.title === 'Captcha Interception' ? '页面被验证码拦截' : '深度采集结果不完整';
+          baseCards[i] = { ...card, status: 'deep-failed' as const, message: reason, code: 'INVALID_DEEP_OFFER' };
+          failures.push({ offerId: card.offerId, code: 'INVALID_DEEP_OFFER', message: reason, attempts: 1 });
+        }
+      } catch (e) {
+        const err = e as Error & { code?: string };
+        baseCards[i] = { ...card, status: 'deep-failed' as const, message: err.message || '采集失败', code: err.code || 'UNKNOWN_ERROR' };
+        failures.push({ offerId: card.offerId, code: err.code || 'UNKNOWN_ERROR', message: err.message || '采集失败', attempts: 1 });
+      }
+      setLiveCards([...baseCards]);
+    }
+
+    // Build synthetic record for history/JSON mode
+    const synthetic: CommandRecord = {
+      runId: 'desktop-deeppro-' + Date.now(),
+      commandId: 'search',
+      resultType: 'products',
+      status: 'success',
+      argv: [],
+      stdoutJson: {
+        keyword,
+        offers: baseOffers,
+        deeppro: {
+          enabled: true,
+          total: max,
+          success: deepOffers.length,
+          failed: failures.length,
+          offerIds: baseCards.filter((c) => c.offerId).map((c) => c.offerId),
+          offers: deepOffers,
+          failures,
+        },
+      },
+      stderrText: liveLogs.join('\n'),
+      error: null,
+      startedAt: new Date().toISOString(),
+    };
+    setLastRecord(synthetic);
+    setLiveMode(false);
+    setRunning(false);
+    setAlert({ text: `DEEPPRO 完成：${deepOffers.length}/${max} 成功` + (failures.length > 0 ? `，${failures.length} 失败` : ''), kind: 'success' });
+    onHistoryRefresh();
+  };
+
   const runCommand = async (confirmed = false) => {
     if (!validateBeforeRun()) return;
     if (command.write && !confirmed) {
@@ -132,6 +268,13 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       setShowConfirm(true);
       return;
     }
+
+    // Desktop DEEPPRO: two-stage orchestration
+    if (activeCmdId === 'search' && options.deeppro === true) {
+      await runDesktopDeepPro();
+      return;
+    }
+
     // Show placeholder cards immediately for search
     if (activeCmdId === 'search') {
       const max = Number(options.max || 20);
@@ -387,7 +530,13 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
       {/* ── Result workspace — always present ── */}
       <section className="result-workspace">
-        {running && placeholderCount > 0 ? (
+        {liveMode ? (
+          <LiveCollectionRenderer
+            cards={liveCards}
+            running={running}
+            keyword={String(args.keyword || '')}
+          />
+        ) : running && placeholderCount > 0 ? (
           <>
             <div className="running-mini-bar">命令执行中...</div>
             <ResultRenderer
