@@ -161,47 +161,53 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     return '已执行';
   }, [lastRecord]);
 
+  const fillKeyword = (kw: string) => {
+    setArgs({ ...args, keyword: kw });
+    if (fieldErrors.keyword) { const e = { ...fieldErrors }; delete e.keyword; setFieldErrors(e); }
+  };
+
   return (
-    <section className="task-panel">
-      <div className="section-head">
-        <h3>命令面板</h3>
-        <span>{chineseHint}</span>
-      </div>
+    <div className="command-workspace">
+      {/* ── Header panel: title + tabs + task picker ── */}
+      <section className="command-header-panel">
+        <div className="section-head">
+          <h3>命令面板</h3>
+          <span>{chineseHint}</span>
+        </div>
 
-      {/* Group tabs — segmented control */}
-      <div className="segmented-control">
-        {registry.groups.map((g) => (
-          <button
-            key={g.id}
-            className={`seg-btn ${g.id === activeGroup ? 'active' : ''}`}
-            onClick={() => {
-              setActiveGroup(g.id);
-              const first = Object.values(registry.commands).find((c) => c.group === g.id);
-              if (first) selectCommand(first.id);
-            }}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Command picker — Apple segmented control */}
-      <div className="command-picker">
-        <span className="command-picker-label">任务类型</span>
-        <div className="command-segmented-picker">
-          {groupCommands.map((cmd) => (
+        <div className="segmented-control">
+          {registry.groups.map((g) => (
             <button
-              key={cmd.id}
-              type="button"
-              className={`command-segment ${cmd.id === activeCmdId ? 'active' : ''}`}
-              onClick={() => selectCommand(cmd.id)}
-              title={cmd.id}
+              key={g.id}
+              className={`seg-btn ${g.id === activeGroup ? 'active' : ''}`}
+              onClick={() => {
+                setActiveGroup(g.id);
+                const first = Object.values(registry.commands).find((c) => c.group === g.id);
+                if (first) selectCommand(first.id);
+              }}
             >
-              {cmd.label}
+              {g.label}
             </button>
           ))}
         </div>
-      </div>
+
+        <div className="command-picker">
+          <span className="command-picker-label">任务类型</span>
+          <div className="command-segmented-picker">
+            {groupCommands.map((cmd) => (
+              <button
+                key={cmd.id}
+                type="button"
+                className={`command-segment ${cmd.id === activeCmdId ? 'active' : ''}`}
+                onClick={() => selectCommand(cmd.id)}
+                title={cmd.id}
+              >
+                {cmd.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Form — compact control panel */}
       {command && (
@@ -347,13 +353,43 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         <div className={`alert ${alert.kind}`}>{alert.text}</div>
       )}
 
-      {/* Result count */}
-      <p className="result-count">{resultCount}</p>
-
-      {/* Result renderer: card / JSON toggle, full display */}
-      {lastRecord && (
-        <ResultRenderer record={lastRecord} resultType={command.resultType} />
-      )}
+      {/* ── Result workspace — always present ── */}
+      <section className="result-workspace">
+        {running ? (
+          <div className="running-state">
+            <div className="running-header">正在采集 1688 商品数据...</div>
+            <div className="running-chips">
+              <span className="running-chip">连接账号档案 {alias}</span>
+              <span className="running-chip">等待 1688 返回结果</span>
+              <span className="running-chip">解析商品信息</span>
+            </div>
+          </div>
+        ) : lastRecord ? (
+          <>
+            <p className="result-count">{resultCount}</p>
+            <ResultRenderer record={lastRecord} resultType={command.resultType} />
+          </>
+        ) : (
+          <div className="empty-result-state">
+            <div className="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.20)" strokeWidth="1.5">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+            </div>
+            <h4>开始一次 1688 采集</h4>
+            <p className="empty-desc">
+              输入搜索词后，系统会采集商品标题、价格、供应商、地区、<br/>
+              成交数据、SKU / 库存 / 属性、商品图片。
+            </p>
+            <p className="empty-hint">建议先测试：</p>
+            <div className="empty-actions">
+              <button className="glass-btn-secondary" onClick={() => fillKeyword('上衣')}>上衣</button>
+              <button className="glass-btn-secondary" onClick={() => fillKeyword('帽子')}>帽子</button>
+              <button className="glass-btn-secondary" onClick={() => fillKeyword('手机壳')}>手机壳</button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Confirm modal */}
       {showConfirm && (
@@ -369,6 +405,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
