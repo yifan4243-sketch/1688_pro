@@ -418,6 +418,7 @@
   padding: 4px 0; user-select: none;
 }
 .advanced-toggle:hover { color: rgba(15,23,42,0.78); }
+.advanced-hint { font-size: 11px; color: rgba(15,23,42,0.48); margin: 4px 0 0; }
 
 /* Responsive compact grid */
 @media (max-width: 1200px) { .compact-grid { grid-template-columns: repeat(2, 1fr); } }

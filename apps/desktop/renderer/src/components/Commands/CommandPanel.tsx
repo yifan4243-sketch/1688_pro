@@ -166,6 +166,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     if (fieldErrors.keyword) { const e = { ...fieldErrors }; delete e.keyword; setFieldErrors(e); }
   };
 
+  const isDeepProAdvancedOption = (name: string): boolean =>
+    name === 'deepproDelayMin' ||
+    name === 'deepproDelayMax' ||
+    name === 'deepproSearchMode' ||
+    name === 'deepproOutputDir';
+
   return (
     <div className="command-workspace">
       {/* ── Header panel: title + tabs + task picker ── */}
@@ -264,9 +270,9 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
           )}
 
           {/* Short fields — compact grid */}
-          {command.options.filter((o) => o.type !== 'boolean' && !o.name.startsWith('deepproDelay')).length > 0 && (
+          {command.options.filter((o) => o.type !== 'boolean' && !isDeepProAdvancedOption(o.name)).length > 0 && (
             <div className="compact-grid">
-              {command.options.filter((o) => o.type !== 'boolean' && !o.name.startsWith('deepproDelay')).map((o) => {
+              {command.options.filter((o) => o.type !== 'boolean' && !isDeepProAdvancedOption(o.name)).map((o) => {
                 if (o.type === 'select') {
                   return (
                     <div key={o.name} className="form-field compact">
@@ -310,20 +316,39 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
             </div>
           )}
 
-          {/* Advanced: deeppro delay fields, collapsed unless deeppro is on */}
-          {command.options.filter((o) => o.name.startsWith('deepproDelay')).length > 0 && (
+          {/* Advanced: deeppro extended params, collapsed unless deeppro is on */}
+          {command.id === 'search' && command.options.filter((o) => isDeepProAdvancedOption(o.name)).length > 0 && (
             <details className="advanced-section" open={!!options.deeppro}>
               <summary className="advanced-toggle">高级采集参数</summary>
+              <p className="advanced-hint">敏感类目或出现 deeppro 全部失败时，尝试切换为 daemon 模式。</p>
               <div className="compact-grid" style={{ marginTop: 10 }}>
-                {command.options.filter((o) => o.name.startsWith('deepproDelay')).map((o) => (
-                  <div key={o.name} className="form-field compact">
-                    <label className="form-label">{o.label}</label>
-                    <input className="glass-input" type="number"
-                      value={String(options[o.name] ?? o.default ?? '')}
-                      onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                    />
-                  </div>
-                ))}
+                {command.options.filter((o) => isDeepProAdvancedOption(o.name)).map((o) => {
+                  if (o.type === 'select') {
+                    return (
+                      <div key={o.name} className="form-field compact">
+                        <label className="form-label">{o.label}</label>
+                        <select className="glass-select"
+                          value={String(options[o.name] ?? o.default ?? '')}
+                          onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
+                        >
+                          {(o.values || []).map((v) => (
+                            <option key={v.value} value={v.value}>{v.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={o.name} className="form-field compact">
+                      <label className="form-label">{o.label}</label>
+                      <input className="glass-input"
+                        type={o.type === 'number' ? 'number' : 'text'}
+                        value={String(options[o.name] ?? o.default ?? '')}
+                        onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </details>
           )}
@@ -357,11 +382,15 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       <section className="result-workspace">
         {running ? (
           <div className="running-state">
-            <div className="running-header">正在采集 1688 商品数据...</div>
+            <div className="running-header">
+              {options.deeppro
+                ? '正在执行 DEEPPRO 深度采集，可能需要数分钟...'
+                : '正在采集 1688 商品数据...'}
+            </div>
             <div className="running-chips">
               <span className="running-chip">连接账号档案 {alias}</span>
+              {options.deeppro && <span className="running-chip">搜索商品 → 提取 offerId → pro 深采详情 → 自动重试</span>}
               <span className="running-chip">等待 1688 返回结果</span>
-              <span className="running-chip">解析商品信息</span>
             </div>
           </div>
         ) : lastRecord ? (

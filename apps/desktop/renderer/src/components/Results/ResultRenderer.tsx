@@ -33,6 +33,8 @@ export default function ResultRenderer({ record, resultType }: Props) {
 
   const keyword = data?.keyword as string | undefined;
   const sort = data?.sort as string | undefined;
+  const deeppro = data?.deeppro as Record<string, unknown> | undefined;
+  const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
   const sortMap: Record<string, string> = { relevance: '综合排序', 'best-selling': '销量优先', 'price-asc': '价格从低到高', 'price-desc': '价格从高到低' };
 
   return (
@@ -42,6 +44,12 @@ export default function ResultRenderer({ record, resultType }: Props) {
         <strong>{hasOffers ? `${offers.length} 个商品` : '已执行'}</strong>
         {keyword && <span>关键词：{keyword}</span>}
         {sort && sort !== 'relevance' && <span>排序：{sortMap[sort] || sort}</span>}
+        {deeppro?.enabled && (
+          <span>
+            DEEPPRO：{deeppro.success}/{deeppro.total} 成功
+            {deeppro.failed ? `，${deeppro.failed} 失败` : ''}
+          </span>
+        )}
       </div>
 
       {/* Toolbar */}
@@ -79,6 +87,32 @@ export default function ResultRenderer({ record, resultType }: Props) {
         <div className="result-preview">
           <pre className="json-output">{JSON.stringify(data, null, 2)}</pre>
         </div>
+      )}
+
+      {/* DEEPPRO failures warning */}
+      {deepproFailures.length > 0 && (
+        <div className="result-preview error-detail" style={{ marginTop: 12 }}>
+          <h4>DEEPPRO 失败项</h4>
+          {deepproFailures.map((f, i) => (
+            <div key={i} className="error-grid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+              <div><span>Offer ID</span><strong>{String(f.offerId ?? '-')}</strong></div>
+              <div><span>Code</span><strong>{String(f.code ?? '-')}</strong></div>
+              <div><span>信息</span><strong>{String(f.message ?? '-')}</strong></div>
+              <div><span>尝试次数</span><strong>{String(f.attempts ?? '-')}</strong></div>
+              {f.flags && <div><span>Flags</span><strong>{String((f.flags as string[]).join(', '))}</strong></div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* DEEPPRO progress log (collapsible) */}
+      {record.stderrText && /DEEPPRO/i.test(record.stderrText) && (
+        <details className="advanced-section" style={{ marginTop: 12 }}>
+          <summary className="advanced-toggle">DEEPPRO 进度日志</summary>
+          <div className="error-stderr" style={{ marginTop: 8 }}>
+            <pre>{record.stderrText}</pre>
+          </div>
+        </details>
       )}
 
       {/* Error detail */}

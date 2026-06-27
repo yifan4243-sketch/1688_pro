@@ -44,6 +44,11 @@ const COMMANDS = {
       boolOption('deeppro', '--deeppro', '采集商品详情'),
       numberOption('deepproDelayMin', '--deeppro-delay-min', '详情采集最小间隔/秒', 6),
       numberOption('deepproDelayMax', '--deeppro-delay-max', '详情采集最大间隔/秒', 10),
+      selectOption('deepproSearchMode', '--deeppro-search-mode', 'DEEPPRO 搜索模式', 'inline', [
+        { value: 'inline', label: 'inline：搜索和详情都绕过 daemon' },
+        { value: 'daemon', label: 'daemon：搜索走 daemon，详情仍 pro 深采' },
+      ]),
+      textOption('deepproOutputDir', '--deeppro-output-dir', 'DEEPPRO 调试输出目录'),
       boolOption('headed', '--headed', '可视化打开浏览器'),
     ],
     resultType: 'products',
