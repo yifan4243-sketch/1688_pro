@@ -448,11 +448,7 @@ function boolOption(name, flag, label, defaultValue = false) {
 
 function selectOption(name, flag, label, defaultValue, values) {
   return {
-    name,
-    flag,
-    label,
-    type: 'select',
-    default: defaultValue,
+    name, flag, label, type: 'select', default: defaultValue,
     values: values.map((item) => (typeof item === 'string' ? { value: item, label: item } : item)),
   };
 }
@@ -536,20 +532,30 @@ function splitList(value) {
 
 function mapExitStatus(exitCode) {
   switch (exitCode) {
-    case 0:
-      return 'success';
-    case 3:
-      return 'not_logged_in';
-    case 4:
-      return 'risk_control';
-    case 5:
-      return 'profile_busy';
-    case 9:
-      return 'network_error';
-    case 130:
-      return 'cancelled';
-    default:
-      return 'failed';
+    case 0: return 'success';
+    case 3: return 'not_logged_in';
+    case 4: return 'risk_control';
+    case 5: return 'profile_busy';
+    case 9: return 'network_error';
+    case 130: return 'cancelled';
+    default: return 'failed';
+  }
+}
+
+/**
+ * Normalize CLI exit status to a canonical account status string.
+ */
+function normalizeAccountStatus(status) {
+  switch (status) {
+    case 'success': return 'logged_in';
+    case 'not_logged_in': return 'not_logged_in';
+    case 'risk_control': return 'risk_control';
+    case 'profile_busy': return 'busy';
+    case 'network_error': return 'network_error';
+    case 'failed':
+    case 'timeout':
+    case 'cancelled': return 'error';
+    default: return status || 'unknown';
   }
 }
 
@@ -579,11 +585,7 @@ function parseJsonLines(text) {
   for (const line of String(text || '').split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || !/^[{[]/.test(trimmed)) continue;
-    try {
-      values.push(JSON.parse(trimmed));
-    } catch {
-      // Keep non-JSON stderr as log text.
-    }
+    try { values.push(JSON.parse(trimmed)); } catch { /* skip */ }
   }
   return values;
 }
@@ -592,26 +594,37 @@ function parseLastJson(text) {
   for (const line of String(text || '').split(/\r?\n/).reverse()) {
     const trimmed = line.trim();
     if (!/^[{[]/.test(trimmed)) continue;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      // Continue scanning.
-    }
+    try { return JSON.parse(trimmed); } catch { /* skip */ }
   }
   return null;
 }
 
-function ensureCliPath(rootDir) {
-  const cliPath = path.join(rootDir, 'dist', 'cli.js');
-  if (!fs.existsSync(cliPath)) {
-    const error = new Error('dist/cli.js 不存在，请先运行 npm run build。');
-    error.code = 'CLI_NOT_BUILT';
-    throw error;
+function resolveCliJs(runtime) {
+  // Explicit cliPath takes priority (set by cli-resolver).
+  if (runtime.cliPath) {
+    if (!fs.existsSync(runtime.cliPath)) {
+      const error = new Error(`CLI 不存在：${runtime.cliPath}\n请重新安装客户端或联系管理员。`);
+      error.code = 'CLI_MISSING';
+      throw error;
+    }
+    return runtime.cliPath;
   }
-  return cliPath;
+  // Fallback: dev-mode path from rootDir.
+  const devPath = path.join(runtime.rootDir, 'dist', 'cli.js');
+  if (fs.existsSync(devPath)) return devPath;
+  const error = new Error('dist/cli.js 不存在，请先运行 npm run build。');
+  error.code = 'CLI_NOT_BUILT';
+  throw error;
 }
 
-async function runCommand(rootDir, historyDir, payload = {}) {
+/**
+ * Execute a CLI command via child_process.
+ *
+ * @param {object} runtime — { rootDir, cliPath }
+ * @param {string} historyDir
+ * @param {object} payload
+ */
+async function runCommand(runtime, historyDir, payload = {}) {
   const command = COMMANDS[payload.commandId];
   if (!command) throw new Error(`Unknown command: ${payload.commandId}`);
   if (command.write && payload.confirmed !== true) {
@@ -621,7 +634,7 @@ async function runCommand(rootDir, historyDir, payload = {}) {
     throw new Error('确认下单前必须先运行 checkout prepare 并展示预览结果。');
   }
 
-  const cliPath = ensureCliPath(rootDir);
+  const cliPath = resolveCliJs(runtime);
   const argv = buildArgv(payload.commandId, payload);
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const startedAt = new Date().toISOString();
@@ -633,8 +646,12 @@ async function runCommand(rootDir, historyDir, payload = {}) {
     let stderr = '';
     let timedOut = false;
     const child = spawn(process.execPath, childArgs, {
-      cwd: rootDir,
-      env: { ...process.env, BB1688_JSON: '1' },
+      cwd: runtime.rootDir,
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        BB1688_JSON: '1',
+      },
       windowsHide: false,
     });
     activeRuns.set(runId, child);
@@ -646,15 +663,9 @@ async function runCommand(rootDir, historyDir, payload = {}) {
         }, timeoutMs)
       : null;
 
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString('utf8');
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString('utf8');
-    });
-    child.on('error', (error) => {
-      stderr += `\n${error.stack || error.message}`;
-    });
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+    child.on('error', (error) => { stderr += `\n${error.stack || error.message}`; });
     child.on('close', async (code) => {
       if (timeout) clearTimeout(timeout);
       activeRuns.delete(runId);
@@ -726,9 +737,7 @@ async function readHistory(historyDir, query = {}) {
         if (!query.type || item.resultType === query.type || item.commandId === query.type) {
           records.push(item);
         }
-      } catch {
-        // Ignore corrupt history lines.
-      }
+      } catch { /* ignore */ }
       if (records.length >= limit) return records;
     }
   }
@@ -750,6 +759,7 @@ module.exports = {
   buildArgv,
   parseOutput,
   mapExitStatus,
+  normalizeAccountStatus,
   runCommand,
   readHistory,
   cancelCommand,

@@ -8,6 +8,7 @@ const {
   publicRegistry,
   readHistory,
   runCommand: runCliCommand,
+  normalizeAccountStatus,
 } = require('../cli-bridge.cjs');
 
 const {
@@ -19,10 +20,10 @@ const {
   suggestProfileName,
 } = require('../accounts.cjs');
 
-// ---------- helpers ----------
+// ---------- runtime ----------
 
-let rootDir = '';
-let cliPath = '';
+/** @type {{ rootDir: string, cliPath: string }} */
+let runtime = { rootDir: '', cliPath: '' };
 
 function historyDir() {
   return path.join(app.getPath('userData'), 'history');
@@ -30,6 +31,11 @@ function historyDir() {
 
 function userDataDir() {
   return app.getPath('userData');
+}
+
+/** Shorthand: run a CLI command with the shared runtime and history dir. */
+function exec(payload) {
+  return runCliCommand(runtime, historyDir(), payload);
 }
 
 // ---------- window ----------
@@ -68,56 +74,35 @@ function registerIpc() {
   ipcMain.handle('desktop:getCommandRegistry', () => publicRegistry());
 
   // --- command execution ---
-  ipcMain.handle('desktop:runCommand', (_event, payload) =>
-    runCliCommand(rootDir, historyDir(), payload),
-  );
-  ipcMain.handle('desktop:cancelCommand', (_event, runId) =>
-    cancelCommand(runId),
-  );
+  ipcMain.handle('desktop:runCommand', (_event, payload) => exec(payload));
+  ipcMain.handle('desktop:cancelCommand', (_event, runId) => cancelCommand(runId));
 
   // --- history ---
-  ipcMain.handle('desktop:getCommandHistory', (_event, query) =>
-    readHistory(historyDir(), query),
-  );
+  ipcMain.handle('desktop:getCommandHistory', (_event, query) => readHistory(historyDir(), query));
 
   // --- runtime ---
-  ipcMain.handle(
-    'desktop:getRuntimeStatus',
-    async (_event, profile = 'default') => {
-      const [daemon, whoami] = await Promise.allSettled([
-        runCliCommand(rootDir, historyDir(), {
-          commandId: 'daemonStatus',
-          profile,
-          saveHistory: false,
-          timeoutMs: 8000,
-        }),
-        runCliCommand(rootDir, historyDir(), {
-          commandId: 'whoami',
-          profile,
-          saveHistory: false,
-          timeoutMs: 8000,
-        }),
-      ]);
-      return {
-        profile,
-        daemon:
-          daemon.status === 'fulfilled' ? daemon.value : null,
-        account:
-          whoami.status === 'fulfilled' ? whoami.value : null,
-      };
-    },
-  );
+  ipcMain.handle('desktop:getRuntimeStatus', async (_event, profile = 'default') => {
+    const [daemon, whoami] = await Promise.allSettled([
+      exec({ commandId: 'daemonStatus', profile, saveHistory: false, timeoutMs: 8000 }),
+      exec({ commandId: 'whoami', profile, saveHistory: false, timeoutMs: 8000 }),
+    ]);
+    return {
+      profile,
+      daemon: daemon.status === 'fulfilled' ? daemon.value : null,
+      account: whoami.status === 'fulfilled' ? whoami.value : null,
+    };
+  });
 
   ipcMain.handle('desktop:getCliInfo', () => ({
-    cliPath,
+    cliPath: runtime.cliPath,
     cliExists: true,
-    rootDir,
+    rootDir: runtime.rootDir,
     isPackaged: app.isPackaged,
   }));
 
   ipcMain.handle('desktop:doctor', async (_event, profile) => {
     try {
-      const record = await runCliCommand(rootDir, historyDir(), {
+      const record = await exec({
         commandId: 'doctor',
         profile,
         saveHistory: false,
@@ -131,39 +116,26 @@ function registerIpc() {
   });
 
   // --- accounts ---
-  ipcMain.handle('desktop:listAccounts', () =>
-    listAccounts(userDataDir()),
-  );
+  ipcMain.handle('desktop:listAccounts', () => listAccounts(userDataDir()));
 
-  ipcMain.handle('desktop:addAccount', (_event, params) =>
-    addAccount(userDataDir(), params),
-  );
+  ipcMain.handle('desktop:addAccount', (_event, params) => addAccount(userDataDir(), params));
 
-  ipcMain.handle('desktop:updateAccount', (_event, profile, params) =>
-    updateAccount(userDataDir(), profile, params),
-  );
+  ipcMain.handle('desktop:updateAccount', (_event, profile, params) => updateAccount(userDataDir(), profile, params));
 
-  ipcMain.handle('desktop:removeAccount', (_event, profile) =>
-    removeAccount(userDataDir(), profile),
-  );
+  ipcMain.handle('desktop:removeAccount', (_event, profile) => removeAccount(userDataDir(), profile));
 
-  ipcMain.handle('desktop:setActiveAccount', (_event, profile) =>
-    setActiveAccount(userDataDir(), profile),
-  );
+  ipcMain.handle('desktop:setActiveAccount', (_event, profile) => setActiveAccount(userDataDir(), profile));
 
-  ipcMain.handle('desktop:suggestProfileName', () =>
-    suggestProfileName(userDataDir()),
-  );
+  ipcMain.handle('desktop:suggestProfileName', () => suggestProfileName(userDataDir()));
 
   ipcMain.handle('desktop:loginAccount', async (_event, profile) => {
-    const record = await runCliCommand(rootDir, historyDir(), {
+    const record = await exec({
       commandId: 'login',
       profile,
       confirmed: true,
       options: { headed: true },
     });
-    const status =
-      record.status === 'success' ? 'logged_in' : record.status;
+    const status = normalizeAccountStatus(record.status);
     try {
       updateAccount(userDataDir(), profile, {
         status,
@@ -176,15 +148,14 @@ function registerIpc() {
   ipcMain.handle('desktop:refreshAccountStatus', async (_event, profile) => {
     let status = 'unknown';
     try {
-      const whoami = await runCliCommand(rootDir, historyDir(), {
+      const whoami = await exec({
         commandId: 'whoami',
         profile,
         saveHistory: false,
         timeoutMs: 15000,
         options: { verify: true },
       });
-      status =
-        whoami.status === 'success' ? 'logged_in' : whoami.status;
+      status = normalizeAccountStatus(whoami.status);
     } catch {
       status = 'error';
     }
@@ -199,9 +170,9 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   try {
-    cliPath = resolveCliPath();
+    runtime.cliPath = resolveCliPath();
+    runtime.rootDir = getRootDir();
   } catch (error) {
-    // Fatal: CLI is required. Show dialog and quit.
     const { dialog } = require('electron');
     dialog.showErrorBox(
       'CLI 缺失',
@@ -210,8 +181,6 @@ app.whenReady().then(() => {
     app.quit();
     return;
   }
-
-  rootDir = getRootDir();
 
   registerIpc();
   createWindow();

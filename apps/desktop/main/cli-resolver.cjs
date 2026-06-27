@@ -3,26 +3,37 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Resolve path to built CLI dist/cli.js.
+ * Pure function: resolve CLI path given runtime parameters.
+ * Testable without Electron app state.
  *
- * Dev mode: uses the project root dist/cli.js.
- * Packaged mode: uses the bundled resources/cli/dist/cli.js.
+ * @param {{ isPackaged: boolean, resourcesPath: string, rootDir: string }} opts
+ * @returns {string}
  */
-function resolveCliPath() {
-  if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, 'cli', 'dist', 'cli.js');
+function resolveCliPathForMode({ isPackaged, resourcesPath, rootDir }) {
+  if (isPackaged) {
+    const bundled = path.join(resourcesPath, 'cli', 'dist', 'cli.js');
     if (fs.existsSync(bundled)) return bundled;
     throw new CliMissingError(
       `内置 CLI 缺失：${bundled}\n请重新安装客户端或联系管理员。`,
     );
   }
 
-  const rootDir = path.resolve(__dirname, '..', '..', '..');
   const devPath = path.join(rootDir, 'dist', 'cli.js');
   if (fs.existsSync(devPath)) return devPath;
   throw new CliMissingError(
     `CLI 构建产物未找到：${devPath}\n请先运行 npm run build 构建 CLI。`,
   );
+}
+
+/**
+ * Production resolver using Electron app state.
+ */
+function resolveCliPath() {
+  return resolveCliPathForMode({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    rootDir: path.resolve(__dirname, '..', '..', '..'),
+  });
 }
 
 function getRootDir() {
@@ -40,4 +51,4 @@ class CliMissingError extends Error {
   }
 }
 
-module.exports = { resolveCliPath, getRootDir, CliMissingError };
+module.exports = { resolveCliPath, resolveCliPathForMode, getRootDir, CliMissingError };

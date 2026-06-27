@@ -3,20 +3,22 @@
 ## Architecture
 
 ```
-┌─ Electron Main Process (apps/desktop/main/main.cjs) ──────────┐
-│  cli-resolver.cjs — dev / packaged CLI path resolution         │
-│  IPC handlers — commands, accounts, runtime                    │
-│  Reuses: apps/desktop/cli-bridge.cjs, apps/desktop/accounts.cjs│
-└────────────────────────────┬───────────────────────────────────┘
-                             │ preload (apps/desktop/preload/preload.cjs)
-┌─ React Renderer (apps/desktop/renderer/) ──────────────────────┐
-│  Vite + React + TypeScript                                      │
-│  Components: AccountSelector, RuntimeStatusPanel, CommandPanel  │
-│  API wrapper: src/services/api.ts                              │
-└────────────────────────────────────────────────────────────────┘
+┌─ Electron Main Process (apps/desktop/main/main.cjs) ──────────────┐
+│  package.json "main" → apps/desktop/main/main.cjs                  │
+│  cli-resolver.cjs → resolveCliPathForMode({ isPackaged, ... })     │
+│  runtime = { rootDir, cliPath } threaded to cli-bridge.cjs         │
+│  runCommand(runtime, historyDir, payload)                          │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │ preload (apps/desktop/preload/preload.cjs)
+┌─ React Renderer (apps/desktop/renderer/) ──────────────────────────┐
+│  Vite + React 19 + TypeScript                                       │
+│  Components: AccountSelector, RuntimeStatusPanel, CommandPanel      │
+│  Typed API: commands.* / accounts.* / runtime.*                    │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-CLI is the built-in execution engine. Employees never interact with CLI directly.
+CLI is the built-in execution engine. CLI path is resolved by `cli-resolver.cjs`
+and threaded through `runtime.cliPath` into `cli-bridge.cjs` → `runCommand()`.
 
 ## Dev Mode
 
@@ -26,7 +28,7 @@ npm run desktop:dev
 
 1. Starts Vite dev server at http://localhost:5173
 2. Starts Electron loading the dev URL
-3. CLI path: `dist/cli.js` in project root
+3. `cli-resolver` returns `<project-root>/dist/cli.js`
 
 ## Build
 
@@ -51,52 +53,78 @@ npm run desktop:dist
 
 Output: `release/1688 to Ozon Studio Setup.exe`
 
-## Bundled CLI Path
+## CLI Path Resolution
 
-| Mode | Path |
+| Mode | Path | Resolver |
+|---|---|---|
+| Dev | `<project-root>/dist/cli.js` | `resolveCliPathForMode({ isPackaged: false })` |
+| Packaged | `<resourcesPath>/cli/dist/cli.js` | `resolveCliPathForMode({ isPackaged: true })` |
+
+`cli-bridge.cjs` `runCommand()` accepts `runtime = { rootDir, cliPath }`.
+If `runtime.cliPath` is set, it's used directly; otherwise falls back to
+`<rootDir>/dist/cli.js` (dev mode compatibility).
+
+## ELECTRON_RUN_AS_NODE
+
+In packaged mode, `process.execPath` is the Electron exe, not node.exe.
+The CLI spawn sets `ELECTRON_RUN_AS_NODE: '1'` in the child process
+environment so Electron can execute Node.js CLI scripts correctly.
+
+## Chrome / Playwright Dependency
+
+The packaged app bundles `node_modules/` (including playwright) but does NOT
+bundle Playwright's Chromium browser binary (~150 MB). Employees must have
+Google Chrome or Microsoft Edge installed. Playwright uses `channel: 'chrome'`
+to detect the system browser.
+
+## Account Status Mapping
+
+CLI exit statuses are normalized by `normalizeAccountStatus()`:
+
+| CLI Status | Canonical |
 |---|---|
-| Dev | `<project-root>/dist/cli.js` |
-| Packaged | `process.resourcesPath/cli/dist/cli.js` |
+| `success` | `logged_in` |
+| `not_logged_in` | `not_logged_in` |
+| `risk_control` | `risk_control` |
+| `profile_busy` | `busy` |
+| `network_error` | `network_error` |
+| `failed`, `timeout`, `cancelled` | `error` |
+| anything else | passed through |
 
-electron-builder `extraResources` copies `dist/` → `resources/cli/dist/`.
+## Smoke Test
 
-## External Dependencies
+```bash
+# 1. Build
+npm run desktop:build
 
-The packaged app bundles `node_modules/` including:
-- `commander`
-- `playwright` / `playwright-extra` / `puppeteer-extra-plugin-stealth`
-- `proper-lockfile`
-- `qrcode`
-- `iconv-lite`
-- `update-notifier`
+# 2. Pack
+npm run desktop:pack
 
-**Chrome requirement**: Playwright needs a system Chrome or Chromium. The packaged
-app does NOT bundle a full Chromium (~150 MB). Employees must have Google Chrome or
-Microsoft Edge installed. The packaged app detects system Chrome via `channel: 'chrome'`.
+# 3. Launch
+release/win-unpacked/1688 to Ozon Studio.exe
 
-## Employee Workflow
+# 4. Verify
+# - APP opens
+# - Runtime status shows CLI: 内置引擎 (packaged) or 开发模式 (dev)
+# - Doctor / whoami / search commands reach the CLI layer
+# - No "CLI_NOT_BUILT" or "Cannot find module" errors
+```
 
-1. Download `1688 to Ozon Studio Setup.exe`
-2. Install and launch
-3. Select "默认账号" or add a new account via "新增登录账号"
-4. Click "登录 / 重新登录" (opens a Chrome window for QR scan)
-5. Choose a command (e.g., "搜索词采集")
-6. Fill in search keyword and options
-7. Click "执行命令"
-8. Results appear below; history available in the right panel
+## Known Limitations
+
+- Playwright Chromium browser binary is NOT bundled; system Chrome/Edge required
+- No code signing certificate; Windows SmartScreen may warn on first launch
+- `icon: null` in electron-builder config (no app icon)
+- Depends on `node_modules/` being included in the asar/app bundle
 
 ## Old Files (kept for backward compat)
 
-The following files from before the React migration are kept but no longer used
-by the main Electron process:
+- `apps/desktop/main.cjs` — replaced by `apps/desktop/main/main.cjs`
+- `apps/desktop/preload.cjs` — replaced by `apps/desktop/preload/preload.cjs`
+- `apps/desktop/index.html` — replaced by React renderer
+- `apps/desktop/renderer.js` — replaced by React renderer
+- `apps/desktop/styles.css` — replaced by React renderer
 
-- `apps/desktop/main.cjs` (replaced by `apps/desktop/main/main.cjs`)
-- `apps/desktop/preload.cjs` (replaced by `apps/desktop/preload/preload.cjs`)
-- `apps/desktop/index.html` (replaced by `apps/desktop/renderer/index.html`)
-- `apps/desktop/renderer.js` (replaced by `apps/desktop/renderer/src/`)
-- `apps/desktop/styles.css` (replaced by `apps/desktop/renderer/src/App.css`)
-
-The CLI bridge and accounts modules are still shared:
-
-- `apps/desktop/cli-bridge.cjs` — still used by new main process
-- `apps/desktop/accounts.cjs` — still used by new main process
+Shared modules:
+- `apps/desktop/cli-bridge.cjs` — still used (updated to accept runtime object)
+- `apps/desktop/accounts.cjs` — still used (unchanged)

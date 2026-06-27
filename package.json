@@ -1,6 +1,7 @@
 {
   "name": "1688-cli",
   "version": "0.1.45",
+  "main": "apps/desktop/main/main.cjs",
   "description": "1688.com CLI for humans, Codex, and Claude Code. Product search, supplier scraper/research, inquiry, cart, orders, logistics, and seller chat.",
   "license": "MIT",
   "author": "nobodyjack",
@@ -57,7 +58,7 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "desktop": "electron apps/desktop/main.cjs",
+    "desktop": "electron apps/desktop/main/main.cjs",
     "desktop:dev": "concurrently -k \"vite apps/desktop/renderer\" \"cross-env NODE_ENV=development electron apps/desktop/main/main.cjs\"",
     "desktop:build": "npm run build && cd apps/desktop/renderer && npx vite build",
     "desktop:pack": "npm run desktop:build && electron-builder --dir",

@@ -22,8 +22,12 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
     not_logged_in: '未登录',
     risk_control: '风控中',
     busy: '占用中',
+    profile_busy: '占用中',
     network_error: '网络错误',
     error: '异常',
+    failed: '异常',
+    timeout: '超时',
+    cancelled: '已取消',
     unknown: '未知',
   };
 
