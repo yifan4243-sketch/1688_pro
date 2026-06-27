@@ -163,82 +163,113 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         </div>
       </div>
 
-      {/* Form */}
+      {/* Form — compact control panel */}
       {command && (
-        <form onSubmit={(e) => { e.preventDefault(); runCommand(); }}>
-          <div className="glass-section">
-            {command.positional.map((f) => (
-              <div key={f.name} className="form-field">
-                <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
-                {f.multiline || f.array ? (
-                  <textarea
-                    className="glass-textarea"
-                    rows={f.array ? 4 : 5}
-                    value={args[f.name] || ''}
-                    onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
-                />
-              ) : (
-                <input className="glass-input" type="text"
-                  value={args[f.name] || ''}
-                  onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
-                />
-              )}
-              </div>
-            ))}
-          </div>
-
-          <div className="glass-section">
-            {command.options.map((o) => {
-              if (o.type === 'boolean') {
-                return (
-                  <label key={o.name} className="toggle-row">
-                    <input type="checkbox"
-                      checked={!!options[o.name]}
-                      onChange={(e) => setOptions({ ...options, [o.name]: e.target.checked })}
+        <form className="command-control-panel" onSubmit={(e) => { e.preventDefault(); runCommand(); }}>
+          {/* Row 1: keyword + execute button */}
+          {command.positional.length > 0 && (
+            <div className="keyword-row">
+              {command.positional.map((f) => (
+                <div key={f.name} className="form-field keyword" style={{ flex: 1 }}>
+                  <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
+                  {f.multiline || f.array ? (
+                    <textarea className="glass-textarea" rows={f.array ? 4 : 5}
+                      value={args[f.name] || ''}
+                      onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
                     />
-                    <span>{o.label}</span>
-                  </label>
-                );
-              }
-              if (o.type === 'select') {
+                  ) : (
+                    <input className="glass-input" type="text"
+                      value={args[f.name] || ''}
+                      onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
+                    />
+                  )}
+                </div>
+              ))}
+              <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}
+                style={{ alignSelf: 'flex-end', marginBottom: 14 }}>
+                {running ? '执行中...' : '执行命令'}
+              </button>
+            </div>
+          )}
+
+          {/* Short fields — compact grid */}
+          {command.options.filter((o) => o.type !== 'boolean' && !o.name.startsWith('deepproDelay')).length > 0 && (
+            <div className="compact-grid">
+              {command.options.filter((o) => o.type !== 'boolean' && !o.name.startsWith('deepproDelay')).map((o) => {
+                if (o.type === 'select') {
+                  return (
+                    <div key={o.name} className="form-field compact">
+                      <label className="form-label">{o.label}</label>
+                      <select className="glass-select"
+                        value={String(options[o.name] ?? o.default ?? '')}
+                        onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
+                      >
+                        {(o.values || []).map((v) => (
+                          <option key={v.value} value={v.value}>{v.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
                 return (
-                  <div key={o.name} className="form-field">
+                  <div key={o.name} className="form-field compact">
                     <label className="form-label">{o.label}</label>
-                    <select className="glass-select"
+                    <input className="glass-input"
+                      type={o.type === 'number' ? 'number' : 'text'}
                       value={String(options[o.name] ?? o.default ?? '')}
                       onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                    >
-                      {(o.values || []).map((v) => (
-                        <option key={v.value} value={v.value}>{v.label}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 );
-              }
-              return (
-                <div key={o.name} className="form-field">
-                  <label className="form-label">{o.label}</label>
-                  <input className="glass-input"
-                    type={o.type === 'number' ? 'number' : 'text'}
-                    value={String(options[o.name] ?? o.default ?? '')}
-                    onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                  />
-                </div>
-              );
-            })}
-          </div>
+              })}
+            </div>
+          )}
+
+          {/* Toggle chips for boolean options */}
+          {command.options.filter((o) => o.type === 'boolean').length > 0 && (
+            <div className="glass-toggle-row">
+              {command.options.filter((o) => o.type === 'boolean').map((o) => (
+                <button key={o.name} type="button"
+                  className={`glass-toggle-chip ${options[o.name] ? 'active' : ''}`}
+                  onClick={() => setOptions({ ...options, [o.name]: !options[o.name] })}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Advanced: deeppro delay fields, collapsed unless deeppro is on */}
+          {command.options.filter((o) => o.name.startsWith('deepproDelay')).length > 0 && (
+            <details className="advanced-section" open={!!options.deeppro}>
+              <summary className="advanced-toggle">高级采集参数</summary>
+              <div className="compact-grid" style={{ marginTop: 10 }}>
+                {command.options.filter((o) => o.name.startsWith('deepproDelay')).map((o) => (
+                  <div key={o.name} className="form-field compact">
+                    <label className="form-label">{o.label}</label>
+                    <input className="glass-input" type="number"
+                      value={String(options[o.name] ?? o.default ?? '')}
+                      onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
+                    />
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* Row: execute + advanced info — only if no positional fields (no keyword row) */}
+          {command.positional.length === 0 && (
+            <div className="run-bar">
+              <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}>
+                {running ? '执行中...' : '执行命令'}
+              </button>
+              <button type="button" className="glass-btn-ghost" onClick={() => setShowAdvanced(!showAdvanced)}>
+                {showAdvanced ? '隐藏 CLI 预览' : '高级信息'}
+              </button>
+            </div>
+          )}
         </form>
       )}
-
-      {/* Run bar */}
-      <div className="run-bar">
-        <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}>
-          {running ? '执行中...' : '执行命令'}
-        </button>
-        <button className="glass-btn-ghost" onClick={() => setShowAdvanced(!showAdvanced)}>
-          {showAdvanced ? '隐藏 CLI 预览' : '高级信息'}
-        </button>
-      </div>
 
       {showAdvanced && (
         <div className="command-preview">
