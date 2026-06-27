@@ -16,7 +16,7 @@ export default function ResultRenderer({ record, resultType }: Props) {
   );
   const [toast, setToast] = useState('');
 
-  const data = record.stdoutJson;
+  const data = record.stdoutJson as Record<string, unknown> | undefined;
   const offers = useMemo(() => toOfferCardViewModels(data), [data]);
   const hasOffers = offers.length > 0;
 
@@ -31,8 +31,19 @@ export default function ResultRenderer({ record, resultType }: Props) {
     } catch { setToast('复制失败'); }
   };
 
+  const keyword = data?.keyword as string | undefined;
+  const sort = data?.sort as string | undefined;
+  const sortMap: Record<string, string> = { relevance: '综合排序', 'best-selling': '销量优先', 'price-asc': '价格从低到高', 'price-desc': '价格从高到低' };
+
   return (
     <div className="result-renderer">
+      {/* Result summary */}
+      <div className="result-summary">
+        <strong>{hasOffers ? `${offers.length} 个商品` : '已执行'}</strong>
+        {keyword && <span>关键词：{keyword}</span>}
+        {sort && sort !== 'relevance' && <span>排序：{sortMap[sort] || sort}</span>}
+      </div>
+
       {/* Toolbar */}
       <div className="result-toolbar">
         <div className="mode-toggle">
@@ -41,7 +52,10 @@ export default function ResultRenderer({ record, resultType }: Props) {
           )}
           <button className={`mode-btn ${viewMode === 'json' ? 'active' : ''}`} onClick={() => setViewMode('json')}>JSON 模式</button>
         </div>
-        <button className="ghost-button-sm" onClick={copyFullJson}>复制完整 JSON</button>
+        <button className="glass-toolbar-button" onClick={copyFullJson}>
+          <span className="toolbar-btn-icon">⧉</span>
+          <span>复制完整 JSON</span>
+        </button>
       </div>
 
       {/* Card view */}
