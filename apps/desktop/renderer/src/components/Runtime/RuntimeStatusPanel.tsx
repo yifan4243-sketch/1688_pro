@@ -10,44 +10,43 @@ interface Props {
 export default function RuntimeStatusPanel({ runtime, cliInfo, onRefresh }: Props) {
   const daemonRunning = runtime?.daemon?.stdoutJson?.running === true;
   const loggedIn = runtime?.account?.stdoutJson?.loggedIn !== false;
+  const nick = runtime?.account?.stdoutJson?.nick || null;
 
   return (
-    <section className="status-panel">
+    <div className="glass-panel-card">
       <h2>运行状态</h2>
 
-      <div className="status-row">
-        <span>CLI</span>
-        <strong className={cliInfo?.cliExists !== false ? '' : 'warn'}>
+      <div className="status-line">
+        <span className="status-key">CLI</span>
+        <span className={`status-badge ${cliInfo?.cliExists !== false ? '' : 'warn'}`}>
           {cliInfo?.isPackaged ? '内置引擎' : '开发模式'}
-        </strong>
+        </span>
       </div>
 
-      <div className="status-row">
-        <span>1688账号</span>
-        <strong className={loggedIn ? '' : 'warn'}>
+      <div className="status-line">
+        <span className="status-key">1688账号</span>
+        <span className={`status-badge ${loggedIn ? '' : 'warn'}`}>
           {loggedIn ? '已登录' : '未登录'}
-        </strong>
-        {!loggedIn && <span className="hint">请点击"登录 / 重新登录"</span>}
+        </span>
       </div>
 
-      <div className="status-row">
-        <span>Daemon</span>
-        <strong className={daemonRunning ? '' : 'warn'}>
-          {runtime?.daemon === null ? '检测中' : daemonRunning ? '运行中' : '未运行'}
-        </strong>
+      <div className="status-line">
+        <span className="status-key">Daemon</span>
+        <span className={`status-badge ${daemonRunning ? '' : 'warn'}`}>
+          {daemonRunning ? '运行中' : '未运行'}
+        </span>
       </div>
 
-      {runtime?.account?.stdoutJson && (
-        <div className="status-detail">
-          {runtime.account.stdoutJson.nick && (
-            <div className="status-row"><span>账号</span><strong>{runtime.account.stdoutJson.nick}</strong></div>
-          )}
+      {nick && (
+        <div className="status-line">
+          <span className="status-key">账号</span>
+          <span className="status-val">{nick}</span>
         </div>
       )}
 
-      <button className="ghost-button" onClick={onRefresh} style={{ marginTop: 8 }}>
+      <button className="glass-btn-secondary" onClick={onRefresh} style={{ marginTop: 10, width: '100%' }}>
         刷新状态
       </button>
-    </section>
+    </div>
   );
 }

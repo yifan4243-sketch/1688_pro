@@ -3,6 +3,10 @@ import { getApi, CommandRegistry, AccountData, RuntimeStatus, CliInfo, CommandRe
 import AccountSelector from './components/Account/AccountSelector';
 import RuntimeStatusPanel from './components/Runtime/RuntimeStatusPanel';
 import CommandPanel from './components/Commands/CommandPanel';
+import './styles/tokens.css';
+import './styles/controls.css';
+import './styles/panels.css';
+import './App.css';
 import HistoryPanel from './components/History/HistoryPanel';
 
 export default function App() {
@@ -106,8 +110,8 @@ export default function App() {
             <h2>1688 to Ozon Studio</h2>
           </div>
           <div className="topbar-actions">
-            <button className="ghost-button" onClick={handleRefreshRuntime}>刷新状态</button>
-            <button className="ghost-button" onClick={loadHistory}>历史记录</button>
+            <button className="glass-btn-secondary" onClick={handleRefreshRuntime}>刷新状态</button>
+            <button className="glass-btn-secondary" onClick={loadHistory}>历史记录</button>
           </div>
         </header>
 
@@ -119,7 +123,7 @@ export default function App() {
             onHistoryRefresh={loadHistory}
           />
 
-          <aside className="ozon-panel">
+          <aside className="ozon-panel glass-section">
             <div className="section-head">
               <h3>Ozon 上架卡片</h3>
               <span>本轮预留</span>

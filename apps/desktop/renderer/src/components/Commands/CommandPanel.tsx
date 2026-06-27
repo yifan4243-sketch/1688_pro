@@ -128,12 +128,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         <span>{chineseHint}</span>
       </div>
 
-      {/* Group tabs */}
-      <div className="group-tabs">
+      {/* Group tabs — segmented control */}
+      <div className="segmented-control">
         {registry.groups.map((g) => (
           <button
             key={g.id}
-            className={`nav-item ${g.id === activeGroup ? 'active' : ''}`}
+            className={`seg-btn ${g.id === activeGroup ? 'active' : ''}`}
             onClick={() => {
               setActiveGroup(g.id);
               const first = Object.values(registry.commands).find((c) => c.group === g.id);
@@ -145,11 +145,11 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         ))}
       </div>
 
-      {/* Command picker — dropdown instead of flat buttons */}
-      <div className="command-picker">
-        <span className="command-picker-label">任务类型</span>
+      {/* Command picker */}
+      <div className="form-field">
+        <label className="form-label">任务类型</label>
         <select
-          className="command-select"
+          className="glass-select"
           value={activeCmdId}
           onChange={(e) => selectCommand(e.target.value)}
         >
@@ -163,74 +163,77 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
       {/* Form */}
       {command && (
-        <form className="command-form" onSubmit={(e) => { e.preventDefault(); runCommand(); }}>
-          {command.positional.map((f) => (
-            <label key={f.name} className="field">
-              <span>{f.label}{f.required && ' *'}</span>
-              {f.multiline || f.array ? (
-                <textarea
-                  rows={f.array ? 4 : 5}
-                  value={args[f.name] || ''}
-                  onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
+        <form onSubmit={(e) => { e.preventDefault(); runCommand(); }}>
+          <div className="glass-section">
+            {command.positional.map((f) => (
+              <div key={f.name} className="form-field">
+                <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
+                {f.multiline || f.array ? (
+                  <textarea
+                    className="glass-textarea"
+                    rows={f.array ? 4 : 5}
+                    value={args[f.name] || ''}
+                    onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
                 />
               ) : (
-                <input
-                  type="text"
+                <input className="glass-input" type="text"
                   value={args[f.name] || ''}
                   onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
                 />
               )}
-            </label>
-          ))}
+              </div>
+            ))}
+          </div>
 
-          {command.options.map((o) => {
-            if (o.type === 'boolean') {
+          <div className="glass-section">
+            {command.options.map((o) => {
+              if (o.type === 'boolean') {
+                return (
+                  <label key={o.name} className="toggle-row">
+                    <input type="checkbox"
+                      checked={!!options[o.name]}
+                      onChange={(e) => setOptions({ ...options, [o.name]: e.target.checked })}
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                );
+              }
+              if (o.type === 'select') {
+                return (
+                  <div key={o.name} className="form-field">
+                    <label className="form-label">{o.label}</label>
+                    <select className="glass-select"
+                      value={String(options[o.name] ?? o.default ?? '')}
+                      onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
+                    >
+                      {(o.values || []).map((v) => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
               return (
-                <label key={o.name} className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={!!options[o.name]}
-                    onChange={(e) => setOptions({ ...options, [o.name]: e.target.checked })}
-                  />
-                  <span>{o.label}</span>
-                </label>
-              );
-            }
-            if (o.type === 'select') {
-              return (
-                <label key={o.name} className="field">
-                  <span>{o.label}</span>
-                  <select
+                <div key={o.name} className="form-field">
+                  <label className="form-label">{o.label}</label>
+                  <input className="glass-input"
+                    type={o.type === 'number' ? 'number' : 'text'}
                     value={String(options[o.name] ?? o.default ?? '')}
                     onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                  >
-                    {(o.values || []).map((v) => (
-                      <option key={v.value} value={v.value}>{v.label}</option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
               );
-            }
-            return (
-              <label key={o.name} className="field">
-                <span>{o.label}</span>
-                <input
-                  type={o.type === 'number' ? 'number' : 'text'}
-                  value={String(options[o.name] ?? o.default ?? '')}
-                  onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                />
-              </label>
-            );
-          })}
+            })}
+          </div>
         </form>
       )}
 
       {/* Run bar */}
       <div className="run-bar">
-        <button className="primary-button" disabled={running} onClick={() => runCommand()}>
+        <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}>
           {running ? '执行中...' : '执行命令'}
         </button>
-        <button className="ghost-button" onClick={() => setShowAdvanced(!showAdvanced)}>
+        <button className="glass-btn-ghost" onClick={() => setShowAdvanced(!showAdvanced)}>
           {showAdvanced ? '隐藏 CLI 预览' : '高级信息'}
         </button>
       </div>
@@ -262,8 +265,8 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
             <p>{command.checkoutConfirm ? '确认下单会提交真实 1688 订单。请确认已查看 checkout prepare 预览。' : '该命令会修改账号状态、发送消息或变更购物车。请确认目标和参数。'}</p>
             <code>{previewArgv}</code>
             <div className="modal-actions">
-              <button className="ghost-button" onClick={() => setShowConfirm(false)}>取消</button>
-              <button className="primary-button danger" onClick={approveConfirm}>确认执行</button>
+              <button className="glass-btn-ghost" onClick={() => setShowConfirm(false)}>取消</button>
+              <button className="glass-btn-primary" style={{background: 'linear-gradient(135deg, rgba(220,38,38,0.92), rgba(200,30,30,0.88))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), 0 12px 28px rgba(220,38,38,0.22)'}} onClick={approveConfirm}>确认执行</button>
             </div>
           </div>
         </div>
