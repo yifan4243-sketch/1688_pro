@@ -57,9 +57,10 @@ export default function OfferDetailModal({ item, onClose }: Props) {
 
         <div className="detail-meta">
           <span>Offer ID: <code>{item.offerId || '-'}</code></span>
-          {item.status === 'success' && <span className="status-badge">深采完成</span>}
-          {item.status === 'basic' && <span className="status-badge neutral">基础信息</span>}
-          {item.status === 'failed' && <span className="status-badge warn">采集失败</span>}
+          {item.status === 'deep-success' && <span className="status-badge">深采完成</span>}
+          {item.status === 'basic-ready' && <span className="status-badge neutral">基础信息</span>}
+          {item.status === 'deep-collecting' && <span className="status-badge neutral">深采中</span>}
+          {item.status === 'deep-failed' && <span className="status-badge warn">采集失败</span>}
         </div>
 
         {url && (
@@ -69,8 +70,15 @@ export default function OfferDetailModal({ item, onClose }: Props) {
           </p>
         )}
 
+        {/* Deep-collecting hint */}
+        {item.status === 'deep-collecting' && (
+          <div className="detail-failure" style={{ background: 'rgba(99,102,241,0.06)', borderColor: 'rgba(99,102,241,0.18)' }}>
+            <p style={{ color: '#4f46e5' }}>正在深度采集中，请稍后查看 SKU / 属性详情。</p>
+          </div>
+        )}
+
         {/* Failure info */}
-        {item.status === 'failed' && (
+        {(item.status === 'deep-failed' || item.status === 'failed') && (
           <div className="detail-failure">
             <p><strong>失败原因：</strong>{item.message || item.code || '未知'}</p>
             {item.code && <p>Code: {item.code}</p>}

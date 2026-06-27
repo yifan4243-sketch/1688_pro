@@ -26,11 +26,11 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   // Build progress cards from result data
   const progressCards = useMemo<ProgressOfferCardItem[]>(() => {
     if (!data) {
-      // Still running — use placeholder count
+      // Still running — show waiting placeholders
       if (placeholderCards && placeholderCards > 0) {
         return Array.from({ length: placeholderCards }, (_, i) => ({
           slotIndex: i,
-          status: (i === 0 ? 'collecting' as const : 'waiting' as const),
+          status: 'waiting' as const,
         }));
       }
       return [];

@@ -2,11 +2,10 @@ import React from 'react';
 
 export type ProgressOfferCardStatus =
   | 'waiting'
-  | 'searching'
-  | 'collecting'
-  | 'success'
-  | 'failed'
-  | 'basic';
+  | 'basic-ready'
+  | 'deep-collecting'
+  | 'deep-success'
+  | 'deep-failed';
 
 export interface ProgressOfferCardItem {
   slotIndex: number;
@@ -18,7 +17,6 @@ export interface ProgressOfferCardItem {
   message?: string;
   code?: string;
   attempts?: number;
-  durationText?: string;
   raw?: unknown;
 }
 
@@ -27,30 +25,23 @@ interface Props {
   onOpen?: (item: ProgressOfferCardItem) => void;
 }
 
-const statusLabel: Record<ProgressOfferCardStatus, string> = {
-  waiting: '等待采集',
-  searching: '等待详情采集',
-  collecting: '正在采集详情',
-  success: '已完成',
-  failed: '采集失败',
-  basic: '基础信息',
+const overlayLabel: Record<string, string> = {
+  'basic-ready': '等待深度采集',
+  'deep-collecting': '正在进行深度采集',
+  'deep-failed': '深度采集失败',
 };
 
-const statusChipClass: Record<ProgressOfferCardStatus, string> = {
-  waiting: '',
-  searching: 'neutral',
-  collecting: 'neutral',
-  success: '',
-  failed: 'warn',
-  basic: 'neutral',
+const overlayDetail: Record<string, string> = {
+  'basic-ready': '系统将采集 SKU、属性、详情图',
+  'deep-collecting': 'SKU / 属性 / 详情图采集中',
+  'deep-failed': '页面被验证码拦截或详情异常',
 };
 
 function extractSearchPriceText(base: Record<string, unknown>): string {
   const price = base.price as Record<string, unknown> | undefined;
   if (price?.text) return String(price.text);
-  if (price?.min != null && price?.max != null && Number(price.min) !== Number(price.max)) {
+  if (price?.min != null && price?.max != null && Number(price.min) !== Number(price.max))
     return `¥${price.min}-¥${price.max}`;
-  }
   if (price?.min != null) return `¥${price.min}`;
   if (base.priceText) return String(base.priceText);
   return '';
@@ -64,12 +55,12 @@ export function toProgressCards(
   total: number,
   baseOffers: Array<Record<string, unknown>>,
   deepMap: Map<string, unknown>,
-  failures: Array<{ offerId?: unknown; code?: unknown; message?: unknown; attempts?: unknown }>,
+  deepFailures: Array<{ offerId?: unknown; code?: unknown; message?: unknown; attempts?: unknown }>,
   opts: ToCardsOpts = {},
 ): ProgressOfferCardItem[] {
   const { isDeepPro = false } = opts;
-  const failMap = new Map<string, typeof failures[number]>();
-  for (const f of failures) failMap.set(String(f.offerId ?? ''), f);
+  const failMap = new Map<string, typeof deepFailures[number]>();
+  for (const f of deepFailures) failMap.set(String(f.offerId ?? ''), f);
 
   return Array.from({ length: total }, (_, i) => {
     const base = baseOffers[i] || {};
@@ -77,7 +68,7 @@ export function toProgressCards(
     const deep = deepMap.get(oid) as Record<string, unknown> | undefined;
     const fail = failMap.get(oid);
 
-    // Deep success
+    // Deep success — merged
     if (deep) {
       return {
         slotIndex: i,
@@ -85,7 +76,7 @@ export function toProgressCards(
         title: String(deep.title || base.title || ''),
         price: String(deep.priceRange || deep.priceText || extractSearchPriceText(base)),
         image: String(deep.mainImage || (deep.images as string[])?.[0] || base.image || ''),
-        status: 'success' as const,
+        status: 'deep-success' as const,
         raw: deep,
       };
     }
@@ -95,15 +86,16 @@ export function toProgressCards(
         slotIndex: i,
         offerId: oid,
         title: String(base.title || ''),
+        price: extractSearchPriceText(base),
         image: String(base.image || ''),
-        status: 'failed' as const,
+        status: 'deep-failed' as const,
         message: String(fail.message || ''),
         code: String(fail.code || ''),
         attempts: Number(fail.attempts || 0),
-        raw: fail,
+        raw: base,
       };
     }
-    // Base search result — still useful
+    // Base search has data — show card immediately with overlay
     if (oid && base.title) {
       return {
         slotIndex: i,
@@ -111,7 +103,7 @@ export function toProgressCards(
         title: String(base.title || ''),
         price: extractSearchPriceText(base),
         image: String(base.image || ''),
-        status: isDeepPro ? 'searching' : 'basic',
+        status: isDeepPro ? 'basic-ready' : 'basic-ready',
         raw: base,
       };
     }
@@ -119,58 +111,70 @@ export function toProgressCards(
   });
 }
 
+function failureReasonZh(code: string, fallback?: string): string {
+  const map: Record<string, string> = {
+    CAPTCHA_INTERCEPTION: '页面被验证码拦截',
+    RISK_OR_CAPTCHA_TITLE: '页面疑似风控或验证码拦截',
+    MISSING_TITLE: '商品标题缺失',
+    MISSING_PRICE: '商品价格缺失',
+    MISSING_IMAGES: '商品图片缺失',
+    EMPTY_OFFER_RESULT: '页面返回为空',
+    INVALID_DEEP_OFFER: '深度采集结果不完整',
+    JSON_PARSE_FAILED: '结果解析失败',
+  };
+  return map[code] || fallback || code || '采集失败';
+}
+
 export default function ProgressOfferCard({ item, onOpen }: Props) {
-  const isPlaceholder = item.status === 'waiting' || item.status === 'collecting';
-  const showImage = Boolean(item.image && item.status !== 'waiting');
-  const showChip = item.status === 'success' || item.status === 'failed' || item.status === 'basic' || item.status === 'searching';
+  const showImage = Boolean(item.image);
+  const hasOverlay = item.status === 'basic-ready' || item.status === 'deep-collecting' || item.status === 'deep-failed';
+  const isFailed = item.status === 'deep-failed';
+  const isClickable = Boolean(item.offerId || item.raw || item.title || item.image);
 
   return (
     <article
       className={`progress-offer-card card-status-${item.status}`}
-      onClick={() => onOpen?.(item)}
-      title={item.status === 'waiting' ? '等待采集' : item.title || item.offerId || ''}
+      onClick={() => { if (isClickable) onOpen?.(item); }}
+      title={item.title || item.offerId || ''}
     >
-      <div className="progress-card-image">
+      {/* Image area 1:1 with optional overlay */}
+      <div className="progress-card-image-wrap">
         {showImage ? (
-          <img src={item.image} alt={item.title || ''} loading="lazy" />
-        ) : isPlaceholder ? (
-          <div className="progress-image-skeleton">
-            {item.status === 'collecting' && <span className="spinner" />}
-          </div>
-        ) : item.status === 'failed' ? (
-          <div className="progress-image-failed">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.5)" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
-          </div>
+          <img src={item.image} alt={item.title || ''} className="progress-card-img" loading="lazy" />
         ) : (
           <div className="progress-image-skeleton" />
         )}
-        {showChip && (
-          <span className={`progress-chip ${statusChipClass[item.status]}`}>
-            {statusLabel[item.status]}
-          </span>
+
+        {hasOverlay && (
+          <div className={`progress-card-overlay ${isFailed ? 'failed' : ''}`}>
+            <div className="progress-card-overlay-inner">
+              {item.status === 'deep-collecting' && <div className="progress-card-spinner" />}
+              {isFailed && (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.7)" strokeWidth="1.5">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+                </svg>
+              )}
+              <p className="overlay-title">{overlayLabel[item.status] || item.status}</p>
+              {isFailed && item.message ? (
+                <p className="overlay-detail">{failureReasonZh(item.code || '', item.message)}</p>
+              ) : (
+                <p className="overlay-detail">{overlayDetail[item.status] || ''}</p>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      <div className="progress-card-info">
-        {item.status === 'waiting' ? (
-          <p className="progress-card-placeholder">等待采集</p>
-        ) : item.status === 'collecting' ? (
-          <p className="progress-card-placeholder">正在采集详情...</p>
-        ) : (
-          <>
-            <p className="progress-card-title">{item.title || '未识别商品'}</p>
-            {item.price && <p className="progress-card-price">{item.price}</p>}
-          </>
-        )}
-        {item.status === 'failed' && (
-          <p className="progress-card-fail-reason">{item.message || item.code || '采集失败'}</p>
-        )}
+      {/* Info area */}
+      <div className="progress-card-body">
+        <p className="progress-card-title">{item.title || '加载中...'}</p>
+        {item.price && <p className="progress-card-price">{item.price}</p>}
         <button
           className="progress-card-ozon-btn"
-          disabled={item.status !== 'success' && item.status !== 'basic'}
+          disabled={item.status !== 'deep-success'}
           onClick={(e) => {
             e.stopPropagation();
-            if (item.status === 'success' || item.status === 'basic') alert('功能开发中');
+            if (item.status === 'deep-success') alert('功能开发中');
           }}
         >
           上架至 Ozon
