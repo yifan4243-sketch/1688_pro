@@ -246,10 +246,43 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       {/* Result count */}
       <p className="result-count">{resultCount}</p>
 
-      {/* Quick result preview */}
+      {/* Quick result preview — full JSON, scrollable */}
       {lastRecord?.stdoutJson && (
         <div className="result-preview">
-          <pre>{JSON.stringify(lastRecord.stdoutJson, null, 2).slice(0, 2000)}</pre>
+          <div className="result-actions">
+            <button className="ghost-button" onClick={() => {
+              const text = JSON.stringify(lastRecord.stdoutJson, null, 2);
+              navigator.clipboard.writeText(text).then(
+                () => setAlert({ text: '已复制完整 JSON', kind: 'success' }),
+                () => setAlert({ text: '复制失败', kind: 'error' }),
+              );
+            }}>复制完整 JSON</button>
+          </div>
+          <pre className="json-output">{JSON.stringify(lastRecord.stdoutJson, null, 2)}</pre>
+        </div>
+      )}
+
+      {/* Error detail for failed commands */}
+      {lastRecord && lastRecord.status !== 'success' && (
+        <div className="result-preview error-detail">
+          <h4>错误详情</h4>
+          <div className="error-grid">
+            <div><span>状态</span><strong>{lastRecord.status}</strong></div>
+            <div><span>退出码</span><strong>{lastRecord.exitCode ?? '-'}</strong></div>
+            <div><span>错误信息</span><strong>{lastRecord.error?.message || lastRecord.stderrText || '-'}</strong></div>
+          </div>
+          {lastRecord.argv?.length > 0 && (
+            <div className="error-argv">
+              <span>CLI 命令</span>
+              <code>{lastRecord.argv.join(' ')}</code>
+            </div>
+          )}
+          {lastRecord.stderrText && (
+            <div className="error-stderr">
+              <span>stderr</span>
+              <pre>{lastRecord.stderrText}</pre>
+            </div>
+          )}
         </div>
       )}
 

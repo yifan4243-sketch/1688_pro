@@ -97,7 +97,19 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f6f8; colo
 
 .result-count { font-size: 13px; color: #666; margin-bottom: 8px; }
 .result-preview { background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 12px; overflow-x: auto; }
-.result-preview pre { font-size: 11px; white-space: pre-wrap; }
+.result-preview pre { font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+.result-preview pre.json-output { max-height: 520px; overflow: auto; }
+.result-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.error-detail { background: #fef0f0; border-color: #f5c6cb; }
+.error-detail h4 { font-size: 13px; margin-bottom: 6px; color: #c62828; }
+.error-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 4px 8px; font-size: 12px; margin-bottom: 8px; }
+.error-grid span { color: #888; }
+.error-grid strong { word-break: break-all; }
+.error-argv { margin-bottom: 6px; }
+.error-argv span { font-size: 11px; color: #888; display: block; }
+.error-argv code { font-size: 11px; background: #f5f5f5; padding: 4px 6px; border-radius: 3px; display: block; word-break: break-all; margin-top: 2px; }
+.error-stderr span { font-size: 11px; color: #888; display: block; }
+.error-stderr pre { font-size: 11px; max-height: 150px; overflow: auto; margin-top: 2px; }
 
 /* Ozon panel */
 .ozon-panel {

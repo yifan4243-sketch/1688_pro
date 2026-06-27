@@ -377,6 +377,7 @@ const COMMANDS = {
     group: 'account',
     label: 'Profile 列表',
     argv: ['profile', 'list'],
+    addProfile: false,
     positional: [],
     options: [],
     resultType: 'profiles',
@@ -385,6 +386,7 @@ const COMMANDS = {
     group: 'account',
     label: 'Profile 状态',
     argv: ['profile', 'status'],
+    addProfile: false,
     positional: [{ name: 'name', label: 'Profile', default: 'default' }],
     options: [],
     resultType: 'profiles',
@@ -393,6 +395,7 @@ const COMMANDS = {
     group: 'account',
     label: 'Debug 列表',
     argv: ['debug', 'list'],
+    addProfile: false,
     positional: [],
     options: [numberOption('limit', '--limit', '数量', 20), boolOption('failed', '--failed', '只看失败')],
     resultType: 'debug',
@@ -401,6 +404,7 @@ const COMMANDS = {
     group: 'account',
     label: '最近 Debug',
     argv: ['debug', 'last'],
+    addProfile: false,
     positional: [],
     options: [boolOption('failed', '--failed', '只看失败')],
     resultType: 'debug',
@@ -409,6 +413,7 @@ const COMMANDS = {
     group: 'account',
     label: 'Debug 详情',
     argv: ['debug', 'show'],
+    addProfile: false,
     positional: [{ name: 'requestId', label: 'Request ID', required: true }],
     options: [],
     resultType: 'debug',
@@ -509,11 +514,11 @@ function buildArgv(commandId, input = {}) {
     if (cleaned !== '') args.push(option.flag, cleaned);
   }
 
-  if (profile) args.push('--profile', profile);
-  if (!args.includes('--json') && !args.includes('--csv') && !args.includes('--jsonl')) {
+  if (profile && command.addProfile !== false) args.push('--profile', profile);
+  if (command.addJson !== false && !args.includes('--json') && !args.includes('--csv') && !args.includes('--jsonl')) {
     args.push('--json');
   }
-  if (args.includes('--json') && !args.includes('--pretty')) {
+  if (command.addPretty !== false && args.includes('--json') && !args.includes('--pretty')) {
     args.push('--pretty');
   }
   return args;
