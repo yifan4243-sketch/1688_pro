@@ -58,6 +58,8 @@ program
   .option('--deeppro', 'After search, deep collect each offer using pro inline mode (retry up to 3x)')
   .option('--deeppro-delay-min <seconds>', 'Minimum delay between deeppro offer collections', '6')
   .option('--deeppro-delay-max <seconds>', 'Maximum delay between deeppro offer collections', '10')
+  .option('--deeppro-output-dir <dir>', 'Write deeppro search, attempt, final, failure, and summary JSON files to a directory')
+  .option('--deeppro-search-mode <mode>', 'Initial search mode for deeppro: inline | daemon', 'inline')
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a browser window (use to pass slider verification)')
   .action(async (keyword, opts) => {

@@ -221,9 +221,21 @@ node .\dist\cli.js search "修枝剪" --max 30 --deeppro --json --pretty
 - `--max` 控制深度采集的搜索结果数量。
 - `--deeppro` 为每个 offer 使用 pro inline 采集，绕过 daemon 健康暂停。
 - `--deeppro-delay-min` / `--deeppro-delay-max` 控制两次采集之间的等待时间（默认 6–10 秒）。
+- `--deeppro-search-mode inline`（默认）：搜索阶段也绕过 daemon。
+- `--deeppro-search-mode daemon`：搜索阶段走 daemon，offer 深采仍为 pro inline。
+  此模式更接近旧脚本流程，敏感类目或搜索结果不稳定时可尝试。
+- `--deeppro-output-dir <dir>`：保存 search.json、每次 offer attempt JSON、错误 JSON、最终 JSON
+  以及 summary.json，方便离线排查 deeppro 为何判失败。
 - 每个 offer 最多尝试 3 次（1 次初始 + 2 次重试）。
 - 进度信息写入 stderr；stdout 保持干净 JSON。
 - `RISK_CONTROL` 仍然表示 1688 自身返回了验证挑战。
+
+```bash
+# 敏感类目调试：daemon 搜索模式 + 输出文件落盘
+node .\dist\cli.js search "飞机杯" --max 5 --deeppro --deeppro-search-mode daemon \
+  --deeppro-output-dir .\deeppro_debug --json --pretty \
+  1> result.json 2> progress.txt
+```
 
 `1688 search` 和 `1688 research` 以 offer 为核心。它们搜索商品 offer、评分、导出数据集，
 并可通过详情页增强排名靠前的 offer。当价格、MOQ、SKU 深度、销量信号、图片和 offer 级

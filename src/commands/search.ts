@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { BrowserContext, Page } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
 import { emit, info } from '../io/output.js';
@@ -44,6 +46,8 @@ export interface SearchOpts {
   deeppro?: boolean;
   deepproDelayMin?: string;
   deepproDelayMax?: string;
+  deepproOutputDir?: string;
+  deepproSearchMode?: string;
   profile?: string;
   headed?: boolean;
 }
@@ -61,6 +65,7 @@ export interface DeepProFailure {
   code: string;
   message: string;
   attempts: number;
+  flags?: string[];
 }
 
 export interface DeepProSummary {
@@ -137,16 +142,31 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
     excludeAds: opts.excludeAds,
   });
 
-  // --deeppro bypasses daemon for the initial search too, so DAEMON_PAUSED
-  // can't block the search before deep collection even starts.
+  // --deeppro: determine search mode (inline vs daemon) and deep collect.
+  const deepproSearchMode = normalizeDeepProSearchMode(opts.deepproSearchMode);
+
   const data = await dispatch<SearchArgs, SearchResult>(
     'search',
     { keyword: kw, max, sort, filters, headed: opts.headed },
-    { headed: opts.headed, profile: opts.profile, noDaemon: opts.deeppro === true },
+    {
+      headed: opts.headed,
+      profile: opts.profile,
+      // Inline search mode: bypass daemon for the initial search.
+      // Daemon mode: stay on daemon, closer to legacy script flow.
+      noDaemon: opts.deeppro === true && deepproSearchMode === 'inline',
+    },
   );
 
   // --deeppro: deep collect each search result in pro inline mode.
   if (opts.deeppro === true) {
+    // Save raw search result before deep collection starts.
+    if (opts.deepproOutputDir) {
+      await writeJsonFile(
+        path.join(opts.deepproOutputDir, 'search.json'),
+        data,
+      ).catch(() => { /* best-effort */ });
+    }
+
     const ids = data.offers
       .map((o) => String(o.offerId ?? '').trim())
       .filter((id) => /^\d+$/.test(id) && id !== '0');
@@ -160,6 +180,7 @@ export async function run(keyword: string, opts: SearchOpts): Promise<void> {
       delayMin,
       delayMax,
       maxRetries: 3,
+      outputDir: opts.deepproOutputDir,
     });
   }
 
@@ -993,12 +1014,73 @@ export async function extractOffers(page: Page): Promise<Offer[]> {
 
 // ---------- deeppro ----------
 
+type DeepProSearchMode = 'inline' | 'daemon';
+
+function normalizeDeepProSearchMode(value: unknown): DeepProSearchMode {
+  const mode = String(value ?? 'inline').trim().toLowerCase();
+  if (mode === 'inline' || mode === 'daemon') return mode;
+  throw new CliError(
+    2,
+    'BAD_INPUT',
+    `--deeppro-search-mode must be inline or daemon, got: ${String(value)}`,
+  );
+}
+
+async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
+
+interface DeepProValidation {
+  ok: boolean;
+  code?: string;
+  message?: string;
+  flags: string[];
+}
+
+function validateDeepOffer(o: OfferResult | null | undefined): DeepProValidation {
+  const flags: string[] = [];
+
+  if (!o) {
+    return { ok: false, code: 'EMPTY_OFFER_RESULT', message: 'Deep offer result is empty.', flags: ['empty_result'] };
+  }
+
+  const title = String(o.title ?? '').trim();
+
+  if (title === 'Captcha Interception') {
+    return { ok: false, code: 'CAPTCHA_INTERCEPTION', message: 'Deep offer result is captcha-intercepted.', flags: ['captcha_interception'] };
+  }
+  if (!title) {
+    return { ok: false, code: 'MISSING_TITLE', message: 'Deep offer result is missing title.', flags: ['missing_title'] };
+  }
+  if (/captcha|验证码|滑块|风控|访问受限/i.test(title)) {
+    return { ok: false, code: 'RISK_OR_CAPTCHA_TITLE', message: 'Deep offer title indicates risk control or captcha.', flags: ['risk_or_captcha_title'] };
+  }
+
+  if (o.priceRange === null && o.priceMin === null && o.priceMax === null) {
+    flags.push('missing_price');
+  }
+  if (!Array.isArray(o.images) || o.images.length === 0) {
+    flags.push('missing_images');
+  }
+
+  if (flags.includes('missing_price')) {
+    return { ok: false, code: 'MISSING_PRICE', message: 'Deep offer result is missing price.', flags };
+  }
+  if (flags.includes('missing_images')) {
+    return { ok: false, code: 'MISSING_IMAGES', message: 'Deep offer result is missing images.', flags };
+  }
+
+  return { ok: true, flags };
+}
+
 interface DeepProCollectOpts {
   headed?: boolean;
   profile?: string;
   delayMin: number;
   delayMax: number;
   maxRetries: number;
+  outputDir?: string;
 }
 
 async function deepProCollect(
@@ -1021,6 +1103,7 @@ async function deepProCollect(
     let collected: OfferResult | null = null;
     let lastCode = '';
     let lastMessage = '';
+    let lastFlags: string[] = [];
     let attempts = 0;
 
     for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
@@ -1032,9 +1115,20 @@ async function deepProCollect(
           { headed: opts.headed, profile: opts.profile, noDaemon: true },
         );
 
-        if (!isValidDeepOffer(detail)) {
-          lastCode = 'INVALID_DEEP_OFFER';
-          lastMessage = 'Deep offer result is incomplete or captcha-intercepted.';
+        // Always save attempt raw data if output dir set.
+        if (opts.outputDir) {
+          await writeJsonFile(
+            path.join(opts.outputDir, 'offers', `${offerId}.attempt${attempt}.json`),
+            detail,
+          ).catch(() => {});
+        }
+
+        const validation = validateDeepOffer(detail);
+
+        if (!validation.ok) {
+          lastCode = validation.code || 'INVALID_DEEP_OFFER';
+          lastMessage = validation.message || 'Deep offer result is incomplete.';
+          lastFlags = validation.flags;
           if (attempt < opts.maxRetries) {
             process.stderr.write(
               `DEEPPRO attempt ${attempt} failed: ${offerId}, code=${lastCode}\n`,
@@ -1051,6 +1145,16 @@ async function deepProCollect(
         const err = error as Error & { code?: string };
         lastCode = err.code || 'DEEP_COLLECT_FAILED';
         lastMessage = sanitiseDeepproMessage(err.message || String(error));
+        lastFlags = [];
+
+        // Save error attempt info.
+        if (opts.outputDir) {
+          await writeJsonFile(
+            path.join(opts.outputDir, 'offers', `${offerId}.attempt${attempt}.error.json`),
+            { offerId, attempt, code: lastCode, message: lastMessage },
+          ).catch(() => {});
+        }
+
         if (attempt < opts.maxRetries) {
           process.stderr.write(
             `DEEPPRO attempt ${attempt} failed: ${offerId}, code=${lastCode}\n`,
@@ -1062,6 +1166,15 @@ async function deepProCollect(
 
     if (collected) {
       offers.push(collected);
+
+      // Save final result.
+      if (opts.outputDir) {
+        await writeJsonFile(
+          path.join(opts.outputDir, 'offers', `${offerId}.final.json`),
+          collected,
+        ).catch(() => {});
+      }
+
       process.stderr.write(
         `DEEPPRO valid: ${offerId}, SKU=${collected.skus.length}, images=${collected.images.length}\n`,
       );
@@ -1071,6 +1184,7 @@ async function deepProCollect(
         code: lastCode || 'DEEP_COLLECT_FAILED',
         message: lastMessage || 'Unknown error after retries',
         attempts,
+        flags: lastFlags.length > 0 ? lastFlags : undefined,
       });
       process.stderr.write(
         `DEEPPRO failed: ${offerId}, code=${lastCode}, attempts=${attempts}\n`,
@@ -1090,7 +1204,7 @@ async function deepProCollect(
       '\n',
   );
 
-  return {
+  const summary: DeepProSummary = {
     enabled: true as const,
     total: ids.length,
     success: offers.length,
@@ -1099,14 +1213,16 @@ async function deepProCollect(
     offers,
     failures,
   };
-}
 
-function isValidDeepOffer(o: OfferResult): boolean {
-  if (o.title === 'Captcha Interception') return false;
-  if (/captcha|验证码|滑块|风控|访问受限/i.test(o.title)) return false;
-  if (o.priceRange === null && o.priceMin === null && o.priceMax === null) return false;
-  if (!Array.isArray(o.images) || o.images.length === 0) return false;
-  return true;
+  // Save summary.
+  if (opts.outputDir) {
+    await writeJsonFile(
+      path.join(opts.outputDir, 'summary.json'),
+      summary,
+    ).catch(() => {});
+  }
+
+  return summary;
 }
 
 function sanitiseDeepproMessage(message: string): string {
