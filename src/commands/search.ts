@@ -1038,23 +1038,52 @@ interface DeepProValidation {
   flags: string[];
 }
 
+function deepProFailureMessageZh(code: string, fallback?: string): string {
+  switch (code) {
+    case 'CAPTCHA_INTERCEPTION':
+      return '页面被验证码或滑块拦截，重试后仍未采集成功。';
+    case 'MISSING_TITLE':
+      return '详情页缺少商品标题，可能页面加载不完整或被拦截。';
+    case 'RISK_OR_CAPTCHA_TITLE':
+      return '详情页标题显示风控、验证码或访问受限。';
+    case 'MISSING_PRICE':
+      return '详情页缺少价格信息，可能 SKU 或价格接口未加载成功。';
+    case 'MISSING_IMAGES':
+      return '详情页缺少商品图片，可能图片数据未加载成功。';
+    case 'EMPTY_OFFER_RESULT':
+      return '详情采集结果为空，可能页面未正常返回商品数据。';
+    case 'RISK_CONTROL':
+      return '1688 触发滑块验证或风控，需要使用可视化浏览器处理。';
+    case 'DAEMON_PAUSED':
+      return '本地 daemon 处于暂停保护状态，本次采集未真正访问 1688。';
+    case 'JSON_PARSE_FAILED':
+      return '采集结果不是合法 JSON，可能命令输出异常。';
+    case 'UNKNOWN_ERROR':
+      return '采集过程中出现未知错误。';
+    default:
+      return fallback && fallback.trim()
+        ? fallback
+        : '采集失败，原因未识别。';
+  }
+}
+
 function validateDeepOffer(o: OfferResult | null | undefined): DeepProValidation {
   const flags: string[] = [];
 
   if (!o) {
-    return { ok: false, code: 'EMPTY_OFFER_RESULT', message: 'Deep offer result is empty.', flags: ['empty_result'] };
+    return { ok: false, code: 'EMPTY_OFFER_RESULT', message: deepProFailureMessageZh('EMPTY_OFFER_RESULT'), flags: ['empty_result'] };
   }
 
   const title = String(o.title ?? '').trim();
 
   if (title === 'Captcha Interception') {
-    return { ok: false, code: 'CAPTCHA_INTERCEPTION', message: 'Deep offer result is captcha-intercepted.', flags: ['captcha_interception'] };
+    return { ok: false, code: 'CAPTCHA_INTERCEPTION', message: deepProFailureMessageZh('CAPTCHA_INTERCEPTION'), flags: ['captcha_interception'] };
   }
   if (!title) {
-    return { ok: false, code: 'MISSING_TITLE', message: 'Deep offer result is missing title.', flags: ['missing_title'] };
+    return { ok: false, code: 'MISSING_TITLE', message: deepProFailureMessageZh('MISSING_TITLE'), flags: ['missing_title'] };
   }
   if (/captcha|验证码|滑块|风控|访问受限/i.test(title)) {
-    return { ok: false, code: 'RISK_OR_CAPTCHA_TITLE', message: 'Deep offer title indicates risk control or captcha.', flags: ['risk_or_captcha_title'] };
+    return { ok: false, code: 'RISK_OR_CAPTCHA_TITLE', message: deepProFailureMessageZh('RISK_OR_CAPTCHA_TITLE'), flags: ['risk_or_captcha_title'] };
   }
 
   if (o.priceRange === null && o.priceMin === null && o.priceMax === null) {
@@ -1065,10 +1094,10 @@ function validateDeepOffer(o: OfferResult | null | undefined): DeepProValidation
   }
 
   if (flags.includes('missing_price')) {
-    return { ok: false, code: 'MISSING_PRICE', message: 'Deep offer result is missing price.', flags };
+    return { ok: false, code: 'MISSING_PRICE', message: deepProFailureMessageZh('MISSING_PRICE'), flags };
   }
   if (flags.includes('missing_images')) {
-    return { ok: false, code: 'MISSING_IMAGES', message: 'Deep offer result is missing images.', flags };
+    return { ok: false, code: 'MISSING_IMAGES', message: deepProFailureMessageZh('MISSING_IMAGES'), flags };
   }
 
   return { ok: true, flags };
@@ -1127,11 +1156,11 @@ async function deepProCollect(
 
         if (!validation.ok) {
           lastCode = validation.code || 'INVALID_DEEP_OFFER';
-          lastMessage = validation.message || 'Deep offer result is incomplete.';
+          lastMessage = validation.message || deepProFailureMessageZh(lastCode);
           lastFlags = validation.flags;
           if (attempt < opts.maxRetries) {
             process.stderr.write(
-              `DEEPPRO attempt ${attempt} failed: ${offerId}, code=${lastCode}\n`,
+              `DEEPPRO attempt ${attempt} failed: ${offerId}, code=${lastCode}, reason=${lastMessage}\n`,
             );
             await sleep(5000);
             continue;
@@ -1143,21 +1172,22 @@ async function deepProCollect(
         break;
       } catch (error) {
         const err = error as Error & { code?: string };
-        lastCode = err.code || 'DEEP_COLLECT_FAILED';
-        lastMessage = sanitiseDeepproMessage(err.message || String(error));
+        lastCode = err.code || 'UNKNOWN_ERROR';
+        const rawMessage = sanitiseDeepproMessage(err.message || String(error));
+        lastMessage = deepProFailureMessageZh(lastCode, rawMessage);
         lastFlags = [];
 
         // Save error attempt info.
         if (opts.outputDir) {
           await writeJsonFile(
             path.join(opts.outputDir, 'offers', `${offerId}.attempt${attempt}.error.json`),
-            { offerId, attempt, code: lastCode, message: lastMessage },
+            { offerId, attempt, code: lastCode, message: lastMessage, rawMessage },
           ).catch(() => {});
         }
 
         if (attempt < opts.maxRetries) {
           process.stderr.write(
-            `DEEPPRO attempt ${attempt} failed: ${offerId}, code=${lastCode}\n`,
+            `DEEPPRO attempt ${attempt} failed: ${offerId}, code=${lastCode}, reason=${lastMessage}\n`,
           );
           await sleep(5000);
         }
@@ -1182,12 +1212,12 @@ async function deepProCollect(
       failures.push({
         offerId,
         code: lastCode || 'DEEP_COLLECT_FAILED',
-        message: lastMessage || 'Unknown error after retries',
+        message: lastMessage || deepProFailureMessageZh(lastCode || 'UNKNOWN_ERROR'),
         attempts,
         flags: lastFlags.length > 0 ? lastFlags : undefined,
       });
       process.stderr.write(
-        `DEEPPRO failed: ${offerId}, code=${lastCode}, attempts=${attempts}\n`,
+        `DEEPPRO failed: ${offerId}, code=${lastCode}, reason=${lastMessage}, attempts=${attempts}\n`,
       );
     }
 

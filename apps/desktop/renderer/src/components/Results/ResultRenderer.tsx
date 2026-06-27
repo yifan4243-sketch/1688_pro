@@ -22,6 +22,21 @@ export default function ResultRenderer({ record, resultType }: Props) {
 
   const handleViewJson = () => setViewMode('json');
 
+  const failureMessageZh = (f: Record<string, unknown>): string => {
+    const msg = String(f.message ?? '').trim();
+    if (msg) return msg;
+    const code = String(f.code ?? '');
+    const map: Record<string, string> = {
+      CAPTCHA_INTERCEPTION: '页面被验证码或滑块拦截，重试后仍未采集成功。',
+      MISSING_PRICE: '详情页缺少价格信息，可能 SKU 或价格接口未加载成功。',
+      MISSING_IMAGES: '详情页缺少商品图片，可能图片数据未加载成功。',
+      MISSING_TITLE: '详情页缺少商品标题，可能页面加载不完整或被拦截。',
+      RISK_OR_CAPTCHA_TITLE: '详情页标题显示风控、验证码或访问受限。',
+      EMPTY_OFFER_RESULT: '详情采集结果为空，可能页面未正常返回商品数据。',
+    };
+    return map[code] || '采集失败，原因未识别。';
+  };
+
   const copyFullJson = async () => {
     const text = JSON.stringify(data, null, 2);
     try {
@@ -96,8 +111,7 @@ export default function ResultRenderer({ record, resultType }: Props) {
           {deepproFailures.map((f, i) => (
             <div key={i} className="error-grid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
               <div><span>Offer ID</span><strong>{String(f.offerId ?? '-')}</strong></div>
-              <div><span>Code</span><strong>{String(f.code ?? '-')}</strong></div>
-              <div><span>信息</span><strong>{String(f.message ?? '-')}</strong></div>
+              <div><span>信息</span><strong>{failureMessageZh(f)}</strong></div>
               <div><span>尝试次数</span><strong>{String(f.attempts ?? '-')}</strong></div>
               {f.flags && <div><span>Flags</span><strong>{String((f.flags as string[]).join(', '))}</strong></div>}
             </div>
