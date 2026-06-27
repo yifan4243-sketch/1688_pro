@@ -96,7 +96,7 @@ export function toProgressCards(
 
 export default function ProgressOfferCard({ item, onOpen }: Props) {
   const isPlaceholder = item.status === 'waiting' || item.status === 'collecting';
-  const showImage = item.image && item.status === 'success';
+  const showImage = Boolean(item.image && item.status !== 'waiting');
 
   return (
     <article

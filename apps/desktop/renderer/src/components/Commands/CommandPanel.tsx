@@ -387,23 +387,25 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
       {/* ── Result workspace — always present ── */}
       <section className="result-workspace">
-        {running ? (
-          <div className="running-state">
-            <div className="running-header">
-              {options.deeppro
-                ? '正在执行 DEEPPRO 深度采集，可能需要数分钟...'
-                : '正在采集 1688 商品数据...'}
-            </div>
-            <div className="running-chips">
-              <span className="running-chip">连接账号档案 {alias}</span>
-              {options.deeppro && <span className="running-chip">搜索商品 → 提取 offerId → pro 深采详情 → 自动重试</span>}
-              <span className="running-chip">等待 1688 返回结果</span>
-            </div>
-          </div>
+        {running && placeholderCount > 0 ? (
+          <>
+            <div className="running-mini-bar">命令执行中...</div>
+            <ResultRenderer
+              record={null}
+              resultType={command.resultType}
+              placeholderCards={placeholderCount}
+              running={true}
+            />
+          </>
         ) : lastRecord ? (
           <>
             <p className="result-count">{resultCount}</p>
-            <ResultRenderer record={lastRecord} resultType={command.resultType} placeholderCards={placeholderCount} running={running} />
+            <ResultRenderer
+              record={lastRecord}
+              resultType={command.resultType}
+              placeholderCards={placeholderCount}
+              running={false}
+            />
           </>
         ) : (
           <div className="empty-result-state">

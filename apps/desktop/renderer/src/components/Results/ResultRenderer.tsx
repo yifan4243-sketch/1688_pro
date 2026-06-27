@@ -6,7 +6,7 @@ import OfferDetailModal from './OfferDetailModal';
 import ProgressSummary from './ProgressSummary';
 
 interface Props {
-  record: CommandRecord;
+  record: CommandRecord | null;
   resultType?: string;
   placeholderCards?: number;
   running?: boolean;
@@ -21,7 +21,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const [toast, setToast] = useState('');
   const [detailItem, setDetailItem] = useState<ProgressOfferCardItem | null>(null);
 
-  const data = record.stdoutJson as Record<string, unknown> | undefined;
+  const data = record?.stdoutJson as Record<string, unknown> | undefined;
 
   // Build progress cards from result data
   const progressCards = useMemo<ProgressOfferCardItem[]>(() => {
@@ -140,7 +140,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
               key={card.slotIndex}
               item={card}
               onOpen={(item) => {
-                if (item.status === 'success' || item.status === 'failed') {
+                if (item.offerId || item.raw || item.title || item.image) {
                   setDetailItem(item);
                 }
               }}
@@ -150,16 +150,16 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       )}
 
       {/* JSON view */}
-      {viewMode === 'json' && data && (
+      {viewMode === 'json' && (
         <div className="result-preview">
-          <pre className="json-output">{JSON.stringify(data, null, 2)}</pre>
+          <pre className="json-output">{data ? JSON.stringify(data, null, 2) : '等待数据...'}</pre>
         </div>
       )}
 
       {/* Fallback: no card data */}
-      {viewMode === 'card' && !hasOffers && data && (
+      {viewMode === 'card' && !hasOffers && !running && (
         <div className="result-preview">
-          <pre className="json-output">{JSON.stringify(data, null, 2)}</pre>
+          <pre className="json-output">{data ? JSON.stringify(data, null, 2) : '等待数据...'}</pre>
         </div>
       )}
 
@@ -179,7 +179,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       )}
 
       {/* DEEPPRO progress log (collapsible) */}
-      {record.stderrText && /DEEPPRO/i.test(record.stderrText) && (
+      {record?.stderrText && /DEEPPRO/i.test(record.stderrText) && (
         <details className="advanced-section" style={{ marginTop: 12 }}>
           <summary className="advanced-toggle">DEEPPRO 进度日志</summary>
           <div className="error-stderr" style={{ marginTop: 8 }}>
@@ -189,7 +189,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       )}
 
       {/* Error detail */}
-      {record.status !== 'success' && (
+      {record && record.status !== 'success' && record.status !== 'running' && (
         <div className="result-preview error-detail">
           <h4>错误详情</h4>
           <div className="error-grid">

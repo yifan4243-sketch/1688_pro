@@ -15,6 +15,7 @@ export default function OfferDetailModal({ item, onClose }: Props) {
   const freight = raw?.freight as Record<string, unknown> | undefined;
   const saledCount = raw?.saledCount as number | undefined;
   const priceTiers = (raw?.priceTiers as Array<Record<string, unknown>>) || [];
+  const isDeep = !!raw && (skus.length > 0 || attrs.length > 0 || !!supplier);
 
   return (
     <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -98,7 +99,7 @@ export default function OfferDetailModal({ item, onClose }: Props) {
         )}
 
         {/* SKUs */}
-        {skus.length > 0 && (
+        {skus.length > 0 ? (
           <div className="detail-section">
             <h4>SKU ({skus.length})</h4>
             {skus.slice(0, 10).map((sku, i) => (
@@ -109,10 +110,14 @@ export default function OfferDetailModal({ item, onClose }: Props) {
               </div>
             ))}
           </div>
-        )}
+        ) : !isDeep && item.status !== 'failed' ? (
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+            暂无 SKU 详情，需等待深采完成。
+          </p>
+        ) : null}
 
         {/* Attributes */}
-        {attrs.length > 0 && (
+        {attrs.length > 0 ? (
           <div className="detail-section">
             <h4>属性 ({attrs.length})</h4>
             <div className="attr-grid">
@@ -124,7 +129,11 @@ export default function OfferDetailModal({ item, onClose }: Props) {
               ))}
             </div>
           </div>
-        )}
+        ) : !isDeep && item.status !== 'failed' ? (
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+            暂无属性详情，需等待深采完成。
+          </p>
+        ) : null}
 
         {/* Raw JSON */}
         {raw && (
