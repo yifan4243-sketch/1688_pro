@@ -206,34 +206,54 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       {/* Form — compact control panel */}
       {command && (
         <form className="command-control-panel" onSubmit={(e) => { e.preventDefault(); runCommand(); }}>
-          {/* Row 1: keyword + execute button */}
+          {/* Row 1: search/command bar with embedded execute button */}
           {command.positional.length > 0 && (
-            <div className="keyword-row">
-              {command.positional.map((f) => (
-                <div key={f.name} className="form-field keyword" style={{ flex: 1 }}>
-                  <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
-                  {f.multiline || f.array ? (
-                    <textarea
-                      className={`glass-textarea ${isFieldError(f.name) ? 'field-error' : ''}`}
-                      rows={f.array ? 4 : 5}
-                      value={args[f.name] || ''}
-                      onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
-                    />
-                  ) : (
-                    <input
-                      className={`glass-input ${isFieldError(f.name) ? 'field-error' : ''}`}
-                      type="text"
-                      value={args[f.name] || ''}
-                      onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
-                    />
-                  )}
-                  {isFieldError(f.name) && <p className="field-error-text">{fieldErrors[f.name]}</p>}
-                </div>
-              ))}
-              <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}
-                style={{ alignSelf: 'flex-end', marginBottom: 14 }}>
-                {running ? '执行中...' : '执行命令'}
-              </button>
+            <div className="search-command-wrapper">
+              {command.positional.map((f) => {
+                const hasErr = isFieldError(f.name);
+                const isKeyword = f.name === 'keyword';
+                return (
+                  <div key={f.name} className="search-command-field">
+                    <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
+                    {isKeyword ? (
+                      /* Keyword: pill search bar with embedded button */
+                      <div className={`search-command-box ${hasErr ? 'has-error' : ''}`}>
+                        <input
+                          className="search-command-input"
+                          value={args[f.name] || ''}
+                          placeholder={hasErr ? '请输入搜索词' : '请输入搜索词，例如：上衣'}
+                          onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
+                        />
+                        <button type="button" className="search-command-button" disabled={running}
+                          onClick={() => runCommand()}>
+                          {running ? '执行中...' : '执行命令'}
+                        </button>
+                      </div>
+                    ) : f.multiline || f.array ? (
+                      <>
+                        <textarea
+                          className={`glass-textarea ${hasErr ? 'field-error' : ''}`}
+                          rows={f.array ? 4 : 5}
+                          value={args[f.name] || ''}
+                          onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
+                        />
+                        {hasErr && <p className="field-error-text">{fieldErrors[f.name]}</p>}
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          className={`glass-input ${hasErr ? 'field-error' : ''}`}
+                          type="text"
+                          value={args[f.name] || ''}
+                          placeholder={hasErr ? fieldErrors[f.name] : undefined}
+                          onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
+                        />
+                        {hasErr && <p className="field-error-text">{fieldErrors[f.name]}</p>}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
