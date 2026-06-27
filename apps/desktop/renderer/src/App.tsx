@@ -115,29 +115,29 @@ export default function App() {
           </div>
         </header>
 
-        <section className="content-grid">
+        <div className="workspace-inner">
           <CommandPanel
             registry={registry}
             activeProfile={activeProfile}
             accounts={accounts}
             onHistoryRefresh={loadHistory}
           />
-
-          <aside className="ozon-panel glass-section">
-            <div className="section-head">
-              <h3>Ozon 上架卡片</h3>
-              <span>本轮预留</span>
-            </div>
-            <article className="ozon-draft-card">
-              <div className="draft-state ready">1688 已接入</div>
-              <h4>Ozon / DeepSeek 下一步</h4>
-              <p>本轮只接 1688 CLI。下一轮接入 DeepSeek 生成俄语标题、描述，对接 Ozon ProductAPI 上架。</p>
-            </article>
-
-            <HistoryPanel history={history} />
-          </aside>
-        </section>
+        </div>
       </main>
+
+      <aside className="ozon-panel glass-section">
+        <div className="section-head">
+          <h3>Ozon 上架卡片</h3>
+          <span>本轮预留</span>
+        </div>
+        <article className="ozon-draft-card">
+          <div className="draft-state ready">1688 已接入</div>
+          <h4>Ozon / DeepSeek 下一步</h4>
+          <p>本轮只接 1688 CLI。下一轮接入 DeepSeek 生成俄语标题、描述，对接 Ozon ProductAPI 上架。</p>
+        </article>
+
+        <HistoryPanel history={history} />
+      </aside>
     </div>
   );
 }

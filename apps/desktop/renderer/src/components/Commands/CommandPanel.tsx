@@ -18,6 +18,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [options, setOptions] = useState<Record<string, unknown>>({});
   const [running, setRunning] = useState(false);
   const [lastRecord, setLastRecord] = useState<CommandRecord | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<{ text: string; kind: string } | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingPayload, setPendingPayload] = useState<CommandPayload | null>(null);
@@ -64,6 +65,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     setOptions({});
     setLastRecord(null);
     setAlert(null);
+    setFieldErrors({});
     // Set defaults for non-boolean options
     const cmd = registry.commands[id];
     if (cmd) {
@@ -84,7 +86,45 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     confirmed,
   });
 
+  const validateBeforeRun = (): boolean => {
+    if (!command) return false;
+    const errors: Record<string, string> = {};
+    for (const f of command.positional) {
+      if (!f.required) continue;
+      const val = (args[f.name] || '').trim();
+      if (!val) {
+        // Human-friendly messages
+        const labels: Record<string, string> = {
+          keyword: '请输入搜索词',
+          offerIds: '请输入商品 Offer ID',
+          offerId: '请输入商品 Offer ID',
+          requestId: '请输入 Debug Request ID',
+          target: '请输入 Offer ID / memberId 等',
+          orderId: '请输入订单 ID',
+          cartIds: '请输入购物车 Cart ID',
+          message: '请输入内容',
+          keywords: '请输入关键词',
+          imagePath: '请输入图片地址',
+        };
+        errors[f.name] = labels[f.name] || `请输入${f.label}`;
+      }
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const isFieldError = (name: string) => !!fieldErrors[name];
+
+  const clearFieldError = (name: string) => {
+    if (fieldErrors[name]) {
+      const next = { ...fieldErrors };
+      delete next[name];
+      setFieldErrors(next);
+    }
+  };
+
   const runCommand = async (confirmed = false) => {
+    if (!validateBeforeRun()) return;
     if (command.write && !confirmed) {
       setPendingPayload(collectPayload(false));
       setShowConfirm(true);
@@ -173,16 +213,21 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                 <div key={f.name} className="form-field keyword" style={{ flex: 1 }}>
                   <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
                   {f.multiline || f.array ? (
-                    <textarea className="glass-textarea" rows={f.array ? 4 : 5}
+                    <textarea
+                      className={`glass-textarea ${isFieldError(f.name) ? 'field-error' : ''}`}
+                      rows={f.array ? 4 : 5}
                       value={args[f.name] || ''}
-                      onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
+                      onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
                     />
                   ) : (
-                    <input className="glass-input" type="text"
+                    <input
+                      className={`glass-input ${isFieldError(f.name) ? 'field-error' : ''}`}
+                      type="text"
                       value={args[f.name] || ''}
-                      onChange={(e) => setArgs({ ...args, [f.name]: e.target.value })}
+                      onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
                     />
                   )}
+                  {isFieldError(f.name) && <p className="field-error-text">{fieldErrors[f.name]}</p>}
                 </div>
               ))}
               <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}
