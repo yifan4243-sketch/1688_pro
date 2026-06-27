@@ -10,6 +10,7 @@ import {
 } from './io/output.js';
 import updateNotifier from 'update-notifier';
 import pkg from '../package.json' with { type: 'json' };
+import { sanitiseCliArgs } from './util/cli-args.js';
 
 // Background check (once/day). On a TTY this prints a human banner.
 // In JSON mode we surface a structured `_notice` line on stderr (see the
@@ -750,7 +751,7 @@ program.hook('preAction', (_thisCmd, actionCmd) => {
 });
 
 try {
-  await program.parseAsync();
+  await program.parseAsync(sanitiseCliArgs(), { from: 'user' });
 } catch (e) {
   if (e instanceof CliError) {
     if (isJsonV2()) {

@@ -40,7 +40,13 @@
     "1688": "dist/cli.js"
   },
   "files": [
+    "package.json",
     "dist",
+    "apps/desktop/main/**/*",
+    "apps/desktop/preload/**/*",
+    "apps/desktop/renderer/dist/**/*",
+    "apps/desktop/cli-bridge.cjs",
+    "apps/desktop/accounts.cjs",
     "scripts/postinstall.mjs",
     "scripts/fix_bin_mode.mjs",
     "scripts/generate_agent_context.mjs",
@@ -111,18 +117,16 @@
     "directories": {
       "output": "release"
     },
-    "files": [
-      "apps/desktop/main/**/*",
-      "apps/desktop/preload/**/*",
-      "apps/desktop/renderer/dist/**/*",
-      "dist/**/*",
-      "node_modules/**/*",
-      "package.json"
-    ],
+    "asar": false,
+    "afterPack": "scripts/after-pack.cjs",
     "extraResources": [
       {
         "from": "dist",
         "to": "cli/dist"
+      },
+      {
+        "from": "package.json",
+        "to": "cli/package.json"
       }
     ],
     "win": {
