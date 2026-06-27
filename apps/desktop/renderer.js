@@ -19,15 +19,15 @@ const api = window.desktopApi || {
         search: {
           id: 'search',
           group: 'sourcing',
-          label: '商品搜索',
+          label: '搜索词采集',
           argvPreview: 'search',
           write: false,
           resultType: 'products',
-          positional: [{ name: 'keyword', label: '关键词', required: true }],
+          positional: [{ name: 'keyword', label: '搜索词', required: true }],
           options: [
-            { name: 'max', flag: '--max', label: '最大数量', type: 'number', default: 20 },
-            { name: 'excludeAds', flag: '--exclude-ads', label: '排除广告', type: 'boolean', default: true },
-            { name: 'deeppro', flag: '--deeppro', label: '深采详情', type: 'boolean', default: true },
+            { name: 'max', flag: '--max', label: '采集数量', type: 'number', default: 20 },
+            { name: 'excludeAds', flag: '--exclude-ads', label: '过滤广告位', type: 'boolean', default: true },
+            { name: 'deeppro', flag: '--deeppro', label: '采集商品详情', type: 'boolean', default: true },
           ],
         },
         supplierSearch: {
@@ -153,7 +153,11 @@ function bindEvents() {
   $('#loadHistory').addEventListener('click', renderHistory);
   $('#cancelConfirm').addEventListener('click', closeConfirm);
   $('#approveConfirm').addEventListener('click', approveConfirm);
-  $('#profileInput').addEventListener('input', updatePreview);
+  $('#profileSelect').addEventListener('change', () => { updatePreview(); });
+  $('#addAccountBtn').addEventListener('click', () => openAccountModal());
+  $('#cancelAccount').addEventListener('click', () => { $('#accountModal').hidden = true; });
+  $('#saveAccount').addEventListener('click', saveAccount);
+  $('#accountModal').addEventListener('click', (e) => { if (e.target === $('#accountModal')) $('#accountModal').hidden = true; });
 }
 
 function renderGroupNav() {
@@ -279,7 +283,7 @@ function collectPayload(extra = {}) {
     commandId: activeCommandId,
     args,
     options,
-    profile: $('#profileInput').value.trim() || 'default',
+    profile: ($('#profileSelect').value || '').trim() || 'default',
     ...extra,
   };
 }
@@ -319,6 +323,10 @@ function shellQuote(value) {
 
 function updatePreview() {
   $('#argvPreview').textContent = previewArgv();
+  // Chinese explanation line
+  const explanation = buildChineseExplanation();
+  const hintNode = $('#argvHint');
+  if (hintNode) hintNode.textContent = explanation;
 }
 
 async function copyCommandPreview() {
@@ -706,7 +714,7 @@ async function renderHistory() {
 }
 
 async function refreshRuntime() {
-  const profile = $('#profileInput').value.trim() || 'default';
+  const profile = ($('#profileSelect').value || '').trim() || 'default';
   $('#profileState').textContent = profile;
   $('#cliState').textContent = '检测中';
   $('#cliState').className = 'muted';
@@ -731,6 +739,109 @@ async function refreshRuntime() {
     $('#daemonState').textContent = '待检查';
     $('#daemonState').className = 'warn';
   }
+}
+
+// ---------- account management ----------
+
+let accountData = { activeProfile: 'default', accounts: [] };
+
+async function loadAccounts() {
+  try {
+    accountData = await api.listAccounts();
+  } catch {
+    accountData = { activeProfile: 'default', accounts: [{ profile: 'default', alias: '默认账号', status: 'unknown' }] };
+  }
+  renderAccountSelect();
+}
+
+function renderAccountSelect() {
+  const select = $('#profileSelect');
+  if (!select) return;
+  const current = select.value || accountData.activeProfile || 'default';
+  select.innerHTML = accountData.accounts
+    .map((a) => {
+      const statusLabel = { logged_in: '已登录', not_logged_in: '未登录', risk_control: '风控中', busy: '占用中', network_error: '网络错误', error: '异常', unknown: '未知' }[a.status] || a.status;
+      return `<option value="${escapeHtml(a.profile)}">${escapeHtml(a.alias)} ｜ ${escapeHtml(a.profile)} ｜ ${statusLabel}</option>`;
+    })
+    .join('');
+  select.value = accountData.accounts.some((a) => a.profile === current) ? current : (accountData.accounts[0]?.profile || 'default');
+}
+
+async function openAccountModal() {
+  $('#accountModalTitle').textContent = '新增登录账号';
+  $('#accAlias').value = '';
+  $('#accNote').value = '';
+  try {
+    const suggested = await api.suggestProfileName();
+    $('#accProfile').value = suggested;
+  } catch {
+    $('#accProfile').value = '';
+  }
+  $('#accountModal').hidden = false;
+}
+
+async function saveAccount() {
+  const alias = ($('#accAlias').value || '').trim();
+  const profile = ($('#accProfile').value || '').trim();
+  const note = ($('#accNote').value || '').trim();
+  if (!alias) return showAlert('账号备注名不能为空', 'error');
+  if (!profile) return showAlert('Profile ID 不能为空', 'error');
+  try {
+    await api.addAccount({ profile, alias, note });
+    $('#accountModal').hidden = true;
+    await loadAccounts();
+    // Auto-select the new account
+    $('#profileSelect').value = profile;
+    await api.setActiveAccount(profile);
+    updatePreview();
+    showAlert(`已新增账号：${alias}`, 'success');
+  } catch (error) {
+    showAlert(error.message || String(error), 'error');
+  }
+}
+
+// ---------- Chinese explanation ----------
+
+function buildChineseExplanation() {
+  const command = registry.commands[activeCommandId];
+  if (!command) return '';
+  const payload = collectPayload();
+  const profile = payload.profile;
+  const account = accountData.accounts.find((a) => a.profile === profile);
+  const alias = account?.alias || profile;
+
+  if (activeCommandId === 'search') {
+    const kw = payload.args.keyword || '';
+    if (!kw.trim()) return '请先填写搜索词。';
+    const max = payload.options.max || 20;
+    const sortMap = { relevance: '综合排序', 'best-selling': '销量优先', 'price-asc': '价格从低到高', 'price-desc': '价格从高到低' };
+    const sortLabel = sortMap[payload.options.sort] || '综合排序';
+    const verifiedMap = { any: '不限', factory: '工厂', business: '诚信通商家', 'super-factory': '超级工厂' };
+    const verifiedLabel = verifiedMap[payload.options.verified] || '不限';
+    const deeppro = payload.options.deeppro ? '，同时采集每个商品的详情数据' : '';
+    return `当前任务：使用「${alias}」账号，在 1688 搜索"${kw}"，最多采集 ${max} 个结果，按${sortLabel}，供应商认证${verifiedLabel}${deeppro}，输出结构化数据。`;
+  }
+
+  if (activeCommandId === 'offer') {
+    const ids = payload.args.offerIds || '';
+    if (!ids.trim()) return '请先填写 Offer ID。';
+    return `当前任务：使用「${alias}」账号，采集商品详情：${ids.split(/[\r\n,]+/).filter(Boolean).join('、')}。`;
+  }
+
+  return `当前任务：使用「${alias}」账号执行「${command.label}」。`;
+}
+
+// ---------- init ----------
+
+async function init() {
+  registry = await api.getCommandRegistry();
+  await loadAccounts();
+  renderGroupNav();
+  renderCommandList();
+  selectCommand(activeCommandId);
+  bindEvents();
+  await refreshRuntime();
+  await renderHistory();
 }
 
 init().catch((error) => {

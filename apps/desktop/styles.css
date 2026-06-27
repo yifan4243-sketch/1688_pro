@@ -850,3 +850,21 @@ th {
     grid-column: 1 / -1;
   }
 }
+
+/* Account & preview additions */
+.profile-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-row select {
+  flex: 1;
+}
+
+.preview-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+}

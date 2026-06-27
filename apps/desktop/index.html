@@ -47,8 +47,11 @@
             </div>
 
             <label class="field">
-              <span>Profile</span>
-              <input id="profileInput" value="default" />
+              <span>1688账号档案</span>
+              <div class="profile-row">
+                <select id="profileSelect"></select>
+                <button class="ghost-button" type="button" id="addAccountBtn">新增登录账号</button>
+              </div>
             </label>
 
             <div class="command-list" id="commandList"></div>
@@ -70,6 +73,7 @@
             <div class="command-preview">
               <span>CLI 预览</span>
               <code id="argvPreview">选择命令后显示</code>
+              <p class="preview-hint" id="argvHint"></p>
             </div>
 
             <div class="alert" id="statusAlert" hidden></div>
@@ -100,6 +104,30 @@
           </aside>
         </section>
       </main>
+    </div>
+
+    <div class="modal-backdrop" id="accountModal" hidden>
+      <div class="modal">
+        <h3 id="accountModalTitle">新增登录账号</h3>
+        <form id="accountForm" class="command-form">
+          <label class="field">
+            <span>账号备注名</span>
+            <input id="accAlias" placeholder="例如：张三-主采集号" required />
+          </label>
+          <label class="field">
+            <span>Profile ID</span>
+            <input id="accProfile" placeholder="自动生成，可手动修改" required />
+          </label>
+          <label class="field">
+            <span>备注</span>
+            <input id="accNote" placeholder="选填" />
+          </label>
+        </form>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" id="cancelAccount">取消</button>
+          <button class="primary-button" type="button" id="saveAccount">保存</button>
+        </div>
+      </div>
     </div>
 
     <div class="modal-backdrop" id="confirmModal" hidden>

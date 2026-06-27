@@ -6,11 +6,23 @@ const {
   readHistory,
   runCommand,
 } = require('./cli-bridge.cjs');
+const {
+  listAccounts,
+  addAccount,
+  updateAccount,
+  removeAccount,
+  setActiveAccount,
+  suggestProfileName,
+} = require('./accounts.cjs');
 
 const rootDir = path.resolve(__dirname, '..', '..');
 
 function historyDir() {
   return path.join(app.getPath('userData'), 'history');
+}
+
+function userDataDir() {
+  return app.getPath('userData');
 }
 
 function createWindow() {
@@ -32,6 +44,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // --- existing ---
   ipcMain.handle('desktop:getCommandRegistry', () => publicRegistry());
   ipcMain.handle('desktop:runCommand', (_event, payload) => runCommand(rootDir, historyDir(), payload));
   ipcMain.handle('desktop:cancelCommand', (_event, runId) => cancelCommand(runId));
@@ -46,6 +59,62 @@ app.whenReady().then(() => {
       daemon: daemon.status === 'fulfilled' ? daemon.value : null,
       account: whoami.status === 'fulfilled' ? whoami.value : null,
     };
+  });
+
+  // --- accounts ---
+  ipcMain.handle('desktop:listAccounts', () => listAccounts(userDataDir()));
+
+  ipcMain.handle('desktop:addAccount', (_event, params) =>
+    addAccount(userDataDir(), params));
+
+  ipcMain.handle('desktop:updateAccount', (_event, profile, params) =>
+    updateAccount(userDataDir(), profile, params));
+
+  ipcMain.handle('desktop:removeAccount', (_event, profile) =>
+    removeAccount(userDataDir(), profile));
+
+  ipcMain.handle('desktop:setActiveAccount', (_event, profile) =>
+    setActiveAccount(userDataDir(), profile));
+
+  ipcMain.handle('desktop:suggestProfileName', () =>
+    suggestProfileName(userDataDir()));
+
+  ipcMain.handle('desktop:loginAccount', async (_event, profile) => {
+    const record = await runCommand(rootDir, historyDir(), {
+      commandId: 'login',
+      profile,
+      confirmed: true,
+      options: { headed: true },
+    });
+    const status = record.status === 'success' ? 'logged_in' : record.status;
+    try {
+      updateAccount(userDataDir(), profile, { status, lastLoginAt: new Date().toISOString() });
+    } catch {
+      // Account may not exist in accounts.json yet — ignore.
+    }
+    return { ...record, accountStatus: status };
+  });
+
+  ipcMain.handle('desktop:refreshAccountStatus', async (_event, profile) => {
+    let status = 'unknown';
+    try {
+      const whoami = await runCommand(rootDir, historyDir(), {
+        commandId: 'whoami',
+        profile,
+        saveHistory: false,
+        timeoutMs: 15000,
+        options: { verify: true },
+      });
+      status = whoami.status === 'success' ? 'logged_in' : whoami.status;
+    } catch {
+      status = 'error';
+    }
+    try {
+      updateAccount(userDataDir(), profile, { status });
+    } catch {
+      // Ignore if profile not in accounts.json.
+    }
+    return { profile, status };
   });
 
   createWindow();

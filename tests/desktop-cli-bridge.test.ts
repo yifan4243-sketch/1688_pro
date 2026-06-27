@@ -6,8 +6,27 @@ const bridge = require('../apps/desktop/cli-bridge.cjs') as {
   buildArgv: (commandId: string, input: unknown) => string[];
   parseOutput: (stdout: string, stderr: string) => { kind: string; data: unknown };
   mapExitStatus: (exitCode: number) => string;
-  publicRegistry: () => { commands: Record<string, { options: Array<{ name: string; values?: Array<{ value: string; label: string }> }> }> };
+  publicRegistry: () => { commands: Record<string, { label: string; options: Array<{ name: string; label: string; values?: Array<{ value: string; label: string }> }> }> };
 };
+
+const accounts = require('../apps/desktop/accounts.cjs') as {
+  PROFILE_RE: RegExp;
+  DEFAULT_ACCOUNTS: { activeProfile: string; accounts: Array<{ profile: string; alias: string }> };
+  loadAccounts: (dir: string) => ReturnType<typeof JSON.parse>;
+  addAccount: (dir: string, params: { profile: string; alias: string; note?: string }) => unknown;
+  updateAccount: (dir: string, profile: string, params: { alias?: string; note?: string; status?: string }) => unknown;
+  removeAccount: (dir: string, profile: string) => unknown;
+  setActiveAccount: (dir: string, profile: string) => unknown;
+  suggestProfileName: (dir: string) => string;
+};
+
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+function tmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), '1688-pro-test-'));
+}
 
 describe('desktop cli bridge', () => {
   it('builds argv from the command registry without accepting raw shell strings', () => {
@@ -72,5 +91,117 @@ describe('desktop cli bridge', () => {
     expect(argv).toContain('price-desc');
     expect(argv).toContain('--verified');
     expect(argv).toContain('factory');
+  });
+
+  it('search command label is Chinese 搜索词采集', () => {
+    const registry = bridge.publicRegistry();
+    expect(registry.commands.search.label).toBe('搜索词采集');
+  });
+
+  it('search command options have updated Chinese labels', () => {
+    const registry = bridge.publicRegistry();
+    const maxOpt = registry.commands.search.options.find((o) => o.name === 'max');
+    const sortOpt = registry.commands.search.options.find((o) => o.name === 'sort');
+    const verifiedOpt = registry.commands.search.options.find((o) => o.name === 'verified');
+    const excludeAdsOpt = registry.commands.search.options.find((o) => o.name === 'excludeAds');
+    const deepproOpt = registry.commands.search.options.find((o) => o.name === 'deeppro');
+    const headedOpt = registry.commands.search.options.find((o) => o.name === 'headed');
+
+    expect(maxOpt?.label).toBe('采集数量');
+    expect(sortOpt?.label).toBe('1688排序方式');
+    expect(verifiedOpt?.label).toBe('供应商认证');
+    expect(excludeAdsOpt?.label).toBe('过滤广告位');
+    expect(deepproOpt?.label).toBe('采集商品详情');
+    expect(headedOpt?.label).toBe('可视化打开浏览器');
+  });
+});
+
+describe('desktop accounts', () => {
+  it('validates profile names', () => {
+    expect(accounts.PROFILE_RE.test('buyer_01')).toBe(true);
+    expect(accounts.PROFILE_RE.test('buyer-01')).toBe(true);
+    expect(accounts.PROFILE_RE.test('buyer 01')).toBe(false);
+    expect(accounts.PROFILE_RE.test('')).toBe(false);
+  });
+
+  it('creates default account when no file exists', () => {
+    const dir = tmpDir();
+    try {
+      const data = accounts.loadAccounts(dir);
+      expect(data.activeProfile).toBe('default');
+      expect(data.accounts).toHaveLength(1);
+      expect(data.accounts[0].profile).toBe('default');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('adds and lists accounts', () => {
+    const dir = tmpDir();
+    try {
+      accounts.addAccount(dir, { profile: 'buyer_01', alias: '测试号' });
+      const data = accounts.loadAccounts(dir);
+      expect(data.accounts).toHaveLength(2);
+      expect(data.accounts[1].profile).toBe('buyer_01');
+      expect(data.accounts[1].alias).toBe('测试号');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('prevents duplicate profiles', () => {
+    const dir = tmpDir();
+    try {
+      accounts.addAccount(dir, { profile: 'buyer_01', alias: '测试号' });
+      expect(() => accounts.addAccount(dir, { profile: 'buyer_01', alias: '重复' })).toThrow('已存在');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('prevents deleting default account', () => {
+    const dir = tmpDir();
+    try {
+      expect(() => accounts.removeAccount(dir, 'default')).toThrow('不能删除默认账号');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('sets active account back to default when removing active', () => {
+    const dir = tmpDir();
+    try {
+      accounts.addAccount(dir, { profile: 'buyer_01', alias: '测试号' });
+      accounts.setActiveAccount(dir, 'buyer_01');
+      const data = accounts.removeAccount(dir, 'buyer_01');
+      expect(data.activeProfile).toBe('default');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('suggests unique profile names', () => {
+    const dir = tmpDir();
+    try {
+      expect(accounts.suggestProfileName(dir)).toBe('buyer_01');
+      accounts.addAccount(dir, { profile: 'buyer_01', alias: '一号' });
+      expect(accounts.suggestProfileName(dir)).toBe('buyer_02');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('updates alias and note without changing profile id', () => {
+    const dir = tmpDir();
+    try {
+      accounts.addAccount(dir, { profile: 'buyer_01', alias: '旧名', note: '旧备注' });
+      accounts.updateAccount(dir, 'buyer_01', { alias: '新名', note: '新备注' });
+      const data = accounts.loadAccounts(dir);
+      const acc = data.accounts.find((a: { profile: string }) => a.profile === 'buyer_01');
+      expect(acc.alias).toBe('新名');
+      expect(acc.note).toBe('新备注');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
