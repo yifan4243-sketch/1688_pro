@@ -20,32 +20,26 @@ export default function ResultRenderer({ record, resultType }: Props) {
   const offers = useMemo(() => toOfferCardViewModels(data), [data]);
   const hasOffers = offers.length > 0;
 
+  const handleViewJson = () => setViewMode('json');
+
   const copyFullJson = async () => {
     const text = JSON.stringify(data, null, 2);
     try {
       await navigator.clipboard.writeText(text);
       setToast('已复制完整 JSON');
-      setTimeout(() => setToast(''), 1500);
-    } catch {
-      setToast('复制失败');
-    }
+      setTimeout(() => setToast(''), 1600);
+    } catch { setToast('复制失败'); }
   };
 
   return (
     <div className="result-renderer">
-      {/* Mode toggle + copy */}
+      {/* Toolbar */}
       <div className="result-toolbar">
         <div className="mode-toggle">
           {hasOffers && (
-            <button
-              className={`mode-btn ${viewMode === 'card' ? 'active' : ''}`}
-              onClick={() => setViewMode('card')}
-            >卡片模式</button>
+            <button className={`mode-btn ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}>卡片模式</button>
           )}
-          <button
-            className={`mode-btn ${viewMode === 'json' ? 'active' : ''}`}
-            onClick={() => setViewMode('json')}
-          >JSON 模式</button>
+          <button className={`mode-btn ${viewMode === 'json' ? 'active' : ''}`} onClick={() => setViewMode('json')}>JSON 模式</button>
         </div>
         <button className="ghost-button-sm" onClick={copyFullJson}>复制完整 JSON</button>
       </div>
@@ -54,7 +48,7 @@ export default function ResultRenderer({ record, resultType }: Props) {
       {viewMode === 'card' && hasOffers && (
         <div className="offer-card-grid">
           {offers.map((offer) => (
-            <OfferCard key={offer.offerId || Math.random().toString(36)} offer={offer} />
+            <OfferCard key={offer.offerId} offer={offer} onViewJson={handleViewJson} />
           ))}
         </div>
       )}
@@ -66,7 +60,7 @@ export default function ResultRenderer({ record, resultType }: Props) {
         </div>
       )}
 
-      {/* No card data fallback */}
+      {/* Fallback: no card data */}
       {viewMode === 'card' && !hasOffers && (
         <div className="result-preview">
           <pre className="json-output">{JSON.stringify(data, null, 2)}</pre>
@@ -83,16 +77,10 @@ export default function ResultRenderer({ record, resultType }: Props) {
             <div><span>错误信息</span><strong>{record.error?.message || record.stderrText || '-'}</strong></div>
           </div>
           {record.argv?.length > 0 && (
-            <div className="error-argv">
-              <span>CLI 命令</span>
-              <code>{record.argv.join(' ')}</code>
-            </div>
+            <div className="error-argv"><span>CLI 命令</span><code>{record.argv.join(' ')}</code></div>
           )}
           {record.stderrText && (
-            <div className="error-stderr">
-              <span>stderr</span>
-              <pre>{record.stderrText}</pre>
-            </div>
+            <div className="error-stderr"><span>stderr</span><pre>{record.stderrText}</pre></div>
           )}
         </div>
       )}

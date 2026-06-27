@@ -1,139 +1,256 @@
-/* ── Apple Liquid Glass Card System ── */
-/* Inspired by react-liquid-glass-ui, Liquid-Glass-CSS, react-cupertino-ui */
+/* ══════════════════════════════════════════════
+   Apple Liquid Glass Card System
+   Inspired by: Liquid-Glass-CSS, shadcn-glass-ui,
+   react-liquid-glass-ui, react-glassmorphism,
+   react-cupertino-ui
+   ══════════════════════════════════════════════ */
 
-:root {
-  --glass-bg: rgba(255, 255, 255, 0.55);
-  --glass-border: rgba(255, 255, 255, 0.7);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
-  --glass-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.10), 0 2px 12px rgba(0, 0, 0, 0.06);
-  --glass-radius: 18px;
-  --glass-blur: 16px;
+/* ── Stage background ── */
+.workspace {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(99,102,241,0.14), transparent 34%),
+    radial-gradient(circle at 86% 18%, rgba(56,189,248,0.11), transparent 32%),
+    radial-gradient(circle at 70% 90%, rgba(236,72,153,0.08), transparent 38%),
+    linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f8fafc 100%) !important;
 }
 
-/* Result renderer container */
-.result-renderer { position: relative; }
+/* ── Liquid glass card ── */
+.liquid-glass-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.74), rgba(255,255,255,0.40));
+  border: 1px solid rgba(255,255,255,0.72);
+  backdrop-filter: blur(22px) saturate(1.45);
+  -webkit-backdrop-filter: blur(22px) saturate(1.45);
+  box-shadow:
+    0 22px 64px rgba(15,23,42,0.13),
+    inset 0 1px 0 rgba(255,255,255,0.84),
+    inset 0 -1px 0 rgba(255,255,255,0.24);
+  color: #111;
+}
 
-/* Toolbar */
+/* High-light layer */
+.liquid-glass-card::before {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    linear-gradient(140deg, rgba(255,255,255,0.80), transparent 34%),
+    radial-gradient(circle at 18% 2%, rgba(255,255,255,0.92), transparent 30%);
+  opacity: 0.66;
+  mix-blend-mode: screen;
+}
+
+/* Subtle distortion layer */
+.liquid-glass-card::after {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0.14;
+}
+
+.liquid-glass-card > * { position: relative; z-index: 2; }
+
+/* ── Offer card layout ── */
+.offer-card {
+  display: flex; gap: 0;
+}
+.offer-media-panel {
+  width: 220px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  border-right: 1px solid rgba(0,0,0,0.05);
+}
+.offer-info-panel {
+  flex: 1; padding: 14px 18px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  min-width: 0;
+}
+
+.offer-main-image {
+  position: relative; width: 100%; aspect-ratio: 4/3;
+  background: rgba(0,0,0,0.03); overflow: hidden;
+}
+.offer-main-image img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.image-placeholder {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  color: #bbb; font-size: 12px;
+}
+.deep-badge {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(34,197,94,0.18); color: #16a34a;
+  font-size: 10px; font-weight: 600; padding: 2px 8px;
+  border-radius: 20px; backdrop-filter: blur(8px);
+  border: 1px solid rgba(34,197,94,0.20);
+}
+
+.offer-thumbnails {
+  display: flex; gap: 6px; padding: 8px; overflow-x: auto;
+}
+.thumb {
+  width: 44px; height: 44px; object-fit: cover; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.6); flex-shrink: 0;
+}
+.thumb-more {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 8px;
+  background: rgba(0,0,0,0.04); font-size: 11px; color: #888; flex-shrink: 0;
+}
+
+/* ── Info panel ── */
+.offer-title {
+  font-size: 15px; font-weight: 650; line-height: 1.42;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; color: #0f172a;
+}
+
+.offer-price-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.offer-price { font-size: 20px; font-weight: 700; color: #0f172a; }
+.offer-unit { font-size: 12px; color: #888; }
+.offer-moq { font-size: 11px; color: #666; margin-left: 6px; padding: 2px 8px; border-radius: 20px; background: rgba(0,0,0,0.04); }
+
+/* Metric tiles */
+.metric-grid-glass {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.metric-tile {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 12px; border-radius: 14px;
+  background: rgba(255,255,255,0.48); border: 1px solid rgba(255,255,255,0.6);
+  backdrop-filter: blur(8px);
+}
+.metric-value { font-size: 14px; font-weight: 650; color: #0f172a; }
+.metric-label { font-size: 11px; color: #888; }
+
+/* Supplier */
+.offer-supplier { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.supplier-name { font-size: 13px; font-weight: 500; color: #333; }
+
+/* Offer ID */
+.offer-id-line { display: flex; align-items: center; gap: 6px; }
+.offer-id-line code { font-family: 'SF Mono','Consolas',monospace; font-size: 12px; color: #888; }
+
+/* Tags */
+.offer-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* Price tiers */
+.tier-section { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tier-label { font-size: 11px; color: #888; }
+.tier-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tier-item { font-size: 11px; padding: 2px 8px; border-radius: 12px; background: rgba(0,0,0,0.04); }
+
+/* SKU section */
+.sku-section { margin-top: 2px; }
+.sku-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.sku-label { font-size: 12px; font-weight: 600; color: #555; }
+.sku-table { display: flex; flex-direction: column; gap: 2px; }
+.sku-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.30); }
+.sku-specs { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-price { font-weight: 600; color: #0f172a; min-width: 50px; text-align: right; }
+.sku-stock { color: #888; min-width: 60px; text-align: right; }
+.sku-sales { color: #aaa; font-size: 11px; }
+
+/* Attributes */
+.attr-section { margin-top: 2px; }
+.attr-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.attr-label { font-size: 12px; font-weight: 600; color: #555; }
+.attr-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 2px 8px; }
+.attr-item { display: contents; font-size: 12px; }
+.attr-key { color: #888; padding: 2px 0; }
+.attr-value { color: #333; padding: 2px 0; word-break: break-word; }
+
+/* Actions */
+.offer-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+
+/* ── Glass pill & chip ── */
+.glass-pill-button {
+  border: 1px solid rgba(255,255,255,0.68);
+  background: rgba(255,255,255,0.48);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border-radius: 999px; padding: 5px 12px; font-size: 11px; cursor: pointer;
+  color: #333; font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82), 0 6px 18px rgba(15,23,42,0.06);
+  transition: transform 0.14s, background 0.14s, box-shadow 0.14s;
+}
+.glass-pill-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.65);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 24px rgba(15,23,42,0.10);
+}
+
+.glass-chip {
+  display: inline-flex; align-items: center;
+  border-radius: 999px; padding: 3px 10px; font-size: 11px;
+  background: rgba(255,255,255,0.44); border: 1px solid rgba(255,255,255,0.60);
+  backdrop-filter: blur(10px); color: rgba(15,23,42,0.72);
+}
+.glass-chip.verified {
+  background: rgba(66,133,244,0.10); color: #4285f4; border-color: rgba(66,133,244,0.18);
+}
+
+/* ── Result renderer ── */
+.result-renderer { position: relative; }
 .result-toolbar {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 12px; gap: 8px;
+  margin-bottom: 14px; gap: 8px;
 }
 .mode-toggle { display: flex; gap: 0; }
 .mode-btn {
-  padding: 6px 14px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.6);
-  cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-}
-.mode-btn:first-child { border-radius: 8px 0 0 8px; }
-.mode-btn:last-child { border-radius: 0 8px 8px 0; }
-.mode-btn.active {
-  background: rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.2); color: #111;
-}
-.mode-btn:not(.active):hover { background: rgba(255,255,255,0.8); }
-
-.ghost-button-sm {
-  padding: 5px 12px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;
-  background: rgba(255,255,255,0.6); cursor: pointer; font-size: 11px;
+  padding: 6px 14px; border: 1px solid rgba(0,0,0,0.10); background: rgba(255,255,255,0.60);
+  cursor: pointer; font-size: 12px; font-weight: 500;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   transition: all 0.15s;
 }
-.ghost-button-sm:hover { background: rgba(255,255,255,0.85); }
+.mode-btn:first-child { border-radius: 8px 0 0 8px; }
+.mode-btn:last-child { border-radius: 0 8px 8px 0; }
+.mode-btn.active { background: rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.20); color: #111; }
+.mode-btn:not(.active):hover { background: rgba(255,255,255,0.80); }
 
-/* Card grid */
+.ghost-button-sm {
+  padding: 5px 12px; border: 1px solid rgba(0,0,0,0.10); border-radius: 8px;
+  background: rgba(255,255,255,0.60); cursor: pointer; font-size: 11px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+
 .offer-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
-  padding-bottom: 16px;
-  max-height: 70vh;
-  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 18px;
+  max-height: 70vh; overflow-y: auto; padding-bottom: 16px;
 }
 
-/* ── Liquid Glass Card ── */
-.offer-card {
-  position: relative;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--glass-radius);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  overflow: hidden;
-  transition: box-shadow 0.2s, transform 0.15s;
-}
-.offer-card:hover {
-  box-shadow: var(--glass-hover-shadow);
-  transform: translateY(-2px);
-}
+/* JSON result */
+.result-preview { background: rgba(255,255,255,0.45); border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 12px; }
+.result-preview pre { font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+.result-preview pre.json-output { max-height: 520px; overflow: auto; }
 
-/* Image */
-.card-image-wrap {
-  width: 100%; aspect-ratio: 4 / 3;
-  background: rgba(0,0,0,0.03); overflow: hidden;
-}
-.card-image-wrap img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
-}
-.card-image-fallback {
-  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, rgba(0,0,0,0.02), rgba(0,0,0,0.05));
-}
+.error-detail { background: rgba(254,240,240,0.60); border-color: rgba(245,198,203,0.50); }
+.error-detail h4 { font-size: 13px; margin-bottom: 6px; color: #c62828; }
+.error-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 4px 8px; font-size: 12px; }
+.error-grid span { color: #888; }
+.error-argv { margin: 6px 0; }
+.error-argv code { font-size: 11px; background: rgba(0,0,0,0.03); padding: 4px 6px; border-radius: 3px; display: block; word-break: break-all; }
+.error-stderr pre { font-size: 11px; max-height: 150px; overflow: auto; }
 
-/* Card body */
-.card-body { padding: 14px 16px 12px; }
-.card-title {
-  font-size: 14px; font-weight: 600; line-height: 1.45;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden; color: #111; margin-bottom: 8px;
-}
-
-/* Price */
-.card-price { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.price-value { font-size: 20px; font-weight: 700; color: #111; }
-.turnover { font-size: 11px; color: #888; }
-
-/* Meta row */
-.card-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: #666; margin-bottom: 8px; }
-.meta-item {
-  background: rgba(0,0,0,0.04); border-radius: 6px; padding: 2px 8px;
-}
-.meta-item.supplier { font-weight: 500; color: #333; }
-
-/* Offer ID row */
-.card-id-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; margin-bottom: 8px; }
-.offer-id { font-family: 'SF Mono', 'Consolas', monospace; }
-
-/* Chip buttons */
-.chip-btn {
-  padding: 2px 10px; border: 1px solid rgba(0,0,0,0.1); border-radius: 20px;
-  background: rgba(255,255,255,0.6); cursor: pointer; font-size: 10px;
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  transition: background 0.15s;
-}
-.chip-btn:hover { background: rgba(0,0,0,0.06); }
-
-/* Tags */
-.card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
-.tag-chip {
-  padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 500;
-  background: rgba(0,0,0,0.04); color: #555; border: 1px solid rgba(0,0,0,0.06);
-}
-.tag-chip.verified { background: rgba(66,133,244,0.08); color: #4285f4; border-color: rgba(66,133,244,0.15); }
-
-/* Card actions */
-.card-actions { display: flex; gap: 6px; }
-
-/* Toast */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: rgba(0,0,0,0.75); color: #fff; padding: 8px 20px;
   border-radius: 24px; font-size: 13px; z-index: 200;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  animation: fadeInOut 1.6s ease;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  animation: fadeUp 1.6s ease;
 }
-@keyframes fadeInOut {
+@keyframes fadeUp {
   0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
   15% { opacity: 1; transform: translateX(-50%) translateY(0); }
   80% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* Responsive: narrow → stack */
+@media (max-width: 700px) {
+  .offer-card { flex-direction: column; }
+  .offer-media-panel { width: 100%; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.04); }
 }
