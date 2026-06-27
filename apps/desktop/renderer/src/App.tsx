@@ -3,11 +3,12 @@ import { getApi, CommandRegistry, AccountData, RuntimeStatus, CliInfo, CommandRe
 import AccountSelector from './components/Account/AccountSelector';
 import RuntimeStatusPanel from './components/Runtime/RuntimeStatusPanel';
 import CommandPanel from './components/Commands/CommandPanel';
+import HistoryModal from './components/History/HistoryModal';
+import HistoryDetailModal from './components/History/HistoryDetailModal';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
 import './App.css';
-import HistoryPanel from './components/History/HistoryPanel';
 
 export default function App() {
   const [registry, setRegistry] = useState<CommandRegistry | null>(null);
@@ -18,6 +19,9 @@ export default function App() {
   const [history, setHistory] = useState<CommandRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
 
   const api = getApi();
 
@@ -59,9 +63,16 @@ export default function App() {
     setRuntime(rt);
   };
 
-  const loadHistory = async () => {
-    const items = await api.commands.getHistory({ limit: 12 });
+  const openRecentTasks = async () => {
+    const items = await api.commands.getHistory({ limit: 8 });
     setHistory(items);
+    setRecentOpen(true);
+  };
+
+  const openHistory = async () => {
+    const items = await api.commands.getHistory({ limit: 50 });
+    setHistory(items);
+    setHistoryOpen(true);
   };
 
   if (loading) {
@@ -111,7 +122,8 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <button className="glass-btn-secondary" onClick={handleRefreshRuntime}>刷新状态</button>
-            <button className="glass-btn-secondary" onClick={loadHistory}>历史记录</button>
+            <button className="glass-btn-secondary" onClick={openRecentTasks}>最近任务</button>
+            <button className="glass-btn-secondary" onClick={openHistory}>历史记录</button>
           </div>
         </header>
 
@@ -120,24 +132,32 @@ export default function App() {
             registry={registry}
             activeProfile={activeProfile}
             accounts={accounts}
-            onHistoryRefresh={loadHistory}
+            onHistoryRefresh={openRecentTasks}
           />
         </div>
       </main>
 
-      <aside className="ozon-panel glass-section">
-        <div className="section-head">
-          <h3>Ozon 上架卡片</h3>
-          <span>本轮预留</span>
-        </div>
-        <article className="ozon-draft-card">
-          <div className="draft-state ready">1688 已接入</div>
-          <h4>Ozon / DeepSeek 下一步</h4>
-          <p>本轮只接 1688 CLI。下一轮接入 DeepSeek 生成俄语标题、描述，对接 Ozon ProductAPI 上架。</p>
-        </article>
+      <HistoryModal
+        title="最近任务"
+        history={history.slice(0, 8)}
+        open={recentOpen}
+        onClose={() => setRecentOpen(false)}
+        onSelect={(r) => { setRecentOpen(false); setDetailRecord(r); }}
+        compact
+      />
 
-        <HistoryPanel history={history} />
-      </aside>
+      <HistoryModal
+        title="历史记录"
+        history={history}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={(r) => { setHistoryOpen(false); setDetailRecord(r); }}
+      />
+
+      <HistoryDetailModal
+        record={detailRecord}
+        onClose={() => setDetailRecord(null)}
+      />
     </div>
   );
 }
