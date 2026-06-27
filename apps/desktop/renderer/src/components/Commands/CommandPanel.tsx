@@ -145,19 +145,20 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         ))}
       </div>
 
-      {/* Command list */}
-      <div className="command-list">
-        {groupCommands.map((cmd) => (
-          <button
-            key={cmd.id}
-            className={`command-item ${cmd.id === activeCmdId ? 'active' : ''}`}
-            onClick={() => selectCommand(cmd.id)}
-          >
-            <strong>{cmd.label}</strong>
-            <span>{cmd.argvPreview}</span>
-            {cmd.write && <em>写操作</em>}
-          </button>
-        ))}
+      {/* Command picker — dropdown instead of flat buttons */}
+      <div className="command-picker">
+        <span className="command-picker-label">任务类型</span>
+        <select
+          className="command-select"
+          value={activeCmdId}
+          onChange={(e) => selectCommand(e.target.value)}
+        >
+          {groupCommands.map((cmd) => (
+            <option key={cmd.id} value={cmd.id}>
+              {cmd.label} · {cmd.id}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Form */}
