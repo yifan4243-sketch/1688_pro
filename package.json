@@ -58,6 +58,10 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "desktop": "electron apps/desktop/main.cjs",
+    "desktop:dev": "concurrently -k \"vite apps/desktop/renderer\" \"cross-env NODE_ENV=development electron apps/desktop/main/main.cjs\"",
+    "desktop:build": "npm run build && cd apps/desktop/renderer && npx vite build",
+    "desktop:pack": "npm run desktop:build && electron-builder --dir",
+    "desktop:dist": "npm run desktop:build && electron-builder",
     "build": "tsc -p tsconfig.json && node scripts/fix_bin_mode.mjs",
     "test": "vitest run",
     "test:unit": "vitest run --exclude tests/doctor-live.test.ts",
@@ -72,6 +76,9 @@
     "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.4",
     "commander": "^12.1.0",
     "iconv-lite": "^0.7.2",
     "playwright": "^1.48.0",
@@ -79,16 +86,53 @@
     "proper-lockfile": "^4.1.2",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "qrcode": "^1.5.4",
-    "update-notifier": "^7.3.1"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "update-notifier": "^7.3.1",
+    "vite": "^5.4.21"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/proper-lockfile": "^4.1.4",
     "@types/qrcode": "^1.5.6",
     "@types/update-notifier": "^6.0.8",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
     "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.3",
     "vitest": "^2.1.0"
+  },
+  "build": {
+    "appId": "com.studio.1688-to-ozon",
+    "productName": "1688 to Ozon Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "apps/desktop/main/**/*",
+      "apps/desktop/preload/**/*",
+      "apps/desktop/renderer/dist/**/*",
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "cli/dist"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

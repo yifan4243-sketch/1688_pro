@@ -1,0 +1,30 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('desktopApi', {
+  // Command registry & execution
+  commands: {
+    getRegistry: () => ipcRenderer.invoke('desktop:getCommandRegistry'),
+    run: (payload) => ipcRenderer.invoke('desktop:runCommand', payload),
+    cancel: (runId) => ipcRenderer.invoke('desktop:cancelCommand', runId),
+    getHistory: (query) => ipcRenderer.invoke('desktop:getCommandHistory', query),
+  },
+
+  // Account management
+  accounts: {
+    list: () => ipcRenderer.invoke('desktop:listAccounts'),
+    add: (params) => ipcRenderer.invoke('desktop:addAccount', params),
+    update: (profile, params) => ipcRenderer.invoke('desktop:updateAccount', profile, params),
+    remove: (profile) => ipcRenderer.invoke('desktop:removeAccount', profile),
+    setActive: (profile) => ipcRenderer.invoke('desktop:setActiveAccount', profile),
+    login: (profile) => ipcRenderer.invoke('desktop:loginAccount', profile),
+    refreshStatus: (profile) => ipcRenderer.invoke('desktop:refreshAccountStatus', profile),
+    suggestProfileName: () => ipcRenderer.invoke('desktop:suggestProfileName'),
+  },
+
+  // Runtime
+  runtime: {
+    getStatus: (profile) => ipcRenderer.invoke('desktop:getRuntimeStatus', profile),
+    doctor: (profile) => ipcRenderer.invoke('desktop:doctor', profile),
+    getCliInfo: () => ipcRenderer.invoke('desktop:getCliInfo'),
+  },
+});
