@@ -56,11 +56,14 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     const deepMap = new Map<string, unknown>();
     for (const d of deepOffers) deepMap.set(String(d.offerId ?? ''), d);
 
+    const isDeepPro = Boolean((data?.deeppro as Record<string, unknown> | undefined)?.enabled);
+
     return toProgressCards(
       Math.max(baseOffers.length, placeholderCards || 0, deepOffers.length + deepFailures.length),
       baseOffers,
       deepMap,
       deepFailures,
+      { isDeepPro },
     );
   }, [data, placeholderCards, running]);
 

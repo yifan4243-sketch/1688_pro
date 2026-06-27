@@ -554,14 +554,28 @@
   font-size: 11px; color: var(--text-tertiary); margin-top: 4px; text-align: right;
 }
 
-/* ── Detail modal ── */
+/* ── Detail modal (full-screen overlay via Portal) ── */
+.detail-backdrop {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 32px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
 .detail-modal {
-  width: 640px; max-width: 90vw; max-height: 85vh; overflow-y: auto;
+  width: min(760px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.90);
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
 }
 .detail-images { margin-bottom: 12px; }
 .detail-main-image {
-  width: 100%; max-height: 320px; object-fit: contain;
-  border-radius: 16px; background: rgba(0,0,0,0.02);
+  width: 100%; max-height: 400px; object-fit: contain;
+  border-radius: 20px; background: rgba(255,255,255,0.7);
+  margin-bottom: 4px;
 }
 .detail-thumbs { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; }
 .detail-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
