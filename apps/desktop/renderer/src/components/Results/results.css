@@ -57,23 +57,36 @@
 .offer-card {
   display: flex; gap: 0;
 }
+
+/* Left: image panel with glass shell and padding */
 .offer-media-panel {
-  width: 220px; flex-shrink: 0;
-  display: flex; flex-direction: column;
-  border-right: 1px solid rgba(0,0,0,0.05);
+  width: 250px; flex-shrink: 0;
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  border-right: 1px solid rgba(255,255,255,0.34);
 }
-.offer-info-panel {
-  flex: 1; padding: 14px 18px 14px;
-  display: flex; flex-direction: column; gap: 8px;
-  min-width: 0;
+
+/* Glass shell around main image */
+.offer-main-image-shell {
+  border-radius: 20px; padding: 8px;
+  background: rgba(255,255,255,0.42);
+  border: 1px solid rgba(255,255,255,0.62);
+  backdrop-filter: blur(14px) saturate(1.35);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.75),
+    0 10px 28px rgba(15,23,42,0.08);
+  margin-bottom: 2px;
 }
 
 .offer-main-image {
-  position: relative; width: 100%; aspect-ratio: 4/3;
-  background: rgba(0,0,0,0.03); overflow: hidden;
+  position: relative; width: 100%; aspect-ratio: 1 / 1;
+  border-radius: 16px; overflow: hidden;
+  background: linear-gradient(135deg, rgba(255,255,255,0.58), rgba(255,255,255,0.22));
 }
 .offer-main-image img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
+  width: 100%; height: 100%; object-fit: contain; display: block;
+  background: rgba(255,255,255,0.30);
 }
 .image-placeholder {
   width: 100%; height: 100%; display: flex; flex-direction: column;
@@ -102,14 +115,28 @@
 }
 
 /* ── Info panel ── */
-.offer-title {
-  font-size: 15px; font-weight: 650; line-height: 1.42;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  overflow: hidden; color: #0f172a;
+.offer-info-panel {
+  flex: 1; padding: 18px 20px 16px 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  min-width: 0;
 }
 
-.offer-price-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.offer-price { font-size: 20px; font-weight: 700; color: #0f172a; }
+/* Title comes FIRST in the header block */
+.offer-header-block {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 2px;
+}
+
+.offer-title {
+  margin: 0;
+  font-size: 16px; font-weight: 700; line-height: 1.42;
+  color: #0f172a; letter-spacing: -0.01em;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; max-width: 100%;
+}
+
+.offer-price-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.offer-price { font-size: 22px; font-weight: 800; color: #0f172a; letter-spacing: -0.03em; }
 .offer-unit { font-size: 12px; color: #888; }
 .offer-moq { font-size: 11px; color: #666; margin-left: 6px; padding: 2px 8px; border-radius: 20px; background: rgba(0,0,0,0.04); }
 

@@ -91,14 +91,18 @@ function arr(v: unknown): unknown[] {
 // ── image resolver ──
 
 export function getOfferImage(raw: Record<string, unknown>): string | null {
-  const img = raw.mainImage || raw.image || raw.imageUrl || raw.img || raw.picUrl || raw.photo || raw.thumb;
-  if (typeof img === 'string' && img.length > 0) return img;
-  const gallery = raw.images;
+  // Try all common image field names
+  const direct = raw.mainImage || raw.image || raw.imageUrl || raw.img || raw.picUrl || raw.photo || raw.thumb || raw.previewImage;
+  if (typeof direct === 'string' && direct.length > 0) return direct;
+  // gallery / images array
+  const gallery = raw.images || raw.gallery || raw.imageList;
   if (Array.isArray(gallery) && gallery.length > 0) {
     const first = gallery[0];
     if (typeof first === 'string') return first;
     if (typeof first === 'object' && first !== null) {
-      return s((first as Record<string, unknown>).url) || s((first as Record<string, unknown>).src) || null;
+      return s((first as Record<string, unknown>).url) ||
+             s((first as Record<string, unknown>).src) ||
+             s((first as Record<string, unknown>).image) || null;
     }
   }
   return null;
@@ -228,10 +232,13 @@ export function toOfferCardViewModels(resultJson: unknown): OfferCardViewModel[]
     const mergedSaledCount = deepObj ? n(deepObj.saledCount) : null;
     const mergedCategoryId = deepObj ? s(deepObj.categoryId) || null : null;
 
-    const mergedImages = deepObj ? imageList(deepObj) : imageList(base);
+    const mergedImages = deepObj && imageList(deepObj).length > 0
+      ? imageList(deepObj)
+      : imageList(base);
     const mergedImageUrl = deepObj
-      ? (s(deepObj.mainImage) || mergedImages[0] || getOfferImage(base))
-      : getOfferImage(base);
+      ? (s(deepObj.mainImage) || mergedImages[0] || getOfferImage(deepObj) || getOfferImage(base))
+      : (getOfferImage(base) || mergedImages[0]);
+    const mergedDeepUrl = s(deepObj?.url) || s(deepObj?.detailUrl) || null;
 
     const skuList = deepObj ? skusFromDeep(deepObj) : [];
     const attrList = deepObj ? attributesFromDeep(deepObj) : [];
@@ -239,8 +246,10 @@ export function toOfferCardViewModels(resultJson: unknown): OfferCardViewModel[]
 
     return {
       offerId: id,
-      title: s(base.title || deepObj?.title, '未识别商品'),
-      url: s(base.url) || `https://detail.1688.com/offer/${id}.html`,
+      title:
+        s(base.title) || s(deepObj?.title) || s(base.subject) || s(base.name) ||
+        s(deepObj?.subject) || s(deepObj?.name) || '未识别商品标题',
+      url: s(base.url) || mergedDeepUrl || `https://detail.1688.com/offer/${id}.html`,
 
       imageUrl: mergedImageUrl,
       images: mergedImages,

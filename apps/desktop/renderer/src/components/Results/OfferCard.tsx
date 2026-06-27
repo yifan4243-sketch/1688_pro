@@ -11,6 +11,7 @@ const toast = (msg: string, setter: (v: string) => void) => {
 
 export default function OfferCard({ offer, onViewJson }: { offer: OfferCardViewModel; onViewJson?: (raw: unknown) => void }) {
   const [tip, setTip] = useState('');
+  const [imgFailed, setImgFailed] = useState(false);
   const copy = (text: string, label: string) =>
     navigator.clipboard.writeText(text).then(() => toast(`已复制${label}`, setTip), () => toast('复制失败', setTip));
 
@@ -32,41 +33,57 @@ export default function OfferCard({ offer, onViewJson }: { offer: OfferCardViewM
     ...(offer.repurchaseRateText ? [offer.repurchaseRateText] : []),
   ];
 
+  const showImage = offer.imageUrl && !imgFailed;
+
   return (
     <article className="liquid-glass-card offer-card">
-      {/* image panel */}
+      {/* ── left media panel ── */}
       <div className="offer-media-panel">
-        <div className="offer-main-image">
-          {offer.imageUrl ? (
-            <img src={offer.imageUrl} alt={offer.title} loading="lazy" />
-          ) : (
-            <div className="image-placeholder"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="1.2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>暂无图片</span></div>
-          )}
-          {offer.deepCollected && <span className="deep-badge">深采</span>}
+        <div className="offer-main-image-shell">
+          <div className="offer-main-image">
+            {showImage ? (
+              <img
+                src={offer.imageUrl!}
+                alt={offer.title}
+                loading="lazy"
+                onError={() => setImgFailed(true)}
+              />
+            ) : (
+              <div className="image-placeholder">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="1.2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                <span>{imgFailed ? '加载失败' : '暂无图片'}</span>
+              </div>
+            )}
+            {offer.deepCollected && <span className="deep-badge">深采</span>}
+          </div>
         </div>
+
         {offer.images.length > 1 && (
           <div className="offer-thumbnails">
             {offer.images.slice(0, 5).map((url, i) => (
-              <img key={i} src={url} alt="" className="thumb" />
+              <img key={i} src={url} alt="" className="thumb" loading="lazy" />
             ))}
             {offer.images.length > 5 && <span className="thumb-more">+{offer.images.length - 5}</span>}
           </div>
         )}
       </div>
 
-      {/* info panel */}
+      {/* ── right info panel ── */}
       <div className="offer-info-panel">
-        <h4 className="offer-title">{offer.title}</h4>
-
-        <div className="offer-price-row">
-          <span className="offer-price">{offer.priceText}</span>
-          {offer.unitName && <span className="offer-unit">/ {offer.unitName}</span>}
-          {offer.minOrderQty != null && <span className="offer-moq">起订 {offer.minOrderQty} {offer.unitName || ''}</span>}
+        {/* title must be first and always visible */}
+        <div className="offer-header-block">
+          <h4 className="offer-title">{offer.title || '未识别商品标题'}</h4>
+          <div className="offer-price-row">
+            <span className="offer-price">{offer.priceText || '—'}</span>
+            {offer.unitName && <span className="offer-unit">/ {offer.unitName}</span>}
+            {offer.minOrderQty != null && (
+              <span className="offer-moq">起订 {offer.minOrderQty} {offer.unitName || ''}</span>
+            )}
+          </div>
         </div>
 
         <OfferMetricGrid items={metrics} />
 
-        {/* supplier */}
         <div className="offer-supplier">
           <span className="supplier-name">{offer.supplierName || '—'}</span>
           {offer.supplierYears != null && <span className="glass-chip">{offer.supplierYears}年</span>}
@@ -79,7 +96,6 @@ export default function OfferCard({ offer, onViewJson }: { offer: OfferCardViewM
           <button className="glass-pill-button" onClick={() => copy(offer.offerId, 'Offer ID')}>复制 ID</button>
         </div>
 
-        {/* tags */}
         {fullTags.length > 0 && (
           <div className="offer-tags">
             {fullTags.map((t, i) => (
@@ -88,7 +104,6 @@ export default function OfferCard({ offer, onViewJson }: { offer: OfferCardViewM
           </div>
         )}
 
-        {/* price tiers */}
         {offer.priceTiers.length > 0 && (
           <div className="tier-section">
             <span className="tier-label">价格阶梯</span>
@@ -103,7 +118,6 @@ export default function OfferCard({ offer, onViewJson }: { offer: OfferCardViewM
         <OfferSkuTable skus={offer.skus} />
         <OfferAttributes attrs={offer.attributes} />
 
-        {/* actions */}
         <div className="offer-actions">
           <button className="glass-pill-button" onClick={() => copy(offer.title, '标题')}>复制标题</button>
           <button className="glass-pill-button" onClick={() => copy(offer.url || '', '链接')}>复制链接</button>
