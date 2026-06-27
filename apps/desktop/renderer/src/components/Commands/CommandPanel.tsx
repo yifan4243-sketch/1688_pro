@@ -22,6 +22,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [alert, setAlert] = useState<{ text: string; kind: string } | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingPayload, setPendingPayload] = useState<CommandPayload | null>(null);
+  const [placeholderCount, setPlaceholderCount] = useState(0);
 
   const api = getApi();
   const command = registry.commands[activeCmdId];
@@ -66,6 +67,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     setLastRecord(null);
     setAlert(null);
     setFieldErrors({});
+    setPlaceholderCount(0);
     // Set defaults for non-boolean options
     const cmd = registry.commands[id];
     if (cmd) {
@@ -129,6 +131,11 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       setPendingPayload(collectPayload(false));
       setShowConfirm(true);
       return;
+    }
+    // Show placeholder cards immediately for search
+    if (activeCmdId === 'search') {
+      const max = Number(options.max || 20);
+      setPlaceholderCount(max > 0 ? max : 20);
     }
     setRunning(true);
     setAlert({ text: '命令执行中...', kind: 'info' });
@@ -396,7 +403,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         ) : lastRecord ? (
           <>
             <p className="result-count">{resultCount}</p>
-            <ResultRenderer record={lastRecord} resultType={command.resultType} />
+            <ResultRenderer record={lastRecord} resultType={command.resultType} placeholderCards={placeholderCount} running={running} />
           </>
         ) : (
           <div className="empty-result-state">

@@ -1,41 +1,76 @@
 import React, { useState, useMemo } from 'react';
 import { CommandRecord } from '../../services/api';
-import { toOfferCardViewModels, shouldDefaultCard } from '../../services/offer-adapter';
-import OfferCard from './OfferCard';
+import { shouldDefaultCard } from '../../services/offer-adapter';
+import ProgressOfferCard, { toProgressCards, ProgressOfferCardItem } from './ProgressOfferCard';
+import OfferDetailModal from './OfferDetailModal';
+import ProgressSummary from './ProgressSummary';
 
 interface Props {
   record: CommandRecord;
   resultType?: string;
+  placeholderCards?: number;
+  running?: boolean;
 }
 
 type ViewMode = 'card' | 'json';
 
-export default function ResultRenderer({ record, resultType }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
   );
   const [toast, setToast] = useState('');
+  const [detailItem, setDetailItem] = useState<ProgressOfferCardItem | null>(null);
 
   const data = record.stdoutJson as Record<string, unknown> | undefined;
-  const offers = useMemo(() => toOfferCardViewModels(data), [data]);
-  const hasOffers = offers.length > 0;
 
-  const handleViewJson = () => setViewMode('json');
+  // Build progress cards from result data
+  const progressCards = useMemo<ProgressOfferCardItem[]>(() => {
+    if (!data) {
+      // Still running — use placeholder count
+      if (placeholderCards && placeholderCards > 0) {
+        return Array.from({ length: placeholderCards }, (_, i) => ({
+          slotIndex: i,
+          status: (i === 0 ? 'collecting' as const : 'waiting' as const),
+        }));
+      }
+      return [];
+    }
 
-  const failureMessageZh = (f: Record<string, unknown>): string => {
-    const msg = String(f.message ?? '').trim();
-    if (msg) return msg;
-    const code = String(f.code ?? '');
-    const map: Record<string, string> = {
-      CAPTCHA_INTERCEPTION: '页面被验证码或滑块拦截，重试后仍未采集成功。',
-      MISSING_PRICE: '详情页缺少价格信息，可能 SKU 或价格接口未加载成功。',
-      MISSING_IMAGES: '详情页缺少商品图片，可能图片数据未加载成功。',
-      MISSING_TITLE: '详情页缺少商品标题，可能页面加载不完整或被拦截。',
-      RISK_OR_CAPTCHA_TITLE: '详情页标题显示风控、验证码或访问受限。',
-      EMPTY_OFFER_RESULT: '详情采集结果为空，可能页面未正常返回商品数据。',
-    };
-    return map[code] || '采集失败，原因未识别。';
-  };
+    const baseOffers = (data.offers as Array<Record<string, unknown>>) || [];
+    const deeppro = data.deeppro as Record<string, unknown> | undefined;
+    const deepOffers = (deeppro?.offers as Array<Record<string, unknown>>) || [];
+    const deepFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
+
+    // Mark all as collecting while running
+    if (running && placeholderCards && placeholderCards > 0) {
+      return Array.from({ length: placeholderCards }, (_, i) => ({
+        slotIndex: i,
+        offerId: String(baseOffers[i]?.offerId ?? ''),
+        title: String(baseOffers[i]?.title ?? ''),
+        image: String(baseOffers[i]?.image ?? ''),
+        status: (i === 0 ? 'collecting' as const : 'waiting' as const),
+      }));
+    }
+
+    // Build deep map and translate
+    const deepMap = new Map<string, unknown>();
+    for (const d of deepOffers) deepMap.set(String(d.offerId ?? ''), d);
+
+    return toProgressCards(
+      Math.max(baseOffers.length, placeholderCards || 0, deepOffers.length + deepFailures.length),
+      baseOffers,
+      deepMap,
+      deepFailures,
+    );
+  }, [data, placeholderCards, running]);
+
+  const hasOffers = progressCards.length > 0;
+
+  const deeppro = data?.deeppro as Record<string, unknown> | undefined;
+  const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
+  const keyword = data?.keyword as string | undefined;
+  const sort = data?.sort as string | undefined;
+  const sortMap: Record<string, string> = { relevance: '综合排序', 'best-selling': '销量优先', 'price-asc': '价格从低到高', 'price-desc': '价格从高到低' };
 
   const copyFullJson = async () => {
     const text = JSON.stringify(data, null, 2);
@@ -46,17 +81,31 @@ export default function ResultRenderer({ record, resultType }: Props) {
     } catch { setToast('复制失败'); }
   };
 
-  const keyword = data?.keyword as string | undefined;
-  const sort = data?.sort as string | undefined;
-  const deeppro = data?.deeppro as Record<string, unknown> | undefined;
-  const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
-  const sortMap: Record<string, string> = { relevance: '综合排序', 'best-selling': '销量优先', 'price-asc': '价格从低到高', 'price-desc': '价格从高到低' };
+  const failureMessageZh = (f: Record<string, unknown>): string => {
+    const msg = String(f.message ?? '').trim();
+    if (msg) return msg;
+    const code = String(f.code ?? '');
+    const map: Record<string, string> = {
+      CAPTCHA_INTERCEPTION: '验证码或滑块拦截',
+      MISSING_PRICE: '商品价格缺失',
+      MISSING_IMAGES: '商品图片缺失',
+      MISSING_TITLE: '商品标题缺失',
+      RISK_OR_CAPTCHA_TITLE: '页面被风控或验证码拦截',
+      EMPTY_OFFER_RESULT: '采集结果为空',
+    };
+    return map[code] || '采集失败，原因未识别。';
+  };
 
   return (
     <div className="result-renderer">
-      {/* Result summary */}
+      {/* Progress summary */}
+      {hasOffers && (
+        <ProgressSummary cards={progressCards} running={!!running} />
+      )}
+
+      {/* Result summary text */}
       <div className="result-summary">
-        <strong>{hasOffers ? `${offers.length} 个商品` : '已执行'}</strong>
+        <strong>{hasOffers ? `${progressCards.length} 个商品` : '已执行'}</strong>
         {keyword && <span>关键词：{keyword}</span>}
         {sort && sort !== 'relevance' && <span>排序：{sortMap[sort] || sort}</span>}
         {deeppro?.enabled && (
@@ -75,39 +124,49 @@ export default function ResultRenderer({ record, resultType }: Props) {
           )}
           <button className={`mode-btn ${viewMode === 'json' ? 'active' : ''}`} onClick={() => setViewMode('json')}>JSON 模式</button>
         </div>
-        <button className="glass-toolbar-button" onClick={copyFullJson}>
-          <span className="toolbar-btn-icon">⧉</span>
-          <span>复制完整 JSON</span>
-        </button>
+        {data && (
+          <button className="glass-toolbar-button" onClick={copyFullJson}>
+            <span className="toolbar-btn-icon">⧉</span>
+            <span>复制完整 JSON</span>
+          </button>
+        )}
       </div>
 
-      {/* Card view */}
+      {/* Progress card grid */}
       {viewMode === 'card' && hasOffers && (
-        <div className="offer-card-grid">
-          {offers.map((offer) => (
-            <OfferCard key={offer.offerId} offer={offer} onViewJson={handleViewJson} />
+        <div className="progress-card-grid">
+          {progressCards.map((card) => (
+            <ProgressOfferCard
+              key={card.slotIndex}
+              item={card}
+              onOpen={(item) => {
+                if (item.status === 'success' || item.status === 'failed') {
+                  setDetailItem(item);
+                }
+              }}
+            />
           ))}
         </div>
       )}
 
       {/* JSON view */}
-      {viewMode === 'json' && (
+      {viewMode === 'json' && data && (
         <div className="result-preview">
           <pre className="json-output">{JSON.stringify(data, null, 2)}</pre>
         </div>
       )}
 
       {/* Fallback: no card data */}
-      {viewMode === 'card' && !hasOffers && (
+      {viewMode === 'card' && !hasOffers && data && (
         <div className="result-preview">
           <pre className="json-output">{JSON.stringify(data, null, 2)}</pre>
         </div>
       )}
 
-      {/* DEEPPRO failures warning */}
+      {/* DEEPPRO failures summary */}
       {deepproFailures.length > 0 && (
         <div className="result-preview error-detail" style={{ marginTop: 12 }}>
-          <h4>DEEPPRO 失败项</h4>
+          <h4>DEEPPRO 失败详情</h4>
           {deepproFailures.map((f, i) => (
             <div key={i} className="error-grid" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
               <div><span>Offer ID</span><strong>{String(f.offerId ?? '-')}</strong></div>
@@ -145,6 +204,11 @@ export default function ResultRenderer({ record, resultType }: Props) {
             <div className="error-stderr"><span>stderr</span><pre>{record.stderrText}</pre></div>
           )}
         </div>
+      )}
+
+      {/* Detail modal */}
+      {detailItem && (
+        <OfferDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
       )}
 
       {toast && <div className="toast">{toast}</div>}
