@@ -27,4 +27,11 @@ contextBridge.exposeInMainWorld('desktopApi', {
     doctor: (profile) => ipcRenderer.invoke('desktop:doctor', profile),
     getCliInfo: () => ipcRenderer.invoke('desktop:getCliInfo'),
   },
+
+  // Product history
+  productHistory: {
+    list: (limit) => ipcRenderer.invoke('desktop:listProductHistory', limit),
+    add: (products, meta) => ipcRenderer.invoke('desktop:addProductsToHistory', products, meta),
+    clear: () => ipcRenderer.invoke('desktop:clearProductHistory'),
+  },
 });

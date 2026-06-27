@@ -20,6 +20,12 @@ const {
   suggestProfileName,
 } = require('../accounts.cjs');
 
+const {
+  listProductHistory,
+  addProductsToHistory,
+  clearProductHistory,
+} = require('../product-history.cjs');
+
 // ---------- runtime ----------
 
 /** @type {{ rootDir: string, cliPath: string }} */
@@ -164,6 +170,17 @@ function registerIpc() {
     } catch { /* ignore */ }
     return { profile, status };
   });
+
+  // --- product history ---
+  ipcMain.handle('desktop:listProductHistory', (_event, limit) =>
+    listProductHistory(userDataDir(), limit),
+  );
+  ipcMain.handle('desktop:addProductsToHistory', (_event, products, meta) =>
+    addProductsToHistory(userDataDir(), products, meta),
+  );
+  ipcMain.handle('desktop:clearProductHistory', () =>
+    clearProductHistory(userDataDir()),
+  );
 }
 
 // ---------- lifecycle ----------

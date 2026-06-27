@@ -160,6 +160,11 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     const baseOffers = (data?.offers as Array<Record<string, unknown>>) || [];
     const keyword = String(data?.keyword ?? '');
 
+    // Write base offers to product history immediately
+    try {
+      await api.productHistory.add(baseOffers, { sourceCommand: 'search', profile: activeProfile });
+    } catch { /* best-effort */ }
+
     // Build base cards immediately
     const baseCards: ProgressOfferCardItem[] = [];
     for (let i = 0; i < max; i++) {
@@ -285,6 +290,13 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     try {
       const record = await api.commands.run(collectPayload(confirmed));
       setLastRecord(record);
+      // Write offers to product history
+      if (activeCmdId === 'search' && record.stdoutJson) {
+        const offers = (record.stdoutJson as Record<string, unknown>)?.offers as Array<Record<string, unknown>> | undefined;
+        if (offers?.length) {
+          api.productHistory.add(offers, { sourceCommand: 'search', profile: activeProfile }).catch(() => {});
+        }
+      }
       if (record.status === 'success') {
         setAlert({ text: '执行成功', kind: 'success' });
       } else {

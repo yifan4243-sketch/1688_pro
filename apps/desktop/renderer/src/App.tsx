@@ -5,6 +5,7 @@ import RuntimeStatusPanel from './components/Runtime/RuntimeStatusPanel';
 import CommandPanel from './components/Commands/CommandPanel';
 import HistoryModal from './components/History/HistoryModal';
 import HistoryDetailModal from './components/History/HistoryDetailModal';
+import ProductHistoryModal from './components/History/ProductHistoryModal';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -22,6 +23,8 @@ export default function App() {
   const [recentOpen, setRecentOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
+  const [productHistoryOpen, setProductHistoryOpen] = useState(false);
+  const [productItems, setProductItems] = useState<Array<{ offerId: string; title: string; price: string; image: string; url: string; collectedAt: string; raw?: unknown }>>([]);
 
   const api = getApi();
 
@@ -67,6 +70,12 @@ export default function App() {
     const items = await api.commands.getHistory({ limit: 8 });
     setHistory(items);
     setRecentOpen(true);
+  };
+
+  const openProductHistory = async () => {
+    const items = await api.productHistory.list(50);
+    setProductItems(items);
+    setProductHistoryOpen(true);
   };
 
   const openHistory = async () => {
@@ -123,7 +132,7 @@ export default function App() {
           <div className="topbar-actions">
             <button className="glass-btn-secondary" onClick={handleRefreshRuntime}>刷新状态</button>
             <button className="glass-btn-secondary" onClick={openRecentTasks}>最近任务</button>
-            <button className="glass-btn-secondary" onClick={openHistory}>历史记录</button>
+            <button className="glass-btn-secondary" onClick={openProductHistory}>历史记录</button>
           </div>
         </header>
 
@@ -157,6 +166,12 @@ export default function App() {
       <HistoryDetailModal
         record={detailRecord}
         onClose={() => setDetailRecord(null)}
+      />
+
+      <ProductHistoryModal
+        items={productItems}
+        open={productHistoryOpen}
+        onClose={() => setProductHistoryOpen(false)}
       />
     </div>
   );

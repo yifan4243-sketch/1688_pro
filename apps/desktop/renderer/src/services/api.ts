@@ -106,6 +106,11 @@ interface DesktopApi {
     doctor: (profile: string) => Promise<{ ok: boolean }>;
     getCliInfo: () => Promise<CliInfo>;
   };
+  productHistory: {
+    list: (limit?: number) => Promise<Array<{ offerId: string; title: string; price: string; image: string; url: string; collectedAt: string; raw?: unknown }>>;
+    add: (products: unknown[], meta?: Record<string, unknown>) => Promise<unknown>;
+    clear: () => Promise<unknown>;
+  };
 }
 
 export function getApi(): DesktopApi {
