@@ -1,5 +1,6 @@
 import type { BrowserContext, Page, Response as PWResponse } from 'playwright';
 import { dispatch } from '../session/dispatch.js';
+import { withSession } from '../session/context.js';
 import { emit, info } from '../io/output.js';
 import { CliError } from '../io/errors.js';
 import { withRecovery } from '../session/recovery.js';
@@ -832,6 +833,18 @@ export async function run(opts: OfferOpts): Promise<void> {
   }
 
   // Batch mode — multiple IDs, serial collection, partial results.
+  // For --pro + --headed, keep one visible browser/session open for the whole batch.
+  // This avoids opening and closing the browser for every single offer.
+  if (opts.pro === true && opts.headed === true) {
+    const result = await runOfferBatchInOneSession(ids, opts);
+    emit({
+      human: () => printBatch(result),
+      data: result,
+    });
+    return;
+  }
+
+  // Non-headed / daemon-friendly batch mode keeps the existing dispatch path.
   const offers: OfferResult[] = [];
   const failures: OfferFailure[] = [];
 
@@ -951,4 +964,87 @@ function sanitiseFailMessage(message: string): string {
     return '1688 触发滑块验证，请使用 --headed 手动处理。';
   }
   return message;
+}
+
+async function pauseDaemonForInlineBatch(profile?: string): Promise<{ resume: () => Promise<void> }> {
+  try {
+    const { status, stop, start } = await import('../daemon/manager.js');
+    const st = await status(profile);
+    if (!st.running) return { resume: async () => {} };
+
+    info(`Pausing daemon for profile "${profile || 'default'}" for headed batch run...`);
+    await stop(profile);
+
+    return {
+      resume: async () => {
+        try {
+          info(`Resuming daemon for profile "${profile || 'default'}"...`);
+          await start(profile);
+        } catch (e) {
+          info(`(Daemon resume failed for profile "${profile || 'default'}": ${(e as Error).message})`);
+        }
+      },
+    };
+  } catch {
+    return { resume: async () => {} };
+  }
+}
+
+async function runOfferBatchInOneSession(ids: string[], opts: OfferOpts): Promise<OfferBatchResult> {
+  const offers: OfferResult[] = [];
+  const failures: OfferFailure[] = [];
+  const profile = opts.profile;
+
+  const daemonMgr = await pauseDaemonForInlineBatch(profile);
+
+  try {
+    await withSession(
+      { headless: opts.headed !== true, profile },
+      async (ctx) => {
+        for (let i = 0; i < ids.length; i++) {
+          const offerId = ids[i]!;
+          if (!/^\d+$/.test(offerId)) {
+            failures.push({ offerId, code: 'BAD_INPUT', message: 'Invalid offerId' });
+            continue;
+          }
+
+          process.stderr.write(`[${i + 1}/${ids.length}] collecting offerId ${offerId}\n`);
+
+          try {
+            const data = await execute(ctx, { offerId, headed: opts.headed });
+            offers.push(data);
+          } catch (error) {
+            const err = error as Error & { code?: string };
+            const message = sanitiseFailMessage(err.message || String(error));
+            failures.push({
+              offerId,
+              code: err.code || 'DEEP_COLLECT_FAILED',
+              message,
+            });
+          }
+
+          if (i < ids.length - 1) {
+            await sleep(500);
+          }
+        }
+      },
+      {
+        requestId: `offer-batch-${Date.now()}`,
+        cmd: 'offer-batch',
+        args: { offerIds: ids, headed: opts.headed, profile },
+      },
+    );
+  } finally {
+    await daemonMgr.resume();
+  }
+
+  return {
+    mode: 'batch',
+    total: ids.length,
+    success: offers.length,
+    failed: failures.length,
+    offerIds: ids,
+    offers,
+    failures,
+  };
 }

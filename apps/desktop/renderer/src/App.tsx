@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getApi, CommandRegistry, AccountData, RuntimeStatus, CliInfo, CommandRecord } from './services/api';
 import AccountSelector from './components/Account/AccountSelector';
 import RuntimeStatusPanel from './components/Runtime/RuntimeStatusPanel';
@@ -46,6 +46,12 @@ export default function App() {
   const [runtimeStatusOpen, setRuntimeStatusOpen] = useState(false);
   const [deepTasks, setDeepTasks] = useState<DeepCollectSidebarTask[]>([]);
   const [deepTaskFilter, setDeepTaskFilter] = useState<'all' | 'success' | 'queued' | 'failed'>('all');
+  const deepTaskCounts = useMemo(() => {
+    const queued = deepTasks.filter((t) => t.status === 'queued' || t.status === 'collecting').length;
+    const success = deepTasks.filter((t) => t.status === 'success').length;
+    const failed = deepTasks.filter((t) => t.status === 'failed').length;
+    return { all: deepTasks.length, queued, success, failed };
+  }, [deepTasks]);
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
@@ -142,16 +148,13 @@ export default function App() {
 
         <div className="deep-task-sidebar">
           <div className="deep-task-sidebar-head">
-            <span className="deep-task-sidebar-title">
-              采集任务列表
-              <strong className="deep-task-count-inline">{deepTasks.length}</strong>
-            </span>
+            <span className="deep-task-sidebar-title">采集任务列表</span>
           </div>
           <div className="deep-task-filters">
-            <button className={deepTaskFilter === 'all' ? 'active' : ''} onClick={() => setDeepTaskFilter('all')}>全部</button>
-            <button className={deepTaskFilter === 'success' ? 'active' : ''} onClick={() => setDeepTaskFilter('success')}>已完成</button>
-            <button className={deepTaskFilter === 'queued' ? 'active' : ''} onClick={() => setDeepTaskFilter('queued')}>排队中</button>
-            <button className={deepTaskFilter === 'failed' ? 'active' : ''} onClick={() => setDeepTaskFilter('failed')}>失败</button>
+            <button className={deepTaskFilter === 'all' ? 'active' : ''} onClick={() => setDeepTaskFilter('all')}> <span>全部</span> <strong>{deepTaskCounts.all}</strong> </button>
+            <button className={deepTaskFilter === 'success' ? 'active' : ''} onClick={() => setDeepTaskFilter('success')}> <span>已完成</span> <strong>{deepTaskCounts.success}</strong> </button>
+            <button className={deepTaskFilter === 'queued' ? 'active' : ''} onClick={() => setDeepTaskFilter('queued')}> <span>排队中</span> <strong>{deepTaskCounts.queued}</strong> </button>
+            <button className={deepTaskFilter === 'failed' ? 'active' : ''} onClick={() => setDeepTaskFilter('failed')}> <span>失败</span> <strong>{deepTaskCounts.failed}</strong> </button>
           </div>
           {(() => {
             const filtered = deepTasks.filter((t) => {

@@ -421,14 +421,8 @@ body {
   width: 100%; padding: 0 4px; color: #0f172a; font-size: 12px;
 }
 .deep-task-sidebar-title {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center;
   font-size: 13px; font-weight: 900; color: #0f172a; white-space: nowrap;
-}
-.deep-task-count-inline {
-  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(219, 234, 254, 0.95); color: #2563eb;
-  font-size: 11px; font-weight: 900; line-height: 1;
 }
 .deep-task-empty {
   border-radius: 14px; padding: 14px 10px; text-align: center;
@@ -471,6 +465,17 @@ body {
   background: rgba(255,255,255,0.72); color: #64748b;
   font-size: 11px; font-weight: 800; cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+}
+.deep-task-filters button span { line-height: 1; }
+.deep-task-filters button strong {
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(148, 163, 184, 0.14); color: inherit;
+  font-size: 10px; font-weight: 900; line-height: 1;
+}
+.deep-task-filters button.active strong {
+  background: rgba(37, 99, 235, 0.12); color: #2563eb;
 }
 .deep-task-filters button.active {
   color: #2563eb; background: rgba(219,234,254,0.9);
