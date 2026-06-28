@@ -11,6 +11,7 @@ interface Props {
   placeholderCards?: number;
   running?: boolean;
   activeProfile?: string;
+  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>) => void;
 }
 
 type ViewMode = 'card' | 'json';
@@ -183,6 +184,25 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const deepRunningRef = useRef(false);
   const MAX_ATTEMPTS_PER_PROFILE = 2;
 
+  const buildDeepTasks = (queue = deepQueueRef.current, overrides = cardOverrides) => {
+    return queue.map((q, index) => {
+      const override = overrides[q.key] || {};
+      const isRunning = index === 0 && deepRunningRef.current;
+      return {
+        key: q.key,
+        offerId: q.item.offerId,
+        title: String(override.title || q.item.title || q.item.offerId || ''),
+        image: String(override.image || q.item.image || ''),
+        status: (isRunning ? 'collecting' : 'queued') as 'collecting' | 'queued',
+        message: String(override.message || ''),
+      };
+    });
+  };
+
+  const publishDeepTasks = (queue?: Array<{ key: string; item: ProgressOfferCardItem }>, overrides?: Record<string, Partial<ProgressOfferCardItem>>) => {
+    onDeepTasksChange?.(buildDeepTasks(queue, overrides));
+  };
+
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const showToast = (msg: string, timeout = 1800) => {
     setToast(msg); setTimeout(() => setToast(''), timeout);
@@ -250,11 +270,13 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     const next = deepQueueRef.current[0];
     if (!next) return;
     deepRunningRef.current = true;
+    publishDeepTasks();
     const { key, item } = next;
     try { await runDeepCollectWithFallback(item, key); }
     finally {
       deepQueueRef.current = deepQueueRef.current.slice(1);
       deepRunningRef.current = false;
+      publishDeepTasks();
       setTimeout(() => processDeepQueue(), 500);
     }
   };
@@ -267,6 +289,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     if (deepQueueRef.current.some((q) => q.key === key)) return;
     deepQueueRef.current = [...deepQueueRef.current, { key, item }];
     setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-queued', message: '排队等待深度采集', code: '' } }));
+    queueMicrotask(() => publishDeepTasks());
     processDeepQueue();
   };
 
@@ -275,6 +298,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setCardOverrides({});
     deepQueueRef.current = [];
     deepRunningRef.current = false;
+    onDeepTasksChange?.([]);
   }, [record?.runId, resultType]);
 
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;

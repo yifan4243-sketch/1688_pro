@@ -28,6 +28,7 @@ export default function App() {
   const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
   const [workspaceView, setWorkspaceView] = useState<'1688' | 'ozon'>('1688');
   const [runtimeStatusOpen, setRuntimeStatusOpen] = useState(false);
+  const [deepTasks, setDeepTasks] = useState<Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>>([]);
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
@@ -121,6 +122,37 @@ export default function App() {
             <img src="/nav/ozon.png" alt="Ozon" />
           </button>
         </div>
+
+        <div className="deep-task-sidebar">
+          <div className="deep-task-sidebar-head">
+            <span>深采任务</span>
+            <strong>{deepTasks.length}</strong>
+          </div>
+          {deepTasks.length === 0 ? (
+            <div className="deep-task-empty">暂无任务</div>
+          ) : (
+            <div className="deep-task-list">
+              {deepTasks.slice(0, 8).map((task) => (
+                <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
+                  {task.image ? (
+                    <img className="deep-task-thumb" src={task.image} alt="" />
+                  ) : (
+                    <div className="deep-task-thumb placeholder" />
+                  )}
+                  <div className="deep-task-info">
+                    <div className="deep-task-title">{task.title || task.offerId || '未命名商品'}</div>
+                    <div className={`deep-task-status ${task.status}`}>
+                      {task.status === 'collecting' ? '采集中' : '排队中'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {deepTasks.length > 8 && (
+            <div className="deep-task-more">还有 {deepTasks.length - 8} 个排队中</div>
+          )}
+        </div>
       </aside>
 
       <main className="workspace">
@@ -147,6 +179,7 @@ export default function App() {
                 activeProfile={activeProfile}
                 accounts={accounts}
                 onHistoryRefresh={refreshRecentTasks}
+                onDeepTasksChange={setDeepTasks}
               />
             </ErrorBoundary>
           ) : (

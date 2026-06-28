@@ -11,6 +11,7 @@ interface Props {
   activeProfile: string;
   accounts: AccountData;
   onHistoryRefresh: () => void;
+  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>) => void;
 }
 
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh }: Props) {
@@ -562,6 +563,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               placeholderCards={placeholderCount}
               running={true}
               activeProfile={activeProfile}
+              onDeepTasksChange={onDeepTasksChange}
             />
           </>
         ) : lastRecord ? (
@@ -573,6 +575,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               placeholderCards={placeholderCount}
               running={false}
               activeProfile={activeProfile}
+              onDeepTasksChange={onDeepTasksChange}
             />
           </>
         ) : (
