@@ -118,14 +118,6 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-function normalizeSingleDeepError(error: unknown): { code: string; message: string } {
-  const msg = error instanceof Error ? error.message : String(error || '');
-  if (/profile_busy|LOCK_BUSY|正在运行|busy/i.test(msg)) return { code: 'PROFILE_BUSY', message: '当前账号正在执行其他采集任务，已停止本次深采。请稍后重试。' };
-  if (/cancelled|canceled|已取消/i.test(msg)) return { code: 'CANCELLED', message: '采集任务被取消，可能是浏览器被关闭或命令被中断。' };
-  if (/captcha|验证码|滑块|风控/i.test(msg)) return { code: 'CAPTCHA_OR_RISK', message: '页面被验证码、滑块或风控拦截。' };
-  return { code: 'SINGLE_DEEP_COLLECT_FAILED', message: msg || '深度采集失败' };
-}
-
 export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -186,30 +178,71 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setSelectedKeys(new Set());
   };
 
-  // ----- per-card deep collect queue -----
+  // ----- per-card deep collect queue with profile fallback -----
   const deepQueueRef = useRef<Array<{ key: string; item: ProgressOfferCardItem }>>([]);
   const deepRunningRef = useRef(false);
+  const MAX_ATTEMPTS_PER_PROFILE = 2;
 
-  const runSingleDeepCollectNow = async (item: ProgressOfferCardItem, key: string) => {
-    const offerRecord = await api.commands.run({
-      commandId: 'offer',
-      args: { offerIds: item.offerId },
-      options: { pro: true },
-      profile: activeProfile || record?.profile || 'default',
-      confirmed: true,
-    });
-    if (offerRecord.status !== 'success') {
-      const msg = offerRecord.error?.message || offerRecord.stderrText || `深度采集失败：${offerRecord.status}`;
-      throw new Error(msg);
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const showToast = (msg: string, timeout = 1800) => {
+    setToast(msg); setTimeout(() => setToast(''), timeout);
+  };
+
+  const getDeepCollectProfilePool = async (): Promise<string[]> => {
+    try {
+      const acc = await api.accounts.list();
+      const profiles = (acc?.accounts || []).map((a) => String(a.profile || '').trim()).filter(Boolean);
+      return Array.from(new Set(['default', ...profiles])).filter(Boolean);
+    } catch { return ['default']; }
+  };
+
+  const runOfferProOnce = async (item: ProgressOfferCardItem, profile: string, attempt: number): Promise<{ ok: boolean; profile: string; attempt: number; status?: string; error?: string; data?: Record<string, unknown> }> => {
+    try {
+      const rec = await api.commands.run({
+        commandId: 'offer', args: { offerIds: item.offerId },
+        options: { pro: true, headed: true }, profile, confirmed: true,
+      });
+      if (rec.status !== 'success') return { ok: false, profile, attempt, status: rec.status, error: rec.error?.message || rec.stderrText || `status=${rec.status}` };
+      const d = rec.stdoutJson as Record<string, unknown> | undefined;
+      const t = String(d?.title || '').trim();
+      if (!t) return { ok: false, profile, attempt, status: 'MISSING_TITLE', error: '深度采集结果缺少标题' };
+      if (/captcha|验证码|滑块|风控/i.test(t)) return { ok: false, profile, attempt, status: 'CAPTCHA_OR_RISK', error: '页面被验证码、滑块或风控拦截' };
+      const imgs = Array.isArray(d?.images) ? d.images as string[] : [];
+      if (!String(d?.mainImage || imgs[0] || '').trim()) return { ok: false, profile, attempt, status: 'MISSING_IMAGES', error: '深度采集结果缺少图片' };
+      return { ok: true, profile, attempt, data: d };
+    } catch (e) {
+      return { ok: false, profile, attempt, status: 'EXCEPTION', error: e instanceof Error ? e.message : String(e || '未知错误') };
     }
-    const deep = offerRecord.stdoutJson as Record<string, unknown> | undefined;
-    if (!deep || !deep.title || /captcha|验证码|滑块|风控/i.test(String(deep.title))) {
-      throw new Error('深度采集结果不完整，可能被验证码或风控拦截');
+  };
+
+  const runDeepCollectWithFallback = async (item: ProgressOfferCardItem, key: string) => {
+    const profiles = await getDeepCollectProfilePool();
+    const failures: Array<{ profile: string; attempt: number; status?: string; error?: string }> = [];
+
+    for (let pi = 0; pi < profiles.length; pi++) {
+      const profile = profiles[pi]!;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROFILE; attempt++) {
+        setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: `正在使用 ${profile} 深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`, code: '' } }));
+        const result = await runOfferProOnce(item, profile, attempt);
+        if (result.ok && result.data) {
+          const d = result.data;
+          const imgs = Array.isArray(d.images) ? d.images as string[] : [];
+          setCardOverrides((prev) => ({ ...prev, [key]: { title: String(d.title || item.title || ''), price: String(d.priceRange || d.priceText || item.price || ''), image: String(d.mainImage || imgs[0] || item.image || ''), status: 'deep-success', raw: d, message: `${profile} 第 ${attempt} 次成功`, code: '' } }));
+          showToast(`深度采集完成：${profile}`);
+          return;
+        }
+        failures.push({ profile, attempt, status: result.status, error: result.error });
+        setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: `${profile} 第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次失败：${result.error || result.status || '未知'}`, code: String(result.status || '') } }));
+        await sleep(800);
+      }
+      if (pi < profiles.length - 1) {
+        setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: `${profile} 两次失败，切换到 ${profiles[pi + 1]}`, code: '' } }));
+        await sleep(500);
+      }
     }
-    const images = Array.isArray(deep.images) ? deep.images : [];
-    const mainImage = String(deep.mainImage || images[0] || item.image || '');
-    const price = String(deep.priceRange || deep.priceText || item.price || '');
-    setCardOverrides((prev) => ({ ...prev, [key]: { title: String(deep.title || item.title || ''), price, image: mainImage, status: 'deep-success', raw: deep, message: '', code: '' } }));
+    const summary = failures.map((f) => `${f.profile}#${f.attempt}: ${f.error || f.status || '失败'}`).join('；');
+    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message: `所有账号深度采集失败，已跳过。${summary}`, code: 'ALL_PROFILES_FAILED' } }));
+    showToast('该商品所有账号深采失败，已跳过', 2200);
   };
 
   const processDeepQueue = async () => {
@@ -218,31 +251,22 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     if (!next) return;
     deepRunningRef.current = true;
     const { key, item } = next;
-    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: '', code: '' } }));
-    try {
-      await runSingleDeepCollectNow(item, key);
-      setToast('深度采集完成');
-      setTimeout(() => setToast(''), 1600);
-    } catch (error) {
-      const n = normalizeSingleDeepError(error);
-      setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message: n.message, code: n.code } }));
-      setToast(n.message);
-      setTimeout(() => setToast(''), 2200);
-    } finally {
+    try { await runDeepCollectWithFallback(item, key); }
+    finally {
       deepQueueRef.current = deepQueueRef.current.slice(1);
       deepRunningRef.current = false;
-      setTimeout(() => processDeepQueue(), 300);
+      setTimeout(() => processDeepQueue(), 500);
     }
   };
 
   const enqueueSingleDeepCollect = (item: ProgressOfferCardItem) => {
-    if (!item.offerId) { setToast('缺少 Offer ID'); setTimeout(() => setToast(''), 1600); return; }
+    if (!item.offerId) { showToast('缺少 Offer ID'); return; }
     const key = item.offerId ? `offer:${item.offerId}` : `slot:${item.slotIndex}`;
-    const curOverride = cardOverrides[key];
-    const curStatus = curOverride?.status || item.status;
+    const curStatus = cardOverrides[key]?.status || item.status;
     if (curStatus === 'deep-queued' || curStatus === 'deep-collecting') return;
+    if (deepQueueRef.current.some((q) => q.key === key)) return;
     deepQueueRef.current = [...deepQueueRef.current, { key, item }];
-    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-queued', message: '', code: '' } }));
+    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-queued', message: '排队等待深度采集', code: '' } }));
     processDeepQueue();
   };
 
