@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { getApi, CommandRecord } from '../../services/api';
 import { shouldDefaultCard } from '../../services/offer-adapter';
 import ProgressOfferCard, { toProgressCards, ProgressOfferCardItem } from './ProgressOfferCard';
@@ -118,6 +118,14 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
+function normalizeSingleDeepError(error: unknown): { code: string; message: string } {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  if (/profile_busy|LOCK_BUSY|正在运行|busy/i.test(msg)) return { code: 'PROFILE_BUSY', message: '当前账号正在执行其他采集任务，已停止本次深采。请稍后重试。' };
+  if (/cancelled|canceled|已取消/i.test(msg)) return { code: 'CANCELLED', message: '采集任务被取消，可能是浏览器被关闭或命令被中断。' };
+  if (/captcha|验证码|滑块|风控/i.test(msg)) return { code: 'CAPTCHA_OR_RISK', message: '页面被验证码、滑块或风控拦截。' };
+  return { code: 'SINGLE_DEEP_COLLECT_FAILED', message: msg || '深度采集失败' };
+}
+
 export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -178,47 +186,72 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setSelectedKeys(new Set());
   };
 
-  const runSingleDeepCollect = async (item: ProgressOfferCardItem) => {
-    if (!item.offerId) {
-      setToast('缺少 Offer ID，无法深度采集');
-      setTimeout(() => setToast(''), 1600);
-      return;
+  // ----- per-card deep collect queue -----
+  const deepQueueRef = useRef<Array<{ key: string; item: ProgressOfferCardItem }>>([]);
+  const deepRunningRef = useRef(false);
+
+  const runSingleDeepCollectNow = async (item: ProgressOfferCardItem, key: string) => {
+    const offerRecord = await api.commands.run({
+      commandId: 'offer',
+      args: { offerIds: item.offerId },
+      options: { pro: true },
+      profile: activeProfile || record?.profile || 'default',
+      confirmed: true,
+    });
+    if (offerRecord.status !== 'success') {
+      const msg = offerRecord.error?.message || offerRecord.stderrText || `深度采集失败：${offerRecord.status}`;
+      throw new Error(msg);
     }
-    const key = item.offerId ? `offer:${item.offerId}` : `slot:${item.slotIndex}`;
+    const deep = offerRecord.stdoutJson as Record<string, unknown> | undefined;
+    if (!deep || !deep.title || /captcha|验证码|滑块|风控/i.test(String(deep.title))) {
+      throw new Error('深度采集结果不完整，可能被验证码或风控拦截');
+    }
+    const images = Array.isArray(deep.images) ? deep.images : [];
+    const mainImage = String(deep.mainImage || images[0] || item.image || '');
+    const price = String(deep.priceRange || deep.priceText || item.price || '');
+    setCardOverrides((prev) => ({ ...prev, [key]: { title: String(deep.title || item.title || ''), price, image: mainImage, status: 'deep-success', raw: deep, message: '', code: '' } }));
+  };
+
+  const processDeepQueue = async () => {
+    if (deepRunningRef.current) return;
+    const next = deepQueueRef.current[0];
+    if (!next) return;
+    deepRunningRef.current = true;
+    const { key, item } = next;
     setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: '', code: '' } }));
     try {
-      const offerRecord = await api.commands.run({
-        commandId: 'offer',
-        args: { offerIds: item.offerId },
-        options: { pro: true },
-        profile: activeProfile || record?.profile || 'default',
-        confirmed: true,
-      });
-      const deep = offerRecord.stdoutJson as Record<string, unknown> | undefined;
-      if (!deep || !deep.title || /captcha|验证码|滑块|风控/i.test(String(deep.title))) {
-        throw new Error('深度采集结果不完整，可能被验证码或风控拦截');
-      }
-      const images = Array.isArray(deep.images) ? deep.images : [];
-      const mainImage = String(deep.mainImage || images[0] || item.image || '');
-      setCardOverrides((prev) => ({
-        ...prev,
-        [key]: {
-          title: String(deep.title || item.title || ''),
-          price: String(deep.priceRange || deep.priceText || item.price || ''),
-          image: mainImage,
-          status: 'deep-success',
-          raw: deep, message: '', code: '',
-        },
-      }));
+      await runSingleDeepCollectNow(item, key);
       setToast('深度采集完成');
       setTimeout(() => setToast(''), 1600);
     } catch (error) {
-      const message = (error as Error).message || '深度采集失败';
-      setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message, code: 'SINGLE_DEEP_COLLECT_FAILED' } }));
-      setToast(message);
+      const n = normalizeSingleDeepError(error);
+      setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message: n.message, code: n.code } }));
+      setToast(n.message);
       setTimeout(() => setToast(''), 2200);
+    } finally {
+      deepQueueRef.current = deepQueueRef.current.slice(1);
+      deepRunningRef.current = false;
+      setTimeout(() => processDeepQueue(), 300);
     }
   };
+
+  const enqueueSingleDeepCollect = (item: ProgressOfferCardItem) => {
+    if (!item.offerId) { setToast('缺少 Offer ID'); setTimeout(() => setToast(''), 1600); return; }
+    const key = item.offerId ? `offer:${item.offerId}` : `slot:${item.slotIndex}`;
+    const curOverride = cardOverrides[key];
+    const curStatus = curOverride?.status || item.status;
+    if (curStatus === 'deep-queued' || curStatus === 'deep-collecting') return;
+    deepQueueRef.current = [...deepQueueRef.current, { key, item }];
+    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-queued', message: '', code: '' } }));
+    processDeepQueue();
+  };
+
+  useEffect(() => {
+    setSelectedKeys(new Set());
+    setCardOverrides({});
+    deepQueueRef.current = [];
+    deepRunningRef.current = false;
+  }, [record?.runId, resultType]);
 
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;
   const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
@@ -288,7 +321,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
               item={card}
               selected={selectedKeys.has(cardKey(card))}
               onSelectToggle={toggleSelect}
-              onDeepCollect={runSingleDeepCollect}
+              onDeepCollect={enqueueSingleDeepCollect}
               onOzonPlaceholder={() => {
                 setToast('上架至 OZON 暂未接入');
                 setTimeout(() => setToast(''), 1600);

@@ -4,6 +4,7 @@ export type ProgressOfferCardStatus =
   | 'waiting'
   | 'collecting'
   | 'basic-ready'
+  | 'deep-queued'
   | 'deep-collecting'
   | 'deep-success'
   | 'deep-failed'
@@ -35,6 +36,7 @@ interface Props {
 const overlayLabel: Record<string, string> = {
   'basic-ready': '等待深度采集',
   'collecting': '正在采集',
+  'deep-queued': '排队等待深度采集',
   'deep-collecting': '正在进行深度采集',
   'deep-failed': '深度采集失败',
   'failed': '采集失败',
@@ -43,6 +45,7 @@ const overlayLabel: Record<string, string> = {
 const overlayDetail: Record<string, string> = {
   'basic-ready': '系统将采集 SKU、属性、详情图',
   'collecting': '正在读取 1688 商品信息',
+  'deep-queued': '前一个商品完成后自动开始',
   'deep-collecting': 'SKU / 属性 / 详情图采集中',
   'deep-failed': '页面被验证码拦截或详情异常',
   'failed': '页面被验证码拦截或详情异常',
@@ -139,7 +142,7 @@ function failureReasonZh(code: string, fallback?: string): string {
 
 export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonPlaceholder, selected, onSelectToggle }: Props) {
   const showImage = Boolean(item.image);
-  const hasOverlay = (item.status === 'basic-ready' && item.pendingDeep === true) || item.status === 'collecting' || item.status === 'deep-collecting' || item.status === 'deep-failed' || item.status === 'failed';
+  const hasOverlay = (item.status === 'basic-ready' && item.pendingDeep === true) || item.status === 'collecting' || item.status === 'deep-queued' || item.status === 'deep-collecting' || item.status === 'deep-failed' || item.status === 'failed';
   const isFailed = item.status === 'deep-failed' || item.status === 'failed';
   const isClickable = Boolean(item.offerId || item.raw || item.title || item.image);
   const canSelect = isClickable || item.status !== 'waiting';
@@ -202,15 +205,15 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
           <button
             type="button"
             className="progress-card-action-btn progress-card-action-btn--deep"
-            disabled={!item.offerId || item.status === 'deep-collecting' || item.status === 'collecting'}
+            disabled={!item.offerId || item.status === 'deep-queued' || item.status === 'deep-collecting' || item.status === 'collecting'}
             onClick={(e) => {
               e.stopPropagation();
-              if (item.offerId && item.status !== 'deep-collecting' && item.status !== 'collecting') {
+              if (item.offerId && item.status !== 'deep-queued' && item.status !== 'deep-collecting' && item.status !== 'collecting') {
                 onDeepCollect?.(item);
               }
             }}
           >
-            {item.status === 'deep-collecting' ? '采集中...' : item.status === 'deep-success' ? '重新深采' : '深度采集'}
+            {item.status === 'deep-queued' ? '排队中' : item.status === 'deep-collecting' ? '采集中...' : item.status === 'deep-success' ? '重新深采' : '深度采集'}
           </button>
           <button
             type="button"
