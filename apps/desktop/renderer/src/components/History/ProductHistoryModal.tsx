@@ -43,7 +43,7 @@ export default function ProductHistoryModal({ items, open, onClose }: Props) {
             <header className="product-history-header">
               <div>
                 <h3>历史记录</h3>
-                <p>最近采集商品，最多保留 50 个</p>
+                <p>最近采集商品，当前 {items.length} 个，最多保留 500 个</p>
               </div>
               <button className="glass-btn-ghost" onClick={onClose}>关闭</button>
             </header>
