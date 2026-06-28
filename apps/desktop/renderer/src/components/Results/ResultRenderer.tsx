@@ -126,7 +126,6 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const [detailItem, setDetailItem] = useState<ProgressOfferCardItem | null>(null);
   const [ozonItem, setOzonItem] = useState<ProgressOfferCardItem | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
-  const [deletedKeys, setDeletedKeys] = useState<Set<string>>(() => new Set());
 
   const data = record?.stdoutJson as Record<string, unknown> | undefined;
 
@@ -140,10 +139,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setDeletedKeys(new Set());
   }, [record?.runId, resultType]);
 
-  const visibleCards = useMemo(
-    () => progressCards.filter((card) => !deletedKeys.has(cardKey(card))),
-    [progressCards, deletedKeys],
-  );
+  const visibleCards = useMemo(() => progressCards, [progressCards]);
   const selectableCards = visibleCards.filter((card) => card.status !== 'waiting' || card.offerId || card.raw || card.title || card.image);
   const hasOffers = visibleCards.length > 0;
   const selectedCount = selectableCards.filter((card) => selectedKeys.has(cardKey(card))).length;
@@ -168,16 +164,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     });
   };
 
-  const deleteSelected = () => {
-    if (selectedCount === 0) return;
-    setDeletedKeys((prev) => {
-      const next = new Set(prev);
-      selectableCards.forEach((card) => {
-        const key = cardKey(card);
-        if (selectedKeys.has(key)) next.add(key);
-      });
-      return next;
-    });
+  const clearSelected = () => {
     setSelectedKeys(new Set());
   };
 
@@ -218,8 +205,8 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
                 <button type="button" className="selection-action-btn" onClick={toggleSelectAll} disabled={selectableCards.length === 0}>
                   {allSelected ? '取消全选' : '全选'}
                 </button>
-                <button type="button" className="selection-action-btn danger" onClick={deleteSelected} disabled={selectedCount === 0}>
-                  删除{selectedCount > 0 ? ` ${selectedCount}` : ''}
+                <button type="button" className="selection-action-btn" onClick={clearSelected} disabled={selectedCount === 0}>
+                  取消勾选{selectedCount > 0 ? ` ${selectedCount}` : ''}
                 </button>
                 <ProgressSummary cards={visibleCards} running={!!running} compact />
               </>
@@ -263,7 +250,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       )}
 
       {/* JSON view */}
-      {(viewMode === 'json' || !hasOffers) && (
+      {viewMode === 'json' && data && (
         <div className="result-preview">
           <pre className="json-output">{data ? JSON.stringify(data, null, 2) : '等待数据...'}</pre>
         </div>
