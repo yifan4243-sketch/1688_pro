@@ -13,7 +13,7 @@ body {
 
 /* Shell — 2-column (sidebar + main workspace) */
 :root {
-  --desktop-sidebar-width: 220px;
+  --desktop-sidebar-width: 230px;
 }
 .app-shell {
   display: grid;
@@ -417,13 +417,18 @@ body {
 /* ── Deep task sidebar ── */
 .deep-task-sidebar { width: 100%; margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 .deep-task-sidebar-head {
-  display: flex; align-items: center; justify-content: space-between; padding: 0 4px;
-  color: #0f172a; font-size: 12px; font-weight: 800;
+  display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+  width: 100%; padding: 0 4px; color: #0f172a; font-size: 12px;
 }
-.deep-task-sidebar-head strong {
-  min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px;
-  background: rgba(59,130,246,0.10); color: #2563eb;
-  display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
+.deep-task-sidebar-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 900; color: #0f172a; white-space: nowrap;
+}
+.deep-task-count-inline {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(219, 234, 254, 0.95); color: #2563eb;
+  font-size: 11px; font-weight: 900; line-height: 1;
 }
 .deep-task-empty {
   border-radius: 14px; padding: 14px 10px; text-align: center;
@@ -462,8 +467,8 @@ body {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%;
 }
 .deep-task-filters button {
-  height: 26px; border: none; border-radius: 999px;
-  background: rgba(255,255,255,0.62); color: #64748b;
+  height: 28px; border: none; border-radius: 999px;
+  background: rgba(255,255,255,0.72); color: #64748b;
   font-size: 11px; font-weight: 800; cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
 }

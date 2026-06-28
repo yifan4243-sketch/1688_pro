@@ -242,8 +242,11 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const runOfferProOnce = async (item: ProgressOfferCardItem, profile: string, attempt: number): Promise<{ ok: boolean; profile: string; attempt: number; status?: string; error?: string; data?: Record<string, unknown> }> => {
     try {
       const rec = await api.commands.run({
-        commandId: 'offer', args: { offerIds: item.offerId },
-        options: { pro: true, headed: true }, profile, confirmed: true,
+        commandId: 'offer',
+        args: { offerIds: item.offerId },
+        options: { pro: true },
+        profile,
+        confirmed: true,
       });
       if (rec.status !== 'success') return { ok: false, profile, attempt, status: rec.status, error: rec.error?.message || rec.stderrText || `status=${rec.status}` };
       const d = rec.stdoutJson as Record<string, unknown> | undefined;
@@ -257,6 +260,11 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       return { ok: false, profile, attempt, status: 'EXCEPTION', error: e instanceof Error ? e.message : String(e || '未知错误') };
     }
   };
+
+  function isRiskOrCaptchaFailure(result: { status?: string; error?: string }): boolean {
+    const text = `${result.status || ''} ${result.error || ''}`;
+    return /CAPTCHA|RISK|risk_control|验证码|滑块|风控/i.test(text);
+  }
 
   const runDeepCollectWithFallback = async (item: ProgressOfferCardItem, key: string) => {
     const profiles = await getDeepCollectProfilePool();
@@ -272,13 +280,60 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
           const d = result.data;
           const imgs = Array.isArray(d.images) ? d.images as string[] : [];
           setCardOverrides((prev) => ({ ...prev, [key]: { title: String(d.title || item.title || ''), price: String(d.priceRange || d.priceText || item.price || ''), image: String(d.mainImage || imgs[0] || item.image || ''), status: 'deep-success', raw: d, message: `${profile} 第 ${attempt} 次成功`, code: '' } }));
-          upsertDeepTask(key, { title: String(d.title || item.title || ''), image: String(d.mainImage || imgs[0] || item.image || ''), status: 'success', message: `${profile} 第 ${attempt} 次成功`, finishedAt: new Date().toISOString() });
+          upsertDeepTask(key, {
+            title: String(d.title || item.title || ''),
+            image: String(d.mainImage || imgs[0] || item.image || ''),
+            status: 'success',
+            profile,
+            attempt,
+            message: `${profile} 第 ${attempt} 次成功`,
+            finishedAt: new Date().toISOString(),
+          });
           upsertDeepJson(item.offerId, d, { status: 'success', profile, attempt });
           showToast(`深度采集完成：${profile}`);
           return;
         }
         failures.push({ profile, attempt, status: result.status, error: result.error });
-        setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: `${profile} 第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次失败：${result.error || result.status || '未知'}`, code: String(result.status || '') } }));
+
+        const failedMessage = `${profile} 第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次失败：${result.error || result.status || '未知'}`;
+
+        setCardOverrides((prev) => ({
+          ...prev,
+          [key]: {
+            status: 'deep-collecting',
+            message: failedMessage,
+            code: String(result.status || ''),
+          },
+        }));
+
+        upsertDeepTask(key, {
+          status: 'collecting',
+          profile,
+          attempt,
+          message: failedMessage,
+        });
+
+        if (isRiskOrCaptchaFailure(result)) {
+          const nextProfile = profiles[pi + 1];
+          if (nextProfile) {
+            setCardOverrides((prev) => ({
+              ...prev,
+              [key]: {
+                status: 'deep-collecting',
+                message: `${profile} 触发验证码或风控，切换到 ${nextProfile}`,
+                code: String(result.status || 'RISK_OR_CAPTCHA'),
+              },
+            }));
+            upsertDeepTask(key, {
+              status: 'collecting',
+              profile,
+              attempt,
+              message: `${profile} 触发验证码或风控，切换到 ${nextProfile}`,
+            });
+          }
+          break;
+        }
+
         await sleep(800);
       }
       if (pi < profiles.length - 1) {
@@ -288,7 +343,8 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     }
     const summary = failures.map((f) => `${f.profile}#${f.attempt}: ${f.error || f.status || '失败'}`).join('；');
     setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message: `所有账号深度采集失败，已跳过。${summary}`, code: 'ALL_PROFILES_FAILED' } }));
-    upsertDeepTask(key, { status: 'failed', message: `所有账号深度采集失败，已跳过。${summary}`, finishedAt: new Date().toISOString() });
+    const lastFailure = failures[failures.length - 1];
+    upsertDeepTask(key, { status: 'failed', profile: lastFailure?.profile, attempt: lastFailure?.attempt, message: `所有账号深度采集失败，已跳过。${summary}`, finishedAt: new Date().toISOString() });
     upsertDeepFailure(item.offerId, { offerId: item.offerId, code: 'ALL_PROFILES_FAILED', message: summary, failedAt: new Date().toISOString(), attempts: failures });
     showToast('该商品所有账号深采失败，已跳过', 2200);
   };

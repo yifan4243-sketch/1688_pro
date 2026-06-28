@@ -142,8 +142,10 @@ export default function App() {
 
         <div className="deep-task-sidebar">
           <div className="deep-task-sidebar-head">
-            <span>采集任务列表</span>
-            <strong>{deepTasks.length}</strong>
+            <span className="deep-task-sidebar-title">
+              采集任务列表
+              <strong className="deep-task-count-inline">{deepTasks.length}</strong>
+            </span>
           </div>
           <div className="deep-task-filters">
             <button className={deepTaskFilter === 'all' ? 'active' : ''} onClick={() => setDeepTaskFilter('all')}>全部</button>

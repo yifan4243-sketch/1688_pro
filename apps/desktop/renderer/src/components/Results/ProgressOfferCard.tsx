@@ -118,7 +118,7 @@ export function toProgressCards(
         price: extractSearchPriceText(base),
         image: String(base.image || ''),
         status: 'basic-ready',
-        pendingDeep: isDeepPro,
+        pendingDeep: false,
         raw: base,
       };
     }
@@ -142,7 +142,12 @@ function failureReasonZh(code: string, fallback?: string): string {
 
 export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonPlaceholder, selected, onSelectToggle }: Props) {
   const showImage = Boolean(item.image);
-  const hasOverlay = (item.status === 'basic-ready' && item.pendingDeep === true) || item.status === 'collecting' || item.status === 'deep-queued' || item.status === 'deep-collecting' || item.status === 'deep-failed' || item.status === 'failed';
+  const hasOverlay =
+    item.status === 'collecting' ||
+    item.status === 'deep-queued' ||
+    item.status === 'deep-collecting' ||
+    item.status === 'deep-failed' ||
+    item.status === 'failed';
   const isFailed = item.status === 'deep-failed' || item.status === 'failed';
   const isClickable = Boolean(item.offerId || item.raw || item.title || item.image);
   const canSelect = isClickable || item.status !== 'waiting';
