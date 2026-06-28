@@ -83,7 +83,7 @@ export default function App() {
   };
 
   const openProductHistory = async () => {
-    const items = await api.productHistory.list(50);
+    const items = await api.productHistory.list(500);
     setProductItems(items);
     setProductHistoryOpen(true);
   };

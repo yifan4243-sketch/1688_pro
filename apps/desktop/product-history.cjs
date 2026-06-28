@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const HISTORY_FILE = 'product_history.json';
-const MAX_ITEMS = 50;
+const MAX_ITEMS = 500;
 
 function historyPath(userDataPath) {
   return path.join(userDataPath, HISTORY_FILE);
