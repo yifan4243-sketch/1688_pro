@@ -563,6 +563,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               placeholderCards={placeholderCount}
               running={true}
               activeProfile={activeProfile}
+              manualDeepCollectHeaded={!!options.headed}
               onDeepTasksChange={onDeepTasksChange}
             />
           </>
@@ -575,6 +576,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               placeholderCards={placeholderCount}
               running={false}
               activeProfile={activeProfile}
+              manualDeepCollectHeaded={!!options.headed}
               onDeepTasksChange={onDeepTasksChange}
             />
           </>

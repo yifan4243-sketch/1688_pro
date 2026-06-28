@@ -14,6 +14,7 @@ interface Props {
   placeholderCards?: number;
   running?: boolean;
   activeProfile?: string;
+  manualDeepCollectHeaded?: boolean;
   onDeepTasksChange?: (tasks: DeepCollectTask[]) => void;
 }
 
@@ -122,7 +123,7 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, onDeepTasksChange }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, onDeepTasksChange }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
@@ -194,6 +195,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   } = useDeepCollectQueue({
     api,
     activeProfile,
+    manualDeepCollectHeaded,
     onDeepTasksChange,
     cardOverrides,
     setCardOverrides,

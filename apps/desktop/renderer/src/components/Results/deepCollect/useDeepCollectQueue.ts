@@ -16,6 +16,7 @@ type DesktopApi = ReturnType<typeof getApi>;
 type UseDeepCollectQueueArgs = {
   api: DesktopApi;
   activeProfile?: string;
+  manualDeepCollectHeaded?: boolean;
   onDeepTasksChange?: DeepTasksChangeHandler;
 
   cardOverrides: Record<string, Partial<ProgressOfferCardItem>>;
@@ -64,6 +65,7 @@ function sleep(ms: number): Promise<void> {
 export function useDeepCollectQueue({
   api,
   activeProfile,
+  manualDeepCollectHeaded = false,
   onDeepTasksChange,
   cardOverrides,
   setCardOverrides,
@@ -162,6 +164,7 @@ export function useDeepCollectQueue({
       .map((entry) => entry.item.offerId)
       .filter(Boolean) as string[];
 
+    const modeLabel = manualDeepCollectHeaded ? '可视化' : '无头';
     const entryByOfferId = new Map<string, DeepQueueEntry>();
 
     for (const entry of entries) {
@@ -175,7 +178,7 @@ export function useDeepCollectQueue({
         ...prev,
         [entry.key]: {
           status: 'deep-collecting',
-          message: `正在使用 ${profile} 深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
+          message: `正在使用 ${profile} ${modeLabel}深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
           code: '',
         },
       }));
@@ -184,13 +187,15 @@ export function useDeepCollectQueue({
         status: 'collecting',
         profile,
         attempt,
-        message: `正在使用 ${profile} 深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
+        message: `正在使用 ${profile} ${modeLabel}深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
       });
     }
 
     deepCollectLog('runOfferProBatchOnce call CLI', {
       profile,
       attempt,
+      headed: manualDeepCollectHeaded,
+      mode: manualDeepCollectHeaded ? 'headed' : 'headless',
       count: ids.length,
       ids,
       offerIdsArg: ids.join('\\n'),
@@ -203,7 +208,7 @@ export function useDeepCollectQueue({
       },
       options: {
         pro: true,
-        headed: true,
+        headed: manualDeepCollectHeaded,
       },
       profile,
       confirmed: true,
