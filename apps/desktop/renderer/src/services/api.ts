@@ -146,16 +146,25 @@ export interface OzonStoreStats {
     note: string;
     apiKeySet: boolean;
   };
+  connection?: {
+    ok: boolean;
+    endpoint: string;
+    message: string;
+  };
   quota: null | {
     remaining: number | null;
     limit: number | null;
     used: number | null;
+    dailyResetAt?: string | null;
+    totalLimit?: number | null;
+    totalUsage?: number | null;
     source: string;
+    endpoint?: string;
     raw: unknown;
   };
+  quotaStatus?: 'available' | 'not_supported' | 'not_found' | 'error' | 'not_requested';
   message: string;
   operationId?: string;
-  raw?: unknown;
   fetchedAt: string;
 }
 

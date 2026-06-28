@@ -244,21 +244,32 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
                 </div>
                 <div>
                   <span>今日还能上架</span>
-                  <strong className="quota-number">
-                    {storeStats?.quota?.remaining != null ? `${storeStats.quota.remaining} 个` : '待返回'}
+                  <strong className='quota-number'>
+                    {storeStats?.quota?.remaining != null ? `${storeStats.quota.remaining} 个`
+                      : storeStats?.quotaStatus === 'not_supported' ? '暂未支持'
+                      : storeStats?.quotaStatus === 'not_found' ? '未返回'
+                      : storeStats?.quotaStatus === 'error' ? '查询失败'
+                      : '待返回'}
                   </strong>
                 </div>
               </div>
 
               <div className="ozon-quota-panel">
-                <h4>额度来源</h4>
-                <p>{storeStats?.message || '点击“刷新额度”后，通过 Ozon 只读接口/MCP 通道获取店铺今日上架额度。'}</p>
+                <h4>额度详情</h4>
+                <p>{storeStats?.message || '点击"刷新额度"查询 Ozon 店铺今日上架额度。'}</p>
                 {storeStats?.quota && (
                   <div className="ozon-quota-grid">
-                    <span>总额度 <strong>{storeStats.quota.limit ?? '-'}</strong></span>
-                    <span>已使用 <strong>{storeStats.quota.used ?? '-'}</strong></span>
-                    <span>剩余 <strong>{storeStats.quota.remaining ?? '-'}</strong></span>
+                    <span>今日额度 <strong>{storeStats.quota.limit ?? '不限'}</strong></span>
+                    <span>今日已用 <strong>{storeStats.quota.used ?? '-'}</strong></span>
+                    <span>今日剩余 <strong>{storeStats.quota.remaining ?? '-'}</strong></span>
+                    {storeStats.quota.totalLimit != null && <span>总上限 <strong>{storeStats.quota.totalLimit}</strong></span>}
+                    {storeStats.quota.totalUsage != null && <span>总已用 <strong>{storeStats.quota.totalUsage}</strong></span>}
                   </div>
+                )}
+                {storeStats?.connection && (
+                  <small style={{ display: 'block', marginTop: 6 }}>
+                    接口：{storeStats.connection.endpoint} — {storeStats.connection.message}
+                  </small>
                 )}
                 {storeStats?.fetchedAt && <small>刷新时间：{new Date(storeStats.fetchedAt).toLocaleString()}</small>}
               </div>

@@ -95,17 +95,86 @@ async function getStoreStats(userDataPath) {
     };
   }
 
+  // Step 1: connectivity check via /v1/seller/info
   const sellerInfo = await callOzonSellerApi(shop, '/v1/seller/info', {});
-  const quota = extractQuota(sellerInfo.data);
-  return {
+  const connection = {
     ok: sellerInfo.ok,
+    endpoint: '/v1/seller/info',
+    message: sellerInfo.ok ? 'Ozon API 已连通' : `Seller API 请求失败 (HTTP ${sellerInfo.data?.status || '?'})`,
+  };
+
+  // Step 2: product upload quota via /v4/product/info/limit
+  let quota = null;
+  let quotaStatus = 'not_requested';
+  let quotaEndpoint = '/v4/product/info/limit';
+  let quotaRaw = null;
+
+  if (sellerInfo.ok) {
+    const limitResp = await callOzonSellerApi(shop, quotaEndpoint, {}).catch(() => null);
+    if (limitResp && limitResp.ok && limitResp.data) {
+      quotaRaw = limitResp.data;
+      const daily = limitResp.data.daily_create || {};
+      const total = limitResp.data.total || {};
+      const dailyLimit = daily.limit;
+      const dailyUsage = daily.usage;
+      const remaining = (dailyLimit === -1 || dailyLimit == null) ? null
+        : (dailyUsage != null ? dailyLimit - dailyUsage : dailyLimit);
+
+      if (remaining != null || dailyLimit != null || total.limit != null) {
+        quota = {
+          remaining,
+          limit: dailyLimit === -1 ? null : dailyLimit,
+          used: dailyUsage,
+          dailyResetAt: daily.reset_at || null,
+          totalLimit: total.limit === -1 ? null : total.limit,
+          totalUsage: total.usage,
+          source: 'ProductAPI_GetUploadQuota',
+          endpoint: quotaEndpoint,
+          raw: quotaRaw,
+        };
+        quotaStatus = 'available';
+      } else {
+        quotaStatus = 'not_found';
+      }
+    } else {
+      quotaStatus = 'not_supported';
+    }
+  } else {
+    quotaStatus = 'error';
+  }
+
+  // Debug dump (no API key exposure)
+  try {
+    const debug = {
+      fetchedAt: new Date().toISOString(),
+      connection,
+      quotaRaw: quotaRaw ? { daily_create: quotaRaw.daily_create, total: quotaRaw.total } : null,
+      quotaStatus,
+      quota,
+    };
+    fs.writeFileSync(
+      path.join(userDataPath, 'ozon_store_stats_debug.json'),
+      JSON.stringify(debug, null, 2),
+      'utf8',
+    );
+  } catch {}
+
+  return {
+    ok: connection.ok,
     store,
+    connection,
     quota,
+    quotaStatus,
     message: quota
-      ? '已刷新店铺额度。'
-      : 'Ozon 接口已连通，但当前响应未返回今日可上架额度字段。',
-    operationId: 'SellerAPI_SellerInfo',
-    raw: sellerInfo.data,
+      ? `今日还能上架 ${quota.remaining ?? quota.limit ?? '?'} 个商品`
+      : quotaStatus === 'not_supported'
+        ? 'Ozon 已连通，但 /v4/product/info/limit 未返回额度字段。'
+        : quotaStatus === 'not_found'
+          ? '已请求额度接口但响应中未包含有效字段。'
+          : quotaStatus === 'error'
+            ? '请检查 Client ID 和 API Key 是否正确。'
+            : '未请求额度接口。',
+    operationId: 'ProductAPI_GetUploadQuota',
     fetchedAt: new Date().toISOString(),
   };
 }
