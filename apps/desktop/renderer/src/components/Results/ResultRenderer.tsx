@@ -169,6 +169,9 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const selectableCards = visibleCards.filter((card) => card.status !== 'waiting' || card.offerId || card.raw || card.title || card.image);
   const hasOffers = visibleCards.length > 0;
   const selectedCount = selectableCards.filter((card) => selectedKeys.has(cardKey(card))).length;
+  const selectedCards = selectableCards.filter((card) => selectedKeys.has(cardKey(card)));
+  const selectedOfferCards = selectedCards.filter((card) => Boolean(card.offerId));
+  const canBatchOperate = selectedOfferCards.length >= 2;
   const allSelected = selectableCards.length > 0 && selectedCount === selectableCards.length;
 
   const toggleSelect = (item: ProgressOfferCardItem) => {
@@ -542,16 +545,78 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     }
   };
 
-  const enqueueSingleDeepCollect = (item: ProgressOfferCardItem) => {
-    if (!item.offerId) { showToast('缺少 Offer ID'); return; }
-    const key = item.offerId ? `offer:${item.offerId}` : `slot:${item.slotIndex}`;
-    const curStatus = cardOverrides[key]?.status || item.status;
-    if (curStatus === 'deep-queued' || curStatus === 'deep-collecting') return;
-    if (deepQueueRef.current.some((q) => q.key === key)) return;
-    deepQueueRef.current = [...deepQueueRef.current, { key, item }];
-    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-queued', message: '排队等待深度采集', code: '' } }));
-    upsertDeepTask(key, { offerId: item.offerId, title: item.title, image: item.image, status: 'queued', message: '排队等待深度采集', createdAt: new Date().toISOString() });
+  const enqueueMultipleDeepCollect = (items: ProgressOfferCardItem[]) => {
+    const validItems = items.filter((item) => Boolean(item.offerId));
+    if (validItems.length === 0) {
+      showToast('请选择有 Offer ID 的商品');
+      return;
+    }
+
+    let added = 0;
+
+    for (const item of validItems) {
+      const key = item.offerId ? `offer:${item.offerId}` : `slot:${item.slotIndex}`;
+      const curStatus = cardOverrides[key]?.status || item.status;
+
+      if (curStatus === 'deep-queued' || curStatus === 'deep-collecting' || curStatus === 'collecting') {
+        continue;
+      }
+
+      if (deepQueueRef.current.some((q) => q.key === key)) {
+        continue;
+      }
+
+      deepQueueRef.current = [...deepQueueRef.current, { key, item }];
+
+      setCardOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          status: 'deep-queued',
+          message: '排队等待深度采集',
+          code: '',
+        },
+      }));
+
+      upsertDeepTask(key, {
+        offerId: item.offerId,
+        title: item.title,
+        image: item.image,
+        status: 'queued',
+        message: '排队等待深度采集',
+        createdAt: new Date().toISOString(),
+      });
+
+      added += 1;
+    }
+
+    if (added === 0) {
+      showToast('选中的商品已在深采队列中');
+      return;
+    }
+
+    showToast(`已加入 ${added} 个商品到深采队列`, 1600);
+
     processDeepQueue();
+  };
+
+  const enqueueSingleDeepCollect = (item: ProgressOfferCardItem) => {
+    enqueueMultipleDeepCollect([item]);
+  };
+
+  const handleBatchDeepCollect = () => {
+    if (!canBatchOperate) {
+      showToast('请至少选择 2 个商品');
+      return;
+    }
+    enqueueMultipleDeepCollect(selectedOfferCards);
+  };
+
+  const handleBatchOzonPlaceholder = () => {
+    if (!canBatchOperate) {
+      showToast('请至少选择 2 个商品');
+      return;
+    }
+    showToast(`已选择 ${selectedOfferCards.length} 个商品，批量上架 OZON 暂未接入`, 1800);
   };
 
   useEffect(() => {
@@ -609,6 +674,28 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
             )}
           </div>
           <div className="result-top-actions">
+            {hasOffers && (
+              <div className="result-batch-actions">
+                <button
+                  type="button"
+                  className="batch-toolbar-btn batch-toolbar-btn--deep"
+                  disabled={!canBatchOperate}
+                  onClick={handleBatchDeepCollect}
+                  title={canBatchOperate ? '对已选择商品批量深度采集' : '至少选择 2 个商品后可用'}
+                >
+                  批量深度采集
+                </button>
+                <button
+                  type="button"
+                  className="batch-toolbar-btn batch-toolbar-btn--ozon"
+                  disabled={!canBatchOperate}
+                  onClick={handleBatchOzonPlaceholder}
+                  title={canBatchOperate ? '对已选择商品批量上架 OZON' : '至少选择 2 个商品后可用'}
+                >
+                  批量上架OZON
+                </button>
+              </div>
+            )}
             <div className="mode-toggle">
               {hasOffers && (
                 <button className={`mode-btn ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}>卡片模式</button>
