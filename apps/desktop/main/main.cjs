@@ -173,13 +173,11 @@ function registerIpc() {
         timeoutMs: 15000,
         options: { verify: true },
       });
-      status = normalizeAccountStatus(whoami.status);
+      status = inferWhoamiAccountStatus(whoami);
     } catch {
       status = 'error';
     }
-    try {
-      updateAccount(userDataDir(), profile, { status });
-    } catch { /* ignore */ }
+    try { updateAccount(userDataDir(), profile, { status }); } catch {}
     return { profile, status };
   });
 
@@ -236,7 +234,19 @@ function registerIpc() {
     } catch { /* best-effort */ }
   }
 
-  function openLoginBrowser(profile) {
+  function inferWhoamiAccountStatus(record) {
+  if (record.status !== 'success' || record.exitCode !== 0) {
+    const code = (record.error && record.error.status) || '';
+    if (code === 'profile_busy') return 'busy';
+    return normalizeAccountStatus(record.status);
+  }
+  const data = record.stdoutJson;
+  if (data && typeof data === 'object' && (data.loggedIn === true || data.memberId || data.nick)) return 'logged_in';
+  if (data && typeof data === 'object' && (data.loggedIn === false || data.ok === false)) return 'not_logged_in';
+  return 'unknown';
+}
+
+function openLoginBrowser(profile) {
     const p = String(profile || '').trim();
     if (!p) throw new Error('profile 不能为空');
     const args = [
@@ -260,7 +270,9 @@ function registerIpc() {
 
   ipcMain.handle('desktop:loginAccountBrowser', async (_event, profile) => {
     await stopDaemonForProfile(profile);
-    return openLoginBrowser(profile);
+    const result = openLoginBrowser(profile);
+    try { updateAccount(userDataDir(), profile, { status: 'login_opened', lastLoginAt: null }); } catch {}
+    return { ...result, state: 'login_opened' };
   });
   ipcMain.handle('desktop:loginAccountsBrowser', async (_event, profiles) => {
     const uniqueProfiles = Array.from(new Set((profiles || []).map(String).map((s) => s.trim()).filter(Boolean))).slice(0, 3);
@@ -270,6 +282,7 @@ function registerIpc() {
       try {
         await stopDaemonForProfile(profile);
         opened.push(openLoginBrowser(profile).profile);
+        try { updateAccount(userDataDir(), profile, { status: 'login_opened', lastLoginAt: null }); } catch {}
         await new Promise((r) => setTimeout(r, 800));
       } catch (e) { console.error('[login-browser] error', profile, e); }
     }

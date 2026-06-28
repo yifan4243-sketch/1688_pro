@@ -7,6 +7,7 @@ import HistoryModal from './components/History/HistoryModal';
 import HistoryDetailModal from './components/History/HistoryDetailModal';
 import ProductHistoryModal from './components/History/ProductHistoryModal';
 import OzonSettingsModal from './components/Ozon/OzonSettingsModal';
+import AccountSettingsModal from './components/Account/AccountSettingsModal';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -26,6 +27,7 @@ export default function App() {
   const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [productItems, setProductItems] = useState<Array<{ offerId: string; title: string; price: string; image: string; url: string; collectedAt: string; raw?: unknown }>>([]);
 
   const api = getApi();
@@ -132,6 +134,8 @@ export default function App() {
           runtime={runtime}
           cliInfo={cliInfo}
           onRefresh={handleRefreshRuntime}
+          accounts={accounts.accounts}
+          activeProfile={activeProfile}
         />
       </aside>
 
@@ -144,6 +148,7 @@ export default function App() {
           <div className="topbar-actions">
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('ai')}>AI 设置</button>
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('store')}>Ozon 店铺</button>
+            <button className="glass-btn-secondary topbar-config-btn" onClick={() => setAccountSettingsOpen(true)}>1688账号</button>
             <button className="glass-btn-secondary" onClick={handleRefreshRuntime}>刷新状态</button>
             <button className="glass-btn-secondary" onClick={openRecentTasks}>最近任务</button>
             <button className="glass-btn-secondary" onClick={openProductHistory}>历史记录</button>
@@ -192,6 +197,15 @@ export default function App() {
         mode={ozonSettingsOpen || 'ai'}
         open={ozonSettingsOpen !== null}
         onClose={() => setOzonSettingsOpen(null)}
+      />
+
+      <AccountSettingsModal
+        accounts={accounts}
+        activeProfile={activeProfile}
+        open={accountSettingsOpen}
+        onClose={() => setAccountSettingsOpen(false)}
+        onAccountsChanged={() => api.accounts.list().then(setAccounts) as Promise<void>}
+        onProfileChange={handleAccountChange}
       />
     </div>
   );

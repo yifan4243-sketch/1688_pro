@@ -123,14 +123,12 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
         />
       </div>
       <div className="form-field" style={{ flexDirection: 'row', gap: 8 }}>
-        <button type="button" className="glass-btn-secondary" onClick={openAdd} style={{ flex: 1 }}>新增登录账号</button>
         <button type="button" className="glass-btn-secondary" disabled={loginBusy} onClick={handleLoginCurrent} style={{ flex: 1 }}>
           {loginBusy ? '登录中...' : '登录当前账号'}
         </button>
       </div>
       <div className="form-field" style={{ flexDirection: 'row', gap: 8 }}>
-        <button type="button" className="glass-btn-secondary" onClick={handleLoginAll} style={{ flex: 1 }}>同时登录全部账号</button>
-        <button type="button" className="glass-btn-secondary" onClick={handleLoginNotLoggedIn} style={{ flex: 1 }}>同时登录未登录账号</button>
+        <button type="button" className="glass-btn-secondary" onClick={openAdd} style={{ flex: 1 }}>新增账号</button>
       </div>
       {msg && <p className={`account-inline-message ${loginBusy ? 'loading' : ''}`}>{msg}</p>}
 
