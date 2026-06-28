@@ -8,6 +8,7 @@ import HistoryDetailModal from './components/History/HistoryDetailModal';
 import ProductHistoryModal from './components/History/ProductHistoryModal';
 import OzonSettingsModal from './components/Ozon/OzonSettingsModal';
 import AccountSettingsModal from './components/Account/AccountSettingsModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -144,12 +145,14 @@ export default function App() {
         </header>
 
         <div className="workspace-inner">
-          <CommandPanel
-            registry={registry}
-            activeProfile={activeProfile}
-            accounts={accounts}
-            onHistoryRefresh={refreshRecentTasks}
-          />
+          <ErrorBoundary>
+            <CommandPanel
+              registry={registry}
+              activeProfile={activeProfile}
+              accounts={accounts}
+              onHistoryRefresh={refreshRecentTasks}
+            />
+          </ErrorBoundary>
         </div>
       </main>
 

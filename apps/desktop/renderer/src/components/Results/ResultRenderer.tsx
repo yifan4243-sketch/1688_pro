@@ -136,7 +136,6 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
 
   useEffect(() => {
     setSelectedKeys(new Set());
-    setDeletedKeys(new Set());
   }, [record?.runId, resultType]);
 
   const visibleCards = useMemo(() => progressCards, [progressCards]);
