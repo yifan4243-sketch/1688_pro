@@ -128,6 +128,8 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const [detailItem, setDetailItem] = useState<ProgressOfferCardItem | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [cardOverrides, setCardOverrides] = useState<Record<string, Partial<ProgressOfferCardItem>>>({});
+  const [deepJsonByOfferId, setDeepJsonByOfferId] = useState<Record<string, Record<string, unknown>>>({});
+  const [deepFailuresByOfferId, setDeepFailuresByOfferId] = useState<Record<string, Record<string, unknown>>>({});
 
   const baseData = record?.stdoutJson as Record<string, unknown> | undefined;
 
@@ -194,8 +196,6 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const deepQueueRef = useRef<Array<{ key: string; item: ProgressOfferCardItem }>>([]);
   const deepRunningRef = useRef(false);
   const deepTaskMapRef = useRef<Record<string, { key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; createdAt: string; finishedAt?: string }>>({});
-  const [deepJsonByOfferId, setDeepJsonByOfferId] = useState<Record<string, Record<string, unknown>>>({});
-  const [deepFailuresByOfferId, setDeepFailuresByOfferId] = useState<Record<string, Record<string, unknown>>>({});
   const MAX_ATTEMPTS_PER_PROFILE = 2;
 
   const publishDeepTasks = () => {
