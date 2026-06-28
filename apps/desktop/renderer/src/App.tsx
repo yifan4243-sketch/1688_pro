@@ -14,6 +14,22 @@ import './styles/controls.css';
 import './styles/panels.css';
 import './App.css';
 
+type DeepCollectSidebarTaskStatus = 'queued' | 'collecting' | 'success' | 'failed';
+
+interface DeepCollectSidebarTask {
+  key: string;
+  offerId?: string;
+  title?: string;
+  image?: string;
+  status: DeepCollectSidebarTaskStatus;
+  message?: string;
+  profile?: string;
+  attempt?: number;
+  createdAt: string;
+  updatedAt?: string;
+  finishedAt?: string;
+}
+
 export default function App() {
   const [registry, setRegistry] = useState<CommandRegistry | null>(null);
   const [accounts, setAccounts] = useState<AccountData | null>(null);
@@ -28,7 +44,8 @@ export default function App() {
   const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
   const [workspaceView, setWorkspaceView] = useState<'1688' | 'ozon'>('1688');
   const [runtimeStatusOpen, setRuntimeStatusOpen] = useState(false);
-  const [deepTasks, setDeepTasks] = useState<Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>>([]);
+  const [deepTasks, setDeepTasks] = useState<DeepCollectSidebarTask[]>([]);
+  const [deepTaskFilter, setDeepTaskFilter] = useState<'all' | 'success' | 'queued' | 'failed'>('all');
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
@@ -125,33 +142,55 @@ export default function App() {
 
         <div className="deep-task-sidebar">
           <div className="deep-task-sidebar-head">
-            <span>深采任务</span>
+            <span>采集任务列表</span>
             <strong>{deepTasks.length}</strong>
           </div>
-          {deepTasks.length === 0 ? (
-            <div className="deep-task-empty">暂无任务</div>
-          ) : (
-            <div className="deep-task-list">
-              {deepTasks.slice(0, 8).map((task) => (
-                <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
-                  {task.image ? (
-                    <img className="deep-task-thumb" src={task.image} alt="" />
-                  ) : (
-                    <div className="deep-task-thumb placeholder" />
-                  )}
-                  <div className="deep-task-info">
-                    <div className="deep-task-title">{task.title || task.offerId || '未命名商品'}</div>
-                    <div className={`deep-task-status ${task.status}`}>
-                      {task.status === 'collecting' ? '采集中' : '排队中'}
-                    </div>
+          <div className="deep-task-filters">
+            <button className={deepTaskFilter === 'all' ? 'active' : ''} onClick={() => setDeepTaskFilter('all')}>全部</button>
+            <button className={deepTaskFilter === 'success' ? 'active' : ''} onClick={() => setDeepTaskFilter('success')}>已完成</button>
+            <button className={deepTaskFilter === 'queued' ? 'active' : ''} onClick={() => setDeepTaskFilter('queued')}>排队中</button>
+            <button className={deepTaskFilter === 'failed' ? 'active' : ''} onClick={() => setDeepTaskFilter('failed')}>失败</button>
+          </div>
+          {(() => {
+            const filtered = deepTasks.filter((t) => {
+              if (deepTaskFilter === 'all') return true;
+              if (deepTaskFilter === 'success') return t.status === 'success';
+              if (deepTaskFilter === 'queued') return t.status === 'queued' || t.status === 'collecting';
+              if (deepTaskFilter === 'failed') return t.status === 'failed';
+              return true;
+            });
+            const visible = filtered.slice(0, 8);
+            const hidden = Math.max(0, filtered.length - visible.length);
+            return (
+              <>
+                {visible.length === 0 ? (
+                  <div className="deep-task-empty">暂无任务</div>
+                ) : (
+                  <div className="deep-task-list">
+                    {visible.map((task) => (
+                      <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
+                        {task.image ? (
+                          <img className="deep-task-thumb" src={task.image} alt="" />
+                        ) : (
+                          <div className="deep-task-thumb placeholder" />
+                        )}
+                        <div className="deep-task-info">
+                          <div className="deep-task-title">{task.title || task.offerId || '未命名商品'}</div>
+                          <div className="deep-task-meta">
+                            <span className={`deep-task-status ${task.status}`}>
+                              {task.status === 'collecting' ? '采集中' : task.status === 'queued' ? '排队中' : task.status === 'success' ? '已完成' : '失败'}
+                            </span>
+                            <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {deepTasks.length > 8 && (
-            <div className="deep-task-more">还有 {deepTasks.length - 8} 个排队中</div>
-          )}
+                )}
+                {hidden > 0 && <div className="deep-task-more">还有 {hidden} 个任务</div>}
+              </>
+            );
+          })()}
         </div>
       </aside>
 

@@ -11,7 +11,7 @@ interface Props {
   placeholderCards?: number;
   running?: boolean;
   activeProfile?: string;
-  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>) => void;
+  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; createdAt: string; finishedAt?: string }>) => void;
 }
 
 type ViewMode = 'card' | 'json';
@@ -129,7 +129,27 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [cardOverrides, setCardOverrides] = useState<Record<string, Partial<ProgressOfferCardItem>>>({});
 
-  const data = record?.stdoutJson as Record<string, unknown> | undefined;
+  const baseData = record?.stdoutJson as Record<string, unknown> | undefined;
+
+  const data = useMemo(() => {
+    if (!baseData) return undefined;
+    const baseOffers = (Array.isArray(baseData.offers) ? baseData.offers : []) as Array<Record<string, unknown>>;
+    const offers = baseOffers.map((o) => {
+      if (!o || typeof o !== 'object') return o;
+      const offerId = String(o.offerId || o.offer_id || o.id || '');
+      const deep = deepJsonByOfferId[offerId];
+      const failure = deepFailuresByOfferId[offerId];
+      if (deep) {
+        const imgs = Array.isArray(deep.images) ? deep.images as string[] : [];
+        return { ...o, title: deep.title || o.title, image: deep.mainImage || imgs[0] || o.image, priceRange: deep.priceRange || o.priceRange, deepCollected: true, deepCollectStatus: 'success', deepOffer: deep, deepCollectMeta: deep._deepCollectMeta };
+      }
+      if (failure) return { ...o, deepCollected: false, deepCollectStatus: 'failed', deepCollectFailure: failure };
+      return o;
+    });
+    const deepOffers = Object.values(deepJsonByOfferId);
+    const failures = Object.values(deepFailuresByOfferId);
+    return { ...baseData, offers, deeppro: { ...(baseData.deeppro && typeof baseData.deeppro === 'object' ? baseData.deeppro as Record<string, unknown> : {}), enabled: true, mode: 'manual-per-card', success: deepOffers.length, failed: failures.length, offers: deepOffers, failures } };
+  }, [baseData, deepJsonByOfferId, deepFailuresByOfferId]);
 
   // Build progress cards from result data, applying per-card overrides
   const progressCards = useMemo<ProgressOfferCardItem[]>(() => {
@@ -170,28 +190,37 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setSelectedKeys(new Set());
   };
 
-  // ----- per-card deep collect queue with profile fallback -----
+  // ----- per-card deep collect queue with profile fallback + task map + JSON merge -----
   const deepQueueRef = useRef<Array<{ key: string; item: ProgressOfferCardItem }>>([]);
   const deepRunningRef = useRef(false);
+  const deepTaskMapRef = useRef<Record<string, { key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; createdAt: string; finishedAt?: string }>>({});
+  const [deepJsonByOfferId, setDeepJsonByOfferId] = useState<Record<string, Record<string, unknown>>>({});
+  const [deepFailuresByOfferId, setDeepFailuresByOfferId] = useState<Record<string, Record<string, unknown>>>({});
   const MAX_ATTEMPTS_PER_PROFILE = 2;
 
-  const buildDeepTasks = (queue = deepQueueRef.current, overrides = cardOverrides) => {
-    return queue.map((q, index) => {
-      const override = overrides[q.key] || {};
-      const isRunning = index === 0 && deepRunningRef.current;
-      return {
-        key: q.key,
-        offerId: q.item.offerId,
-        title: String(override.title || q.item.title || q.item.offerId || ''),
-        image: String(override.image || q.item.image || ''),
-        status: (isRunning ? 'collecting' : 'queued') as 'collecting' | 'queued',
-        message: String(override.message || ''),
-      };
-    });
+  const publishDeepTasks = () => {
+    const tasks = Object.values(deepTaskMapRef.current).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    onDeepTasksChange?.(tasks);
   };
 
-  const publishDeepTasks = (queue?: Array<{ key: string; item: ProgressOfferCardItem }>, overrides?: Record<string, Partial<ProgressOfferCardItem>>) => {
-    onDeepTasksChange?.(buildDeepTasks(queue, overrides));
+  const upsertDeepTask = (key: string, patch: Partial<typeof deepTaskMapRef.current[string]>) => {
+    const prev = deepTaskMapRef.current[key];
+    deepTaskMapRef.current[key] = {
+      key, offerId: patch.offerId ?? prev?.offerId, title: patch.title ?? prev?.title,
+      image: patch.image ?? prev?.image, status: patch.status ?? prev?.status ?? 'queued',
+      message: patch.message ?? prev?.message, createdAt: prev?.createdAt || patch.createdAt || new Date().toISOString(),
+      finishedAt: patch.finishedAt ?? prev?.finishedAt,
+    };
+    publishDeepTasks();
+  };
+
+  const upsertDeepJson = (offerId: string | undefined, deep: Record<string, unknown>, meta: Record<string, unknown>) => {
+    if (!offerId) return;
+    setDeepJsonByOfferId((prev) => ({ ...prev, [offerId]: { ...deep, _deepCollectMeta: { ...meta, collectedAt: new Date().toISOString() } } }));
+  };
+  const upsertDeepFailure = (offerId: string | undefined, failure: Record<string, unknown>) => {
+    if (!offerId) return;
+    setDeepFailuresByOfferId((prev) => ({ ...prev, [offerId]: failure }));
   };
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -234,11 +263,14 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       const profile = profiles[pi]!;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROFILE; attempt++) {
         setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: `正在使用 ${profile} 深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`, code: '' } }));
+        upsertDeepTask(key, { status: 'collecting', message: `正在使用 ${profile} 深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次` });
         const result = await runOfferProOnce(item, profile, attempt);
         if (result.ok && result.data) {
           const d = result.data;
           const imgs = Array.isArray(d.images) ? d.images as string[] : [];
           setCardOverrides((prev) => ({ ...prev, [key]: { title: String(d.title || item.title || ''), price: String(d.priceRange || d.priceText || item.price || ''), image: String(d.mainImage || imgs[0] || item.image || ''), status: 'deep-success', raw: d, message: `${profile} 第 ${attempt} 次成功`, code: '' } }));
+          upsertDeepTask(key, { title: String(d.title || item.title || ''), image: String(d.mainImage || imgs[0] || item.image || ''), status: 'success', message: `${profile} 第 ${attempt} 次成功`, finishedAt: new Date().toISOString() });
+          upsertDeepJson(item.offerId, d, { status: 'success', profile, attempt });
           showToast(`深度采集完成：${profile}`);
           return;
         }
@@ -253,6 +285,8 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     }
     const summary = failures.map((f) => `${f.profile}#${f.attempt}: ${f.error || f.status || '失败'}`).join('；');
     setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message: `所有账号深度采集失败，已跳过。${summary}`, code: 'ALL_PROFILES_FAILED' } }));
+    upsertDeepTask(key, { status: 'failed', message: `所有账号深度采集失败，已跳过。${summary}`, finishedAt: new Date().toISOString() });
+    upsertDeepFailure(item.offerId, { offerId: item.offerId, code: 'ALL_PROFILES_FAILED', message: summary, failedAt: new Date().toISOString(), attempts: failures });
     showToast('该商品所有账号深采失败，已跳过', 2200);
   };
 
@@ -261,13 +295,12 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     const next = deepQueueRef.current[0];
     if (!next) return;
     deepRunningRef.current = true;
-    publishDeepTasks();
+    upsertDeepTask(key, { status: 'collecting', message: '正在深度采集' });
     const { key, item } = next;
     try { await runDeepCollectWithFallback(item, key); }
     finally {
       deepQueueRef.current = deepQueueRef.current.slice(1);
       deepRunningRef.current = false;
-      publishDeepTasks();
       setTimeout(() => processDeepQueue(), 500);
     }
   };
@@ -280,17 +313,20 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     if (deepQueueRef.current.some((q) => q.key === key)) return;
     deepQueueRef.current = [...deepQueueRef.current, { key, item }];
     setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-queued', message: '排队等待深度采集', code: '' } }));
-    queueMicrotask(() => publishDeepTasks());
+    upsertDeepTask(key, { offerId: item.offerId, title: item.title, image: item.image, status: 'queued', message: '排队等待深度采集', createdAt: new Date().toISOString() });
     processDeepQueue();
   };
 
   useEffect(() => {
     setSelectedKeys(new Set());
     setCardOverrides({});
+    setDeepJsonByOfferId({});
+    setDeepFailuresByOfferId({});
     deepQueueRef.current = [];
     deepRunningRef.current = false;
+    deepTaskMapRef.current = {};
     onDeepTasksChange?.([]);
-  }, [record?.runId, resultType]);
+  }, [record?.runId, resultType, onDeepTasksChange]);
 
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;
   const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];

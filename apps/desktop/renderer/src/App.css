@@ -13,7 +13,7 @@ body {
 
 /* Shell — 2-column (sidebar + main workspace) */
 :root {
-  --desktop-sidebar-width: 196px;
+  --desktop-sidebar-width: 220px;
 }
 .app-shell {
   display: grid;
@@ -458,8 +458,37 @@ body {
   width: fit-content; max-width: 100%; height: 20px; padding: 0 8px; border-radius: 999px;
   font-size: 11px; font-weight: 800; display: inline-flex; align-items: center;
 }
+.deep-task-filters {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%;
+}
+.deep-task-filters button {
+  height: 26px; border: none; border-radius: 999px;
+  background: rgba(255,255,255,0.62); color: #64748b;
+  font-size: 11px; font-weight: 800; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
+}
+.deep-task-filters button.active {
+  color: #2563eb; background: rgba(219,234,254,0.9);
+  box-shadow: 0 0 0 1px rgba(59,130,246,0.22), inset 0 1px 0 rgba(255,255,255,0.82);
+}
+
+.deep-task-item.success {
+  border-color: rgba(34,197,94,0.28);
+  background: linear-gradient(135deg, rgba(240,253,244,0.86), rgba(255,255,255,0.62));
+}
+.deep-task-item.failed {
+  border-color: rgba(239,68,68,0.30);
+  background: linear-gradient(135deg, rgba(254,242,242,0.88), rgba(255,255,255,0.62));
+}
 .deep-task-status.collecting { color: #2563eb; background: rgba(219,234,254,0.85); }
 .deep-task-status.queued { color: #64748b; background: rgba(241,245,249,0.9); }
+.deep-task-status.success { color: #16a34a; background: rgba(220,252,231,0.92); }
+.deep-task-status.failed { color: #dc2626; background: rgba(254,226,226,0.92); }
+
+.deep-task-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+}
+.deep-task-time { color: #94a3b8; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .deep-task-more { text-align: center; color: #64748b; font-size: 11px; font-weight: 700; padding: 6px 0; }
 
 /* ── Runtime status modal ── */

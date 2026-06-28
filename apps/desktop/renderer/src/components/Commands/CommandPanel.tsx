@@ -11,7 +11,7 @@ interface Props {
   activeProfile: string;
   accounts: AccountData;
   onHistoryRefresh: () => void;
-  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>) => void;
+  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; createdAt: string; finishedAt?: string }>) => void;
 }
 
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange }: Props) {
