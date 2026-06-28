@@ -119,7 +119,7 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, onDeepTasksChange }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
@@ -140,15 +140,6 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       return override ? { ...card, ...override } : card;
     });
   }, [data, placeholderCards, running, cardOverrides]);
-
-  useEffect(() => {
-    setSelectedKeys(new Set());
-    setCardOverrides({});
-  }, [record?.runId, resultType]);
-
-  useEffect(() => {
-    setSelectedKeys(new Set());
-  }, [record?.runId, resultType]);
 
   const visibleCards = useMemo(() => progressCards, [progressCards]);
   const selectableCards = visibleCards.filter((card) => card.status !== 'waiting' || card.offerId || card.raw || card.title || card.image);

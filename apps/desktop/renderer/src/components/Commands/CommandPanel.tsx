@@ -14,7 +14,7 @@ interface Props {
   onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'collecting' | 'queued'; message?: string }>) => void;
 }
 
-export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh }: Props) {
+export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange }: Props) {
   const [activeCmdId, setActiveCmdId] = useState('search');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [args, setArgs] = useState<Record<string, string>>({});
