@@ -490,11 +490,13 @@ async function fetchSearch(
           // Clicking the in-page "next" arrow advances `beginPage` within the
           // SAME pageId, which is the only way to get a clean next 60.
           info(`Fetching page ${pageNum}/${pagesWanted}...`);
-          const advanced = await clickSearchNextPage(page).catch(() => false);
+          info(`Trying to click search page ${pageNum} or next arrow...`);
+          const advanced = await clickSearchNextPage(page, pageNum).catch(() => false);
           if (!advanced) {
-            info(`Could not advance to page ${pageNum} — stopping at ${allOffers.length} results.`);
+            info(`Could not click search page ${pageNum} or next arrow — stopping at ${allOffers.length} results.`);
             throw new PageAdvanceStopped();
           }
+          info(`Search pagination advanced to page ${pageNum}.`);
         }, headed ? 180000 : 12000);
       } catch (e) {
         if (e instanceof PageAdvanceStopped) break;
@@ -504,6 +506,12 @@ async function fetchSearch(
 
     let capturedOffers = captureResult.offers;
     let got = captureResult.status === 'captured';
+    info(
+      `Search page ${pageNum}/${pagesWanted}: ` +
+        `status=${captureResult.status}, ` +
+        `captured=${capturedOffers.length}, ` +
+        `totalBeforeAdd=${allOffers.length}`,
+    );
     if (captureResult.status === 'browser_closed') {
       throw new CliError(130, 'CANCELED', 'Browser closed.');
     }
@@ -531,8 +539,8 @@ async function fetchSearch(
         throw riskControlError(headed);
       }
       info(
-        `Page ${pageNum} blocked or empty — returning ${allOffers.length} ` +
-          `results from ${pageNum - 1} page(s).`,
+        `Search page ${pageNum}/${pagesWanted} was not captured ` +
+          `(status=${captureResult.status}) — returning ${allOffers.length} results from previous pages.`,
       );
       break;
     }
@@ -547,6 +555,11 @@ async function fetchSearch(
       allOffers.push(o);
       added++;
     }
+
+    info(
+      `Search page ${pageNum}/${pagesWanted}: ` +
+        `added=${added}, total=${allOffers.length}`,
+    );
 
     // Stop conditions:
     //  - collected enough for the caller's --max

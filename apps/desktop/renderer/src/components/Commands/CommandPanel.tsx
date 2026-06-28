@@ -264,6 +264,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     setLastRecord(synthetic);
     setLiveMode(false);
     setRunning(false);
+    setPlaceholderCount(0);
     setAlert({ text: `DEEPPRO 完成：${deepOffers.length}/${max} 成功` + (failures.length > 0 ? `，${failures.length} 失败` : ''), kind: 'success' });
     onHistoryRefresh();
   };
@@ -305,6 +306,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       setAlert({ text: (e as Error).message, kind: 'error' });
     } finally {
       setRunning(false);
+      setPlaceholderCount(0);
     }
   };
 
