@@ -214,50 +214,67 @@ function registerIpc() {
     return submitOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), draft);
   });
 
-  // --- terminal login (detached pwsh windows) ---
+  // --- terminal login (kept for debug, not used by UI) ---
   ipcMain.handle('desktop:loginAccountInTerminal', async (_event, profile) => {
-    console.log('[login-terminal] opening', profile);
-    return openLoginTerminal(profile);
+    return { ok: true, profile: String(profile), mode: 'terminal-deprecated' };
   });
   ipcMain.handle('desktop:loginAccountsInTerminal', async (_event, profiles) => {
-    const uniqueProfiles = Array.from(new Set(
-      (profiles || []).map(String).map((s) => s.trim()).filter(Boolean),
-    )).slice(0, 3);
-    console.log('[login-terminal] requested profiles', uniqueProfiles);
+    return { ok: false, message: '请使用浏览器登录按钮。' };
+  });
+
+  // --- browser login: spawn CLI login --headed directly ---
+  const activeLoginProcesses = new Map();
+
+  async function stopDaemonForProfile(profile) {
+    try {
+      await exec({
+        commandId: 'daemonStop',
+        profile: String(profile),
+        saveHistory: false,
+        timeoutMs: 8000,
+      });
+    } catch { /* best-effort */ }
+  }
+
+  function openLoginBrowser(profile) {
+    const p = String(profile || '').trim();
+    if (!p) throw new Error('profile 不能为空');
+    const args = [
+      runtime.cliPath,
+      'login', '--profile', p, '--force', '--headed', '--timeout', '300', '--no-daemon', '--json', '--pretty',
+    ];
+    console.log('[login-browser] spawn', p);
+    const child = spawn(process.execPath, args, {
+      cwd: runtime.rootDir,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', BB1688_JSON: '1' },
+      detached: false, windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    activeLoginProcesses.set(runId, { profile: p, child });
+    child.stdout.on('data', (chunk) => { console.log(`[login-browser:${p}]`, chunk.toString()); });
+    child.stderr.on('data', (chunk) => { console.warn(`[login-browser:${p}]`, chunk.toString()); });
+    child.on('close', (code) => { console.log('[login-browser] closed', p, code); activeLoginProcesses.delete(runId); });
+    return { ok: true, profile: p, runId, pid: child.pid, mode: 'browser' };
+  }
+
+  ipcMain.handle('desktop:loginAccountBrowser', async (_event, profile) => {
+    await stopDaemonForProfile(profile);
+    return openLoginBrowser(profile);
+  });
+  ipcMain.handle('desktop:loginAccountsBrowser', async (_event, profiles) => {
+    const uniqueProfiles = Array.from(new Set((profiles || []).map(String).map((s) => s.trim()).filter(Boolean))).slice(0, 3);
+    console.log('[login-browser] batch', uniqueProfiles);
     const opened = [];
     for (const profile of uniqueProfiles) {
-      opened.push(openLoginTerminal(profile).profile);
-      await new Promise((r) => setTimeout(r, 800));
+      try {
+        await stopDaemonForProfile(profile);
+        opened.push(openLoginBrowser(profile).profile);
+        await new Promise((r) => setTimeout(r, 800));
+      } catch (e) { console.error('[login-browser] error', profile, e); }
     }
-    return { ok: true, requestedProfiles: uniqueProfiles, openedProfiles: opened, openedCount: opened.length };
+    return { ok: opened.length > 0, requestedProfiles: uniqueProfiles, openedProfiles: opened, openedCount: opened.length, mode: 'browser' };
   });
-}
-
-function quotePowerShell(value) {
-  return String(value).replace(/`/g, '``').replace(/"/g, '`"');
-}
-function openLoginTerminal(profile) {
-  const root = runtime.rootDir;
-  const p = String(profile).trim();
-  if (!p) throw new Error('profile 不能为空');
-  const command = [
-    `$Host.UI.RawUI.WindowTitle = "1688 登录 - ${quotePowerShell(p)}"`,
-    `cd "${quotePowerShell(root)}"`,
-    `Write-Host "正在登录 profile: ${quotePowerShell(p)}" -ForegroundColor Cyan`,
-    `node .\\dist\\cli.js daemon stop --profile "${quotePowerShell(p)}"`,
-    `node .\\dist\\cli.js login --profile "${quotePowerShell(p)}" --force --headed --timeout 300 --no-daemon --json --pretty`,
-    `Write-Host ""`,
-    `Write-Host "登录流程结束：${quotePowerShell(p)}。请回到桌面端点击刷新状态。" -ForegroundColor Cyan`,
-  ].join('; ');
-  const args = ['-NoExit', '-Command', command];
-  let child;
-  try {
-    child = spawn('pwsh.exe', args, { cwd: root, detached: true, stdio: 'ignore', windowsHide: false });
-  } catch {
-    child = spawn('powershell.exe', args, { cwd: root, detached: true, stdio: 'ignore', windowsHide: false });
-  }
-  child.unref();
-  return { ok: true, profile: p, mode: 'terminal' };
 }
 
 // ---------- lifecycle ----------

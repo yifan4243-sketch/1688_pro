@@ -178,6 +178,8 @@ interface DesktopApi {
     login: (profile: string) => Promise<CommandRecord & { accountStatus: string }>;
     loginInTerminal: (profile: string) => Promise<{ ok: boolean; profile: string; mode: string }>;
     loginManyInTerminal: (profiles: string[]) => Promise<{ ok: boolean; requestedProfiles: string[]; openedProfiles: string[]; openedCount: number }>;
+    loginBrowser: (profile: string) => Promise<{ ok: boolean; profile: string; runId: string; pid?: number; mode: 'browser' }>;
+    loginManyBrowser: (profiles: string[]) => Promise<{ ok: boolean; requestedProfiles: string[]; openedProfiles: string[]; openedCount: number; mode: 'browser' }>;
     refreshStatus: (profile: string) => Promise<{ profile: string; status: string }>;
     suggestProfileName: () => Promise<string>;
   };

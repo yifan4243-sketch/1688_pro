@@ -55,9 +55,9 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
     finally { setLoginBusy(false); }
   };
 
-  const openProfilesInTerminal = async (profiles: string[], label: string) => {
+  const openManyProfilesBrowser = async (profiles: string[], label: string) => {
     const uniqueProfiles = Array.from(new Set(profiles.map(String).map((s) => s.trim()).filter(Boolean))).slice(0, 3);
-    console.log('[batch-login]', label, uniqueProfiles);
+    console.log('[browser-login]', label, uniqueProfiles);
 
     if (uniqueProfiles.length === 0) {
       setMsg('没有可登录的账号，请先新增登录账号。');
@@ -67,22 +67,45 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
       setMsg(`当前只找到 ${uniqueProfiles.length} 个账号：${uniqueProfiles.join('、')}。如需同时登录两个账号，请先新增第二个账号。`);
     }
     try {
-      const result = await api.accounts.loginManyInTerminal(uniqueProfiles);
-      console.log('[batch-login] result', result);
-      setMsg(`已打开 ${result.openedCount} 个登录终端：${(result.openedProfiles || uniqueProfiles).join('、')}。请分别完成登录，完成后点击刷新状态。`);
+      if (typeof api.accounts.loginManyBrowser === 'function') {
+        const result = await api.accounts.loginManyBrowser(uniqueProfiles);
+        console.log('[browser-login] result', result);
+        setMsg(`已打开 ${result.openedCount || uniqueProfiles.length} 个 1688 登录浏览器：${(result.openedProfiles || uniqueProfiles).join('、')}。请分别完成登录，完成后点击刷新状态。`);
+        return;
+      }
+      // Fallback: sequential single-browser
+      if (typeof api.accounts.loginBrowser !== 'function') {
+        throw new Error('当前 preload 未暴露浏览器登录 API，请完全重启应用。');
+      }
+      const opened: string[] = [];
+      for (const p of uniqueProfiles) {
+        await api.accounts.loginBrowser(p);
+        opened.push(p);
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      setMsg(`已通过兼容模式打开 ${opened.length} 个 1688 登录浏览器：${opened.join('、')}。请分别完成登录，完成后点击刷新状态。`);
     } catch (e) {
-      setMsg((e as Error).message || '打开登录终端失败');
+      setMsg((e as Error).message || '打开登录浏览器失败');
     }
   };
 
-  const handleLoginCurrent = () => openProfilesInTerminal([activeProfile], '登录当前账号');
+  const handleLoginCurrent = async () => {
+    const p = String(activeProfile || '').trim();
+    if (!p) { setMsg('当前没有选中的账号。'); return; }
+    setMsg(`正在为 ${p} 打开 1688 登录浏览器...`);
+    try {
+      if (typeof api.accounts.loginBrowser !== 'function') throw new Error('请完全重启应用。');
+      const result = await api.accounts.loginBrowser(p);
+      setMsg(`已为 ${result.profile || p} 打开 1688 登录浏览器。请完成登录后点击刷新状态。`);
+    } catch (e) { setMsg((e as Error).message || '打开登录浏览器失败'); }
+  };
   const handleLoginAll = () => {
     const profiles = accounts.accounts.map((a) => a.profile).filter(Boolean).slice(0, 3);
-    openProfilesInTerminal(profiles, '同时登录全部账号');
+    openManyProfilesBrowser(profiles, '同时登录全部账号');
   };
   const handleLoginNotLoggedIn = () => {
     const profiles = accounts.accounts.filter((a) => a.status !== 'logged_in').map((a) => a.profile).filter(Boolean).slice(0, 3);
-    openProfilesInTerminal(profiles, '同时登录未登录账号');
+    openManyProfilesBrowser(profiles, '同时登录未登录账号');
   };
 
   return (
