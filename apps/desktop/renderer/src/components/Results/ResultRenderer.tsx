@@ -197,8 +197,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
 
   return (
     <div className="result-renderer">
-      {(data || hasOffers) && (
-        <div className="result-unified-toolbar">
+      <div className="result-unified-toolbar">
           <div className="result-left-tools">
             {hasOffers && (
               <>
@@ -227,7 +226,6 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
             )}
           </div>
         </div>
-      )}
 
       {/* Progress card grid */}
       {viewMode === 'card' && hasOffers && (
