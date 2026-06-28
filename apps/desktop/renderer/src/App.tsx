@@ -118,18 +118,6 @@ export default function App() {
           </div>
         </div>
 
-        <AccountSelector
-          accounts={accounts}
-          activeProfile={activeProfile}
-          onProfileChange={handleAccountChange}
-          onAccountsChanged={async () => {
-            const acc = await api.accounts.list();
-            setAccounts(acc);
-            const rt = await api.runtime.getStatus(activeProfile);
-            setRuntime(rt);
-          }}
-        />
-
         <RuntimeStatusPanel
           runtime={runtime}
           cliInfo={cliInfo}

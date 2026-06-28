@@ -39,9 +39,15 @@ export default function RuntimeStatusPanel({ runtime, cliInfo, onRefresh, accoun
           {daemonRunning ? '运行中' : '未运行'}
         </span>
       </div>
+      {activeProfile && (
+        <div className="status-line">
+          <span className="status-key">当前账号</span>
+          <span className="status-val">{activeAccount?.alias || activeProfile}</span>
+        </div>
+      )}
       {nick && (
         <div className="status-line">
-          <span className="status-key">账号</span>
+          <span className="status-key">会员</span>
           <span className="status-val">{nick}</span>
         </div>
       )}

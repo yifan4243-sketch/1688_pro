@@ -297,6 +297,28 @@ body {
 .history-detail-grid .detail-key { color: var(--text-tertiary); }
 .history-detail-grid .detail-val { color: var(--text-primary); }
 
+/* ── Account action buttons ── */
+.account-action-btn {
+  height: 30px; padding: 0 14px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.52);
+  background: rgba(255,255,255,0.38);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: var(--text-secondary); white-space: nowrap;
+  transition: transform 0.14s, background 0.14s, box-shadow 0.14s;
+}
+.account-action-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.56);
+  border-color: rgba(255,255,255,0.68);
+}
+.account-action-btn.primary {
+  color: #2563eb; border-color: rgba(59,130,246,0.32);
+  background: rgba(219,234,254,0.62);
+}
+.account-action-btn.primary:hover {
+  background: rgba(219,234,254,0.82); border-color: rgba(59,130,246,0.48);
+}
 /* ── Product history gallery ── */
 .product-history-backdrop {
   position: fixed; inset: 0; z-index: 9998;
