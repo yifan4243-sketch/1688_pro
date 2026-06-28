@@ -202,6 +202,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const deepRunningRef = useRef(false);
   const deepTaskMapRef = useRef<Record<string, { key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; profile?: string; attempt?: number; createdAt: string; updatedAt?: string; finishedAt?: string }>>({});
   const MAX_ATTEMPTS_PER_PROFILE = 2;
+  const deepQueueStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const publishDeepTasks = () => {
     const tasks = Object.values(deepTaskMapRef.current).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -309,12 +310,29 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       });
     }
 
+    console.info('[deep-collect] runOfferProBatchOnce call CLI', {
+      profile,
+      attempt,
+      count: ids.length,
+      ids,
+      offerIdsArg: ids.join('\\n'),
+    });
+
     const rec = await api.commands.run({
       commandId: 'offer',
       args: { offerIds: ids.join('\n') },
       options: { pro: true, headed: true },
       profile,
       confirmed: true,
+    });
+
+    console.info('[deep-collect] runOfferProBatchOnce CLI returned', {
+      profile,
+      attempt,
+      status: rec.status,
+      argv: rec.argv,
+      stdoutMode: rec.outputKind,
+      stderr: rec.stderrText,
     });
 
     const data = normalizeOfferBatchJson(rec.stdoutJson);
@@ -529,6 +547,11 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     const batch = deepQueueRef.current.slice();
     if (batch.length === 0) return;
 
+    console.info('[deep-collect] processDeepQueue batch snapshot', {
+      batchSize: batch.length,
+      offerIds: batch.map((entry) => entry.item.offerId),
+    });
+
     const processingKeys = new Set(batch.map((entry) => entry.key));
     deepRunningRef.current = true;
 
@@ -545,8 +568,24 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     }
   };
 
+  const scheduleDeepQueueProcess = (delayMs = 500) => {
+    if (deepRunningRef.current) return;
+    if (deepQueueStartTimerRef.current) {
+      clearTimeout(deepQueueStartTimerRef.current);
+    }
+    deepQueueStartTimerRef.current = setTimeout(() => {
+      deepQueueStartTimerRef.current = null;
+      processDeepQueue();
+    }, delayMs);
+  };
+
   const enqueueMultipleDeepCollect = (items: ProgressOfferCardItem[]) => {
     const validItems = items.filter((item) => Boolean(item.offerId));
+    console.info('[deep-collect] batch button enqueue request', {
+      selectedCount: items.length,
+      validCount: validItems.length,
+      offerIds: validItems.map((item) => item.offerId),
+    });
     if (validItems.length === 0) {
       showToast('请选择有 Offer ID 的商品');
       return;
@@ -594,9 +633,15 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       return;
     }
 
+    console.info('[deep-collect] batch enqueue done', {
+      added,
+      queueSize: deepQueueRef.current.length,
+      queueOfferIds: deepQueueRef.current.map((entry) => entry.item.offerId),
+    });
+
     showToast(`已加入 ${added} 个商品到深采队列`, 1600);
 
-    processDeepQueue();
+    scheduleDeepQueueProcess(500);
   };
 
   const enqueueSingleDeepCollect = (item: ProgressOfferCardItem) => {

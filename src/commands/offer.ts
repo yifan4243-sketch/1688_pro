@@ -309,6 +309,7 @@ export async function executeRaw(
   } finally {
     skuCapture.dispose();
     page.off('response', onResp);
+    await page.close().catch(() => {});
   }
 }
 
@@ -814,6 +815,8 @@ export async function run(opts: OfferOpts): Promise<void> {
       ? [opts.offerId]
       : [];
 
+  info(`[offer] received ids=${ids instanceof Array ? ids.length : String(ids).length}, pro=${opts.pro === true}, headed=${opts.headed === true}, profile=${opts.profile || 'default'}`);
+
   if (ids.length === 0) {
     throw new CliError(2, 'BAD_INPUT', 'offerId required.');
   }
@@ -836,6 +839,7 @@ export async function run(opts: OfferOpts): Promise<void> {
   // For --pro + --headed, keep one visible browser/session open for the whole batch.
   // This avoids opening and closing the browser for every single offer.
   if (opts.pro === true && opts.headed === true) {
+    info(`[offer] entering headed pro batch path, ids=${ids instanceof Array ? ids.length : String(ids).length}`);
     const result = await runOfferBatchInOneSession(ids, opts);
     emit({
       human: () => printBatch(result),
@@ -991,6 +995,7 @@ async function pauseDaemonForInlineBatch(profile?: string): Promise<{ resume: ()
 }
 
 async function runOfferBatchInOneSession(ids: string[], opts: OfferOpts): Promise<OfferBatchResult> {
+  info(`[offer-batch] one headed session start: ${ids.length} offer(s): ${ids.slice(0, 5).join(', ')}${ids.length > 5 ? `... (+${ids.length - 5})` : ''}`);
   const offers: OfferResult[] = [];
   const failures: OfferFailure[] = [];
   const profile = opts.profile;

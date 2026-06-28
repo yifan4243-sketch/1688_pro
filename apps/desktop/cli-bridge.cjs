@@ -646,6 +646,14 @@ async function runCommand(runtime, historyDir, payload = {}) {
 
   const cliPath = resolveCliJs(runtime);
   const argv = buildArgv(payload.commandId, payload);
+  if (payload.commandId === 'offer') {
+    console.info('[cli-bridge] offer payload', {
+      args: payload.args,
+      options: payload.options,
+      profile: payload.profile,
+      argv,
+    });
+  }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const startedAt = new Date().toISOString();
   const childArgs = [cliPath, ...argv];
