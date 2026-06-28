@@ -113,11 +113,6 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="side-nav app-side-switcher">
-        <div className="side-top-row">
-          <button type="button" className="runtime-status-trigger" onClick={() => setRuntimeStatusOpen(true)}>
-            运行状态
-          </button>
-        </div>
         <div className="side-app-buttons">
           <button type="button" className={`side-app-button ${workspaceView === '1688' ? 'active' : ''}`} onClick={() => setWorkspaceView('1688')} aria-label="1688">
             <img src="/nav/1688.png" alt="1688" />
@@ -135,6 +130,7 @@ export default function App() {
             <h2>{workspaceView === '1688' ? '1688 to Ozon Studio' : 'Ozon Studio'}</h2>
           </div>
           <div className="topbar-actions">
+            <button className="glass-btn-secondary" onClick={() => setRuntimeStatusOpen(true)}>运行状态</button>
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('ai')}>AI 设置</button>
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('store')}>Ozon 店铺</button>
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setAccountSettingsOpen(true)}>1688账号</button>

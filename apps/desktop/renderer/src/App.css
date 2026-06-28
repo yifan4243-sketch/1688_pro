@@ -14,7 +14,7 @@ body {
 /* Shell — 2-column (sidebar + main workspace) */
 .app-shell {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-columns: 132px minmax(0, 1fr);
   height: 100vh;
 }
 .side-nav {
@@ -24,29 +24,12 @@ body {
 }
 .app-side-switcher { align-items: stretch; }
 
-.side-top-row {
-  display: flex; align-items: center; justify-content: center;
-}
-.runtime-status-trigger {
-  height: 30px; padding: 0 12px;
-  border: 1px solid rgba(255,255,255,0.66); border-radius: 999px;
-  background: rgba(255,255,255,0.56); color: #0f172a;
-  font-size: 12px; font-weight: 800; cursor: pointer;
-  box-shadow: 0 6px 16px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.84);
-  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
-}
-.runtime-status-trigger:hover {
-  transform: translateY(-1px);
-  background: rgba(255,255,255,0.78);
-  box-shadow: 0 12px 28px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.9);
-}
-
 .side-app-buttons {
-  display: grid; grid-template-columns: 56px 56px; gap: 10px;
+  display: grid; grid-template-columns: 52px 52px; gap: 8px;
   justify-content: center; align-items: center; width: 100%;
 }
 .side-app-button {
-  width: 56px; height: 56px; padding: 0;
+  width: 52px; height: 52px; padding: 0;
   border: none; border-radius: 12px;
   background: transparent; cursor: pointer;
   overflow: hidden; display: flex; align-items: center; justify-content: center;
@@ -94,8 +77,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 8px;
 }
 .topbar-actions .glass-btn-secondary {
   min-width: 86px;
