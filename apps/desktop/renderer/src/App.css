@@ -12,14 +12,20 @@ body {
 .app-error button { padding: 8px 24px; cursor: pointer; }
 
 /* Shell — 2-column (sidebar + main workspace) */
+:root {
+  --desktop-sidebar-width: 160px;
+}
 .app-shell {
   display: grid;
-  grid-template-columns: 124px minmax(0, 1fr);
+  grid-template-columns: var(--desktop-sidebar-width) minmax(0, 1fr);
   height: 100vh;
 }
 .side-nav {
+  width: var(--desktop-sidebar-width);
+  min-width: var(--desktop-sidebar-width);
+  max-width: var(--desktop-sidebar-width);
   background: rgba(255,255,255,0.38); border-right: 1px solid rgba(0,0,0,0.06);
-  padding: 12px 8px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
+  padding: 12px 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 .app-side-switcher { align-items: stretch; }
@@ -452,7 +458,7 @@ body {
 
 /* ── Responsive breakpoints ── */
 @media (max-width: 1440px) {
-  .app-shell { grid-template-columns: 260px minmax(0, 1fr); }
+  .app-shell { grid-template-columns: var(--desktop-sidebar-width) minmax(0, 1fr); }
 }
 @media (max-width: 860px) {
   .app-shell { grid-template-columns: 1fr; }
