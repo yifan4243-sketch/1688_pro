@@ -346,7 +346,8 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       return Math.min(24, Math.max(1, keywords * (maxPerQuery > 0 ? maxPerQuery : 20)));
     }
     const max = Number(options.max || 20);
-    return max > 0 ? Math.min(max, 100) : 20;
+    if (!Number.isFinite(max) || max <= 0) return 20;
+    return Math.min(max, 600);
   };
 
   return (
@@ -540,7 +541,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         </div>
       )}
 
-      {alert && (
+      {alert && (alert.kind === 'error' || alert.kind === 'warn') && (
         <div className={`alert ${alert.kind}`}>{alert.text}</div>
       )}
 
