@@ -35,6 +35,9 @@ export default function HistoryModal({ title, history, open, onClose, onSelect, 
               <span className="history-status" style={{ color: item.status === 'success' ? '#16a34a' : item.status === 'failed' ? '#dc2626' : undefined }}>
                 {statusText(item.status)}
               </span>
+              <span className="history-profile" title={`账号：${item.profile || 'default'}`}>
+                {item.profile || 'default'}
+              </span>
               <span className="history-time">{new Date(item.startedAt).toLocaleString()}</span>
             </button>
           ))

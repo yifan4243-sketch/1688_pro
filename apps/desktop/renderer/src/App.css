@@ -279,9 +279,13 @@ body {
   width: 100%; border: 0;
   background: rgba(255,255,255,0.5); border-radius: 14px;
   padding: 10px 14px; margin-bottom: 6px;
-  display: grid; grid-template-columns: 100px 1fr auto; gap: 10px;
+  display: grid; grid-template-columns: 92px 80px minmax(90px, 1fr) auto; gap: 12px;
   align-items: center; cursor: pointer; text-align: left; font-size: 13px;
   transition: background 0.15s, box-shadow 0.15s;
+}
+.history-profile {
+  color: #64748b; font-size: 12px; font-weight: 700; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .history-row:hover {
   background: rgba(255,255,255,0.78);
