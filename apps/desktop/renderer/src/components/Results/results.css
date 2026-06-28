@@ -657,6 +657,31 @@
 }
 .progress-card-price { font-size: 14px; font-weight: 700; color: var(--text-primary); }
 
+/* Two-button card actions */
+.progress-card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+}
+.progress-card-action-btn {
+  width: 100%; height: 30px; border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.72);
+  color: #334155; font-size: 12px; font-weight: 700; white-space: nowrap;
+  cursor: pointer; transition: transform 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.progress-card-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+.progress-card-action-btn:disabled { opacity: 0.48; cursor: not-allowed; }
+.progress-card-action-btn--deep { color: #2563eb; background: rgba(239, 246, 255, 0.84); }
+.progress-card-action-btn--ozon { color: #16a34a; background: rgba(240, 253, 244, 0.84); }
+
 /* Ozon placeholder button */
 .progress-card-ozon-btn {
   margin-top: auto;

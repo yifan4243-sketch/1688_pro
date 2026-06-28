@@ -1,16 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { CommandRecord } from '../../services/api';
+import { getApi, CommandRecord } from '../../services/api';
 import { shouldDefaultCard } from '../../services/offer-adapter';
 import ProgressOfferCard, { toProgressCards, ProgressOfferCardItem } from './ProgressOfferCard';
 import OfferDetailModal from './OfferDetailModal';
 import ProgressSummary from './ProgressSummary';
-import OzonDraftModal from '../Ozon/OzonDraftModal';
 
 interface Props {
   record: CommandRecord | null;
   resultType?: string;
   placeholderCards?: number;
   running?: boolean;
+  activeProfile?: string;
 }
 
 type ViewMode = 'card' | 'json';
@@ -118,21 +118,32 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile }: Props) {
+  const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
   );
   const [toast, setToast] = useState('');
   const [detailItem, setDetailItem] = useState<ProgressOfferCardItem | null>(null);
-  const [ozonItem, setOzonItem] = useState<ProgressOfferCardItem | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [cardOverrides, setCardOverrides] = useState<Record<string, Partial<ProgressOfferCardItem>>>({});
 
   const data = record?.stdoutJson as Record<string, unknown> | undefined;
 
-  // Build progress cards from result data
+  // Build progress cards from result data, applying per-card overrides
   const progressCards = useMemo<ProgressOfferCardItem[]>(() => {
-    return normalizeCards(data, placeholderCards, running);
-  }, [data, placeholderCards, running]);
+    const baseCards = normalizeCards(data, placeholderCards, running);
+    return baseCards.map((card) => {
+      const key = card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
+      const override = cardOverrides[key];
+      return override ? { ...card, ...override } : card;
+    });
+  }, [data, placeholderCards, running, cardOverrides]);
+
+  useEffect(() => {
+    setSelectedKeys(new Set());
+    setCardOverrides({});
+  }, [record?.runId, resultType]);
 
   useEffect(() => {
     setSelectedKeys(new Set());
@@ -165,6 +176,48 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
 
   const clearSelected = () => {
     setSelectedKeys(new Set());
+  };
+
+  const runSingleDeepCollect = async (item: ProgressOfferCardItem) => {
+    if (!item.offerId) {
+      setToast('缺少 Offer ID，无法深度采集');
+      setTimeout(() => setToast(''), 1600);
+      return;
+    }
+    const key = item.offerId ? `offer:${item.offerId}` : `slot:${item.slotIndex}`;
+    setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-collecting', message: '', code: '' } }));
+    try {
+      const offerRecord = await api.commands.run({
+        commandId: 'offer',
+        args: { offerIds: item.offerId },
+        options: { pro: true },
+        profile: activeProfile || record?.profile || 'default',
+        confirmed: true,
+      });
+      const deep = offerRecord.stdoutJson as Record<string, unknown> | undefined;
+      if (!deep || !deep.title || /captcha|验证码|滑块|风控/i.test(String(deep.title))) {
+        throw new Error('深度采集结果不完整，可能被验证码或风控拦截');
+      }
+      const images = Array.isArray(deep.images) ? deep.images : [];
+      const mainImage = String(deep.mainImage || images[0] || item.image || '');
+      setCardOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          title: String(deep.title || item.title || ''),
+          price: String(deep.priceRange || deep.priceText || item.price || ''),
+          image: mainImage,
+          status: 'deep-success',
+          raw: deep, message: '', code: '',
+        },
+      }));
+      setToast('深度采集完成');
+      setTimeout(() => setToast(''), 1600);
+    } catch (error) {
+      const message = (error as Error).message || '深度采集失败';
+      setCardOverrides((prev) => ({ ...prev, [key]: { status: 'deep-failed', message, code: 'SINGLE_DEEP_COLLECT_FAILED' } }));
+      setToast(message);
+      setTimeout(() => setToast(''), 2200);
+    }
   };
 
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;
@@ -235,7 +288,11 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
               item={card}
               selected={selectedKeys.has(cardKey(card))}
               onSelectToggle={toggleSelect}
-              onOzon={(item) => setOzonItem(item)}
+              onDeepCollect={runSingleDeepCollect}
+              onOzonPlaceholder={() => {
+                setToast('上架至 OZON 暂未接入');
+                setTimeout(() => setToast(''), 1600);
+              }}
               onOpen={(item) => {
                 if (item.offerId || item.raw || item.title || item.image) {
                   setDetailItem(item);
@@ -299,10 +356,6 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       {/* Detail modal */}
       {detailItem && (
         <OfferDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
-      )}
-
-      {ozonItem && (
-        <OzonDraftModal item={ozonItem} onClose={() => setOzonItem(null)} />
       )}
 
       {toast && <div className="toast">{toast}</div>}

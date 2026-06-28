@@ -26,7 +26,8 @@ export interface ProgressOfferCardItem {
 interface Props {
   item: ProgressOfferCardItem;
   onOpen?: (item: ProgressOfferCardItem) => void;
-  onOzon?: (item: ProgressOfferCardItem) => void;
+  onDeepCollect?: (item: ProgressOfferCardItem) => void;
+  onOzonPlaceholder?: (item: ProgressOfferCardItem) => void;
   selected?: boolean;
   onSelectToggle?: (item: ProgressOfferCardItem) => void;
 }
@@ -136,7 +137,7 @@ function failureReasonZh(code: string, fallback?: string): string {
   return map[code] || fallback || code || '采集失败';
 }
 
-export default function ProgressOfferCard({ item, onOpen, onOzon, selected, onSelectToggle }: Props) {
+export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonPlaceholder, selected, onSelectToggle }: Props) {
   const showImage = Boolean(item.image);
   const hasOverlay = (item.status === 'basic-ready' && item.pendingDeep === true) || item.status === 'collecting' || item.status === 'deep-collecting' || item.status === 'deep-failed' || item.status === 'failed';
   const isFailed = item.status === 'deep-failed' || item.status === 'failed';
@@ -197,16 +198,32 @@ export default function ProgressOfferCard({ item, onOpen, onOzon, selected, onSe
       <div className="progress-card-body">
         <p className="progress-card-title">{item.title || '加载中...'}</p>
         {item.price && <p className="progress-card-price">{item.price}</p>}
-        <button
-          className="progress-card-ozon-btn"
-          disabled={!isClickable}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isClickable) onOzon?.(item);
-          }}
-        >
-          {item.status === 'deep-success' ? '上架至 Ozon' : 'Ozon 草稿'}
-        </button>
+        <div className="progress-card-actions">
+          <button
+            type="button"
+            className="progress-card-action-btn progress-card-action-btn--deep"
+            disabled={!item.offerId || item.status === 'deep-collecting' || item.status === 'collecting'}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (item.offerId && item.status !== 'deep-collecting' && item.status !== 'collecting') {
+                onDeepCollect?.(item);
+              }
+            }}
+          >
+            {item.status === 'deep-collecting' ? '采集中...' : item.status === 'deep-success' ? '重新深采' : '深度采集'}
+          </button>
+          <button
+            type="button"
+            className="progress-card-action-btn progress-card-action-btn--ozon"
+            disabled={!isClickable}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isClickable) onOzonPlaceholder?.(item);
+            }}
+          >
+            上架至 OZON
+          </button>
+        </div>
       </div>
     </article>
   );

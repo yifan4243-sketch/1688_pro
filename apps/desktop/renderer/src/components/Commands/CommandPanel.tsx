@@ -561,6 +561,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               resultType={command.resultType}
               placeholderCards={placeholderCount}
               running={true}
+              activeProfile={activeProfile}
             />
           </>
         ) : lastRecord ? (
@@ -571,6 +572,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               resultType={command.resultType}
               placeholderCards={placeholderCount}
               running={false}
+              activeProfile={activeProfile}
             />
           </>
         ) : (
