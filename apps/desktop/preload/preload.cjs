@@ -34,4 +34,13 @@ contextBridge.exposeInMainWorld('desktopApi', {
     add: (products, meta) => ipcRenderer.invoke('desktop:addProductsToHistory', products, meta),
     clear: () => ipcRenderer.invoke('desktop:clearProductHistory'),
   },
+
+  // Ozon AI drafts and submit
+  ozon: {
+    getSettings: () => ipcRenderer.invoke('desktop:getOzonSettings'),
+    saveSettings: (patch) => ipcRenderer.invoke('desktop:saveOzonSettings', patch),
+    getStoreStats: () => ipcRenderer.invoke('desktop:getOzonStoreStats'),
+    generateDraft: (rows) => ipcRenderer.invoke('desktop:generateOzonDraft', rows),
+    submitDraft: (draft, confirmed) => ipcRenderer.invoke('desktop:submitOzonDraft', draft, confirmed),
+  },
 });

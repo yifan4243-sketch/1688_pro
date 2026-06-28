@@ -6,6 +6,7 @@ import CommandPanel from './components/Commands/CommandPanel';
 import HistoryModal from './components/History/HistoryModal';
 import HistoryDetailModal from './components/History/HistoryDetailModal';
 import ProductHistoryModal from './components/History/ProductHistoryModal';
+import OzonSettingsModal from './components/Ozon/OzonSettingsModal';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -24,6 +25,7 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
+  const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [productItems, setProductItems] = useState<Array<{ offerId: string; title: string; price: string; image: string; url: string; collectedAt: string; raw?: unknown }>>([]);
 
   const api = getApi();
@@ -72,6 +74,11 @@ export default function App() {
     setRecentOpen(true);
   };
 
+  const refreshRecentTasks = async () => {
+    const items = await api.commands.getHistory({ limit: 8 });
+    setHistory(items);
+  };
+
   const openProductHistory = async () => {
     const items = await api.productHistory.list(50);
     setProductItems(items);
@@ -113,7 +120,12 @@ export default function App() {
           accounts={accounts}
           activeProfile={activeProfile}
           onProfileChange={handleAccountChange}
-          onAccountsChanged={() => api.accounts.list().then(setAccounts)}
+          onAccountsChanged={async () => {
+            const acc = await api.accounts.list();
+            setAccounts(acc);
+            const rt = await api.runtime.getStatus(activeProfile);
+            setRuntime(rt);
+          }}
         />
 
         <RuntimeStatusPanel
@@ -130,6 +142,8 @@ export default function App() {
             <h2>1688 to Ozon Studio</h2>
           </div>
           <div className="topbar-actions">
+            <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('ai')}>AI 设置</button>
+            <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('store')}>Ozon 店铺</button>
             <button className="glass-btn-secondary" onClick={handleRefreshRuntime}>刷新状态</button>
             <button className="glass-btn-secondary" onClick={openRecentTasks}>最近任务</button>
             <button className="glass-btn-secondary" onClick={openProductHistory}>历史记录</button>
@@ -141,7 +155,7 @@ export default function App() {
             registry={registry}
             activeProfile={activeProfile}
             accounts={accounts}
-            onHistoryRefresh={openRecentTasks}
+            onHistoryRefresh={refreshRecentTasks}
           />
         </div>
       </main>
@@ -172,6 +186,12 @@ export default function App() {
         items={productItems}
         open={productHistoryOpen}
         onClose={() => setProductHistoryOpen(false)}
+      />
+
+      <OzonSettingsModal
+        mode={ozonSettingsOpen || 'ai'}
+        open={ozonSettingsOpen !== null}
+        onClose={() => setOzonSettingsOpen(null)}
       />
     </div>
   );

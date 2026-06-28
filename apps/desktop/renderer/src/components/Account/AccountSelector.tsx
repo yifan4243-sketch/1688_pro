@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getApi, AccountData } from '../../services/api';
+import GlassSelect from '../Controls/GlassSelect';
 
 interface Props {
   accounts: AccountData;
   activeProfile: string;
   onProfileChange: (profile: string) => void;
-  onAccountsChanged: () => void;
+  onAccountsChanged: () => void | Promise<void>;
 }
 
 export default function AccountSelector({ accounts, activeProfile, onProfileChange, onAccountsChanged }: Props) {
@@ -14,6 +16,7 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
   const [profile, setProfile] = useState('');
   const [note, setNote] = useState('');
   const [msg, setMsg] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const api = getApi();
 
@@ -39,37 +42,44 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
   };
 
   const handleLogin = async (p: string) => {
+    if (!p || loginBusy) return;
+    setLoginBusy(true);
     setMsg('正在登录...');
-    try { await api.accounts.login(p); await api.accounts.refreshStatus(p); onAccountsChanged(); setMsg('登录完成'); }
+    try {
+      await api.accounts.login(p);
+      await api.accounts.refreshStatus(p);
+      await onAccountsChanged();
+      setMsg('登录完成');
+    }
     catch (e) { setMsg((e as Error).message || '登录失败'); }
+    finally { setLoginBusy(false); }
   };
 
   return (
     <div className="glass-panel-card">
       <h2>1688账号档案</h2>
       <div className="form-field">
-        <select
+        <GlassSelect
           className="glass-select"
           value={activeProfile}
-          onChange={(e) => onProfileChange(e.target.value)}
-        >
-          {accounts.accounts.map((a) => (
-            <option key={a.profile} value={a.profile}>
-              {a.alias} ｜ {a.profile} ｜ {statusMap[a.status] || a.status}
-            </option>
-          ))}
-        </select>
+          options={accounts.accounts.map((a) => ({
+            value: a.profile,
+            label: `${a.alias} ｜ ${a.profile} ｜ ${statusMap[a.status] || a.status}`,
+          }))}
+          onChange={onProfileChange}
+        />
       </div>
       <div className="form-field" style={{ flexDirection: 'row', gap: 8 }}>
-        <button className="glass-btn-secondary" onClick={openAdd} style={{ flex: 1 }}>新增登录账号</button>
-        <button className="glass-btn-secondary" onClick={() => handleLogin(activeProfile)} style={{ flex: 1 }}>
-          登录 / 重新登录
+        <button type="button" className="glass-btn-secondary" onClick={openAdd} style={{ flex: 1 }}>新增登录账号</button>
+        <button type="button" className="glass-btn-secondary" disabled={loginBusy} onClick={() => handleLogin(activeProfile)} style={{ flex: 1 }}>
+          {loginBusy ? '登录中...' : '登录 / 重新登录'}
         </button>
       </div>
+      {msg && <p className={`account-inline-message ${loginBusy ? 'loading' : ''}`}>{msg}</p>}
 
-      {showModal && (
-        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
-          <div className="modal glass-panel-card">
+      {showModal && createPortal(
+        <div className="modal-backdrop account-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
+          <div className="modal glass-panel-card account-add-modal">
             <h3>新增登录账号</h3>
             <div className="form-field">
               <label className="form-label">账号备注名</label>
@@ -89,7 +99,8 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
               <button className="glass-btn-primary" onClick={handleSave}>保存</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

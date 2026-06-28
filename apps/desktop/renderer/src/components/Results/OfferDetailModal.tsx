@@ -90,21 +90,21 @@ export default function OfferDetailModal({ item, onClose }: Props) {
         <div className="detail-section">
           <h4>基础信息</h4>
           <div className="attr-grid">
-            {baseSupplier?.name && <>
+            {Boolean(baseSupplier?.name) && <>
               <span className="attr-key">供应商</span>
-              <span className="attr-value">{s(baseSupplier.name)}</span>
+              <span className="attr-value">{s(baseSupplier?.name)}</span>
             </>}
-            {baseSupplier?.shopUrl && <>
+            {Boolean(baseSupplier?.shopUrl) && <>
               <span className="attr-key">店铺链接</span>
-              <span className="attr-value"><a href={s(baseSupplier.shopUrl)} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontSize: 12 }}>{s(baseSupplier.shopUrl).slice(0, 50)}...</a></span>
+              <span className="attr-value"><a href={s(baseSupplier?.shopUrl)} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontSize: 12 }}>{s(baseSupplier?.shopUrl).slice(0, 50)}...</a></span>
             </>}
             {baseSupplier?.years != null && <>
               <span className="attr-key">年限</span>
               <span className="attr-value">{s(baseSupplier.years)} 年</span>
             </>}
-            {(location?.province || location?.city) && <>
+            {Boolean(location?.province || location?.city) && <>
               <span className="attr-key">地区</span>
-              <span className="attr-value">{[s(location.province), s(location.city)].filter(Boolean).join(' ')}</span>
+              <span className="attr-value">{[s(location?.province), s(location?.city)].filter(Boolean).join(' ')}</span>
             </>}
             {bizType && <>
               <span className="attr-key">经营类型</span>
@@ -142,15 +142,15 @@ export default function OfferDetailModal({ item, onClose }: Props) {
               <div className="detail-section">
                 <h4>供应商详情</h4>
                 <p>名称：{supplier.name ? s(supplier.name) : '-'}</p>
-                {supplier.loginId && <p>Login ID: {s(supplier.loginId)}</p>}
-                {supplier.memberId && <p>Member ID: {s(supplier.memberId)}</p>}
+                {Boolean(supplier.loginId) && <p>Login ID: {s(supplier.loginId)}</p>}
+                {Boolean(supplier.memberId) && <p>Member ID: {s(supplier.memberId)}</p>}
               </div>
             )}
             {freight && (
               <div className="detail-section">
                 <h4>发货信息</h4>
-                {freight.receiveAddress && <p>收货地址：{s(freight.receiveAddress)}</p>}
-                {freight.province && <p>省份：{s(freight.province)}{freight.city ? ` ${s(freight.city)}` : ''}</p>}
+                {Boolean(freight.receiveAddress) && <p>收货地址：{s(freight.receiveAddress)}</p>}
+                {Boolean(freight.province) && <p>省份：{s(freight.province)}{freight.city ? ` ${s(freight.city)}` : ''}</p>}
                 {freight.unitWeight != null && <p>单位重量：{s(freight.unitWeight)}</p>}
               </div>
             )}

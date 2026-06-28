@@ -31,7 +31,7 @@
   background: linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.52));
 }
 
-/* Select */
+/* Native select fallback */
 .glass-select {
   width: 100%;
   height: 40px;
@@ -58,6 +58,158 @@
     0 0 0 4px rgba(99,102,241,0.10),
     inset 0 1px 0 rgba(255,255,255,0.88),
     0 10px 28px rgba(15,23,42,0.08);
+}
+
+/* Custom glass select */
+.glass-select-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.glass-select-wrap.open {
+  z-index: 10070;
+}
+
+.form-field:has(.glass-select-wrap.open),
+.ozon-store-form label:has(.glass-select-wrap.open) {
+  position: relative;
+  z-index: 10070;
+}
+
+.glass-select-wrap.glass-select {
+  height: auto;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+.glass-select-trigger {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--glass-border-soft);
+  background: linear-gradient(135deg, var(--glass-bg-strong), var(--glass-bg-medium));
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  box-shadow: var(--glass-highlight), var(--shadow-soft);
+  padding: 0 13px 0 14px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: left;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.14s, box-shadow 0.14s, background 0.14s, transform 0.14s;
+}
+
+.glass-select-trigger span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glass-select-trigger:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.52));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 12px 30px rgba(15,23,42,0.08);
+}
+
+.glass-select-wrap.open .glass-select-trigger,
+.glass-select-trigger:focus-visible {
+  border-color: var(--focus-ring);
+  box-shadow:
+    0 0 0 4px rgba(96,165,250,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.88),
+    0 14px 34px rgba(15,23,42,0.10);
+  background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,255,255,0.58));
+}
+
+.glass-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.glass-select-arrow {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.68), rgba(255,255,255,0.30)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat center;
+  border: 1px solid rgba(255,255,255,0.54);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+  transition: transform 0.16s;
+}
+
+.glass-select-wrap.open .glass-select-arrow {
+  transform: rotate(180deg);
+}
+
+.glass-select-menu {
+  position: absolute;
+  z-index: 10060;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: 236px;
+  overflow: auto;
+  padding: 7px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.74);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(219,234,254,0.50), transparent 42%),
+    linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94));
+  backdrop-filter: blur(18px) saturate(1.18);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.88),
+    0 22px 54px rgba(15,23,42,0.18);
+  isolation: isolate;
+}
+
+.glass-select-wrap.drop-up .glass-select-menu {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.glass-select-option {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 11px;
+  background: transparent;
+  color: rgba(15,23,42,0.78);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.12s, color 0.12s, transform 0.12s;
+}
+
+.glass-select-option:hover {
+  background: rgba(241,245,249,0.92);
+  color: #0f172a;
+}
+
+.glass-select-option.active {
+  color: #1d4ed8;
+  background: linear-gradient(135deg, rgba(219,234,254,0.98), rgba(224,231,255,0.92));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 6px 16px rgba(37,99,235,0.10);
 }
 
 /* Buttons — Primary */

@@ -3,6 +3,7 @@ import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, Acc
 import ResultRenderer from '../Results/ResultRenderer';
 import LiveCollectionRenderer from '../Results/LiveCollectionRenderer';
 import { ProgressOfferCardItem } from '../Results/ProgressOfferCard';
+import GlassSelect from '../Controls/GlassSelect';
 import '../../components/Results/results.css';
 
 interface Props {
@@ -13,7 +14,6 @@ interface Props {
 }
 
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh }: Props) {
-  const [activeGroup, setActiveGroup] = useState('sourcing');
   const [activeCmdId, setActiveCmdId] = useState('search');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [args, setArgs] = useState<Record<string, string>>({});
@@ -33,9 +33,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
   const api = getApi();
   const command = registry.commands[activeCmdId];
-  const groupCommands = Object.values(registry.commands).filter((c) => c.group === activeGroup);
+  const groupCommands = Object.values(registry.commands).filter((c) => c.group === 'sourcing' && c.id !== 'similar');
   const activeAccount = accounts.accounts.find((a) => a.profile === activeProfile);
   const alias = activeAccount?.alias || activeProfile;
+  const hasEmbeddedRunButton = command?.positional.some((f) => f.name === 'keyword') ?? false;
 
   const previewArgv = useMemo(() => {
     if (!command) return '';
@@ -178,6 +179,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
           price: p?.text ? String(p.text) : p?.min != null ? `¥${p.min}` + (p.max != null && p.max !== p.min ? `-${p.max}` : '') : '',
           image: String(offer.image || ''),
           status: 'basic-ready',
+          pendingDeep: true,
           raw: offer,
         });
       } else {
@@ -280,11 +282,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       return;
     }
 
-    // Show placeholder cards immediately for search
-    if (activeCmdId === 'search') {
-      const max = Number(options.max || 20);
-      setPlaceholderCount(max > 0 ? max : 20);
-    }
+    setPlaceholderCount(placeholderCountForCommand());
     setRunning(true);
     setAlert({ text: '命令执行中...', kind: 'info' });
     try {
@@ -334,6 +332,21 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     name === 'deepproSearchMode' ||
     name === 'deepproOutputDir';
 
+  const placeholderCountForCommand = (): number => {
+    if (!command || !['products', 'offers', 'research', 'comparison'].includes(command.resultType)) return 0;
+    const countFromText = (value: string | undefined): number =>
+      (value || '').split(/[\r\n,]+/).map((item) => item.trim()).filter(Boolean).length;
+    if (activeCmdId === 'offer') return Math.max(1, countFromText(args.offerIds || args.offerId));
+    if (activeCmdId === 'compare') return Math.max(1, countFromText(args.offerIds));
+    if (activeCmdId === 'research') {
+      const keywords = Math.max(1, countFromText(args.keywords));
+      const maxPerQuery = Number(options.maxPerQuery || options.max || 20);
+      return Math.min(24, Math.max(1, keywords * (maxPerQuery > 0 ? maxPerQuery : 20)));
+    }
+    const max = Number(options.max || 20);
+    return max > 0 ? Math.min(max, 100) : 20;
+  };
+
   return (
     <div className="command-workspace">
       {/* ── Header panel: title + tabs + task picker ── */}
@@ -341,22 +354,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         <div className="section-head">
           <h3>命令面板</h3>
           <span>{chineseHint}</span>
-        </div>
-
-        <div className="segmented-control">
-          {registry.groups.map((g) => (
-            <button
-              key={g.id}
-              className={`seg-btn ${g.id === activeGroup ? 'active' : ''}`}
-              onClick={() => {
-                setActiveGroup(g.id);
-                const first = Object.values(registry.commands).find((c) => c.group === g.id);
-                if (first) selectCommand(first.id);
-              }}
-            >
-              {g.label}
-            </button>
-          ))}
         </div>
 
         <div className="command-picker">
@@ -439,14 +436,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                   return (
                     <div key={o.name} className="form-field compact">
                       <label className="form-label">{o.label}</label>
-                      <select className="glass-select"
+                      <GlassSelect
+                        className="glass-select"
                         value={String(options[o.name] ?? o.default ?? '')}
-                        onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                      >
-                        {(o.values || []).map((v) => (
-                          <option key={v.value} value={v.value}>{v.label}</option>
-                        ))}
-                      </select>
+                        options={(o.values || []).map((v) => ({ value: v.value, label: v.label }))}
+                        onChange={(value) => setOptions({ ...options, [o.name]: value })}
+                      />
                     </div>
                   );
                 }
@@ -464,9 +459,19 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
             </div>
           )}
 
-          {/* Toggle chips for boolean options */}
-          {command.options.filter((o) => o.type === 'boolean').length > 0 && (
-            <div className="glass-toggle-row">
+          {/* Option chips + command actions */}
+          {(command.options.filter((o) => o.type === 'boolean').length > 0 || !hasEmbeddedRunButton || command.id === 'search') && (
+            <div className="command-action-row">
+              {!hasEmbeddedRunButton && (
+                <div className="command-run-actions">
+                  <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}>
+                    {running ? '执行中...' : '执行命令'}
+                  </button>
+                  <button type="button" className="glass-btn-ghost" onClick={() => setShowAdvanced(!showAdvanced)}>
+                    {showAdvanced ? '隐藏 CLI 预览' : '高级信息'}
+                  </button>
+                </div>
+              )}
               {command.options.filter((o) => o.type === 'boolean').map((o) => (
                 <button key={o.name} type="button"
                   className={`glass-toggle-chip ${options[o.name] ? 'active' : ''}`}
@@ -475,6 +480,16 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                   {o.label}
                 </button>
               ))}
+              {command.id === 'search' && (
+                <button
+                  type="button"
+                  className="glass-toggle-chip planned"
+                  disabled
+                  title="预留功能：遇到验证码时自动打开浏览器手动过验证"
+                >
+                  验证码自动开浏览器
+                </button>
+              )}
             </div>
           )}
 
@@ -489,14 +504,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                     return (
                       <div key={o.name} className="form-field compact">
                         <label className="form-label">{o.label}</label>
-                        <select className="glass-select"
+                        <GlassSelect
+                          className="glass-select"
                           value={String(options[o.name] ?? o.default ?? '')}
-                          onChange={(e) => setOptions({ ...options, [o.name]: e.target.value })}
-                        >
-                          {(o.values || []).map((v) => (
-                            <option key={v.value} value={v.value}>{v.label}</option>
-                          ))}
-                        </select>
+                          options={(o.values || []).map((v) => ({ value: v.value, label: v.label }))}
+                          onChange={(value) => setOptions({ ...options, [o.name]: value })}
+                        />
                       </div>
                     );
                   }
@@ -515,17 +528,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
             </details>
           )}
 
-          {/* Row: execute + advanced info — only if no positional fields (no keyword row) */}
-          {command.positional.length === 0 && (
-            <div className="run-bar">
-              <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}>
-                {running ? '执行中...' : '执行命令'}
-              </button>
-              <button type="button" className="glass-btn-ghost" onClick={() => setShowAdvanced(!showAdvanced)}>
-                {showAdvanced ? '隐藏 CLI 预览' : '高级信息'}
-              </button>
-            </div>
-          )}
         </form>
       )}
 
@@ -592,12 +594,20 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
       {/* Confirm modal */}
       {showConfirm && (
-        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowConfirm(false); }}>
-          <div className="modal">
-            <h3>确认执行写操作</h3>
-            <p>{command.checkoutConfirm ? '确认下单会提交真实 1688 订单。请确认已查看 checkout prepare 预览。' : '该命令会修改账号状态、发送消息或变更购物车。请确认目标和参数。'}</p>
-            <code>{previewArgv}</code>
-            <div className="modal-actions">
+        <div className="modal-backdrop confirm-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowConfirm(false); }}>
+          <div className="modal confirm-modal">
+            <div className="confirm-modal-header">
+              <div className="confirm-icon">!</div>
+              <div>
+                <h3>确认执行写操作</h3>
+                <p>{command.checkoutConfirm ? '确认下单会提交真实 1688 订单。请确认已查看 checkout prepare 预览。' : '该命令会修改账号状态、发送消息或变更购物车。请确认目标和参数。'}</p>
+              </div>
+            </div>
+            <div className="confirm-command-preview">
+              <span>即将执行的 CLI 命令</span>
+              <code>{previewArgv}</code>
+            </div>
+            <div className="modal-actions confirm-actions">
               <button className="glass-btn-ghost" onClick={() => setShowConfirm(false)}>取消</button>
               <button className="glass-btn-primary" style={{background: 'linear-gradient(135deg, rgba(220,38,38,0.92), rgba(200,30,30,0.88))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), 0 12px 28px rgba(220,38,38,0.22)'}} onClick={approveConfirm}>确认执行</button>
             </div>

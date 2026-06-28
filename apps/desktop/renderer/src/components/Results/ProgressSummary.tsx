@@ -4,9 +4,10 @@ import { ProgressOfferCardItem } from './ProgressOfferCard';
 interface Props {
   cards: ProgressOfferCardItem[];
   running: boolean;
+  compact?: boolean;
 }
 
-export default function ProgressSummary({ cards, running }: Props) {
+export default function ProgressSummary({ cards, running, compact }: Props) {
   const total = cards.length;
   if (total === 0) return null;
 
@@ -21,6 +22,20 @@ export default function ProgressSummary({ cards, running }: Props) {
   const pct = total > 0 ? Math.round((deepDone / total) * 100) : 0;
 
   const hasDeepActivity = deepOk > 0 || deepFail > 0 || collecting > 0;
+
+  if (compact) {
+    return (
+      <div className="progress-summary compact">
+        <div className="progress-stats">
+          <span>共 <strong>{total}</strong> 个商品</span>
+          {hasCard > 0 && <span>｜ 已生成卡片 <strong>{hasCard}</strong></span>}
+          {hasDeepActivity && deepOk > 0 && <span>｜ 深采完成 <strong>{deepOk}</strong></span>}
+          {hasDeepActivity && deepFail > 0 && <span>｜ 失败 <strong style={{ color: '#dc2626' }}>{deepFail}</strong></span>}
+          {waiting > 0 && <span>｜ 等待 <strong>{waiting}</strong></span>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="progress-summary">

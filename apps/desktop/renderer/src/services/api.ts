@@ -62,10 +62,14 @@ export interface CommandRecord {
   resultType: string;
   status: string;
   argv: string[];
+  profile?: string;
   stdoutJson: unknown;
   stderrText: string;
   error: { status: string; message: string; stderr: string } | null;
   startedAt: string;
+  endedAt?: string;
+  exitCode?: number;
+  durationMs?: number;
 }
 
 export interface RuntimeStatus {
@@ -79,6 +83,80 @@ export interface CliInfo {
   cliExists: boolean;
   rootDir: string;
   isPackaged: boolean;
+}
+
+export interface OzonSettingsPublic {
+  ai: {
+    provider: string;
+    baseUrl: string;
+    model: string;
+    apiKeySet: boolean;
+  };
+  ozon: {
+    clientId: string;
+    apiKeySet: boolean;
+    shopName: string;
+    currencyCode: string;
+    isDefaultShop: boolean;
+    note: string;
+    defaultDescriptionCategoryId: string;
+    defaultTypeId: string;
+    defaultCategoryPath: string;
+  };
+}
+
+export interface OzonSettingsPatch {
+  ai?: {
+    provider?: string;
+    baseUrl?: string;
+    model?: string;
+    apiKey?: string;
+  };
+  ozon?: {
+    clientId?: string;
+    apiKey?: string;
+    shopName?: string;
+    currencyCode?: string;
+    isDefaultShop?: boolean;
+    note?: string;
+    defaultDescriptionCategoryId?: string;
+    defaultTypeId?: string;
+    defaultCategoryPath?: string;
+  };
+}
+
+export interface OzonDraft {
+  draftId: string;
+  status: string;
+  sourceRows: Array<Record<string, unknown>>;
+  generated: Record<string, unknown>;
+  items: Array<Record<string, unknown>>;
+  missing: string[];
+  createdAt: string;
+}
+
+export interface OzonStoreStats {
+  ok: boolean;
+  store: {
+    id: string;
+    clientId: string;
+    shopName: string;
+    currencyCode: string;
+    isDefaultShop: boolean;
+    note: string;
+    apiKeySet: boolean;
+  };
+  quota: null | {
+    remaining: number | null;
+    limit: number | null;
+    used: number | null;
+    source: string;
+    raw: unknown;
+  };
+  message: string;
+  operationId?: string;
+  raw?: unknown;
+  fetchedAt: string;
 }
 
 // Raw window.desktopApi shape
@@ -110,6 +188,13 @@ interface DesktopApi {
     list: (limit?: number) => Promise<Array<{ offerId: string; title: string; price: string; image: string; url: string; collectedAt: string; raw?: unknown }>>;
     add: (products: unknown[], meta?: Record<string, unknown>) => Promise<unknown>;
     clear: () => Promise<unknown>;
+  };
+  ozon: {
+    getSettings: () => Promise<OzonSettingsPublic>;
+    saveSettings: (patch: OzonSettingsPatch) => Promise<OzonSettingsPublic>;
+    getStoreStats: () => Promise<OzonStoreStats>;
+    generateDraft: (rows: Array<Record<string, unknown>>) => Promise<OzonDraft>;
+    submitDraft: (draft: OzonDraft, confirmed: boolean) => Promise<Record<string, unknown>>;
   };
 }
 

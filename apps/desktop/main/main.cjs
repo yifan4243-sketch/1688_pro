@@ -26,6 +26,17 @@ const {
   clearProductHistory,
 } = require('../product-history.cjs');
 
+const {
+  loadSettings: loadOzonSettings,
+  saveSettings: saveOzonSettings,
+  getStoreStats: getOzonStoreStats,
+} = require('../ozon-settings.cjs');
+
+const {
+  generateOzonDraft,
+  submitOzonDraft,
+} = require('../ozon-draft.cjs');
+
 // ---------- runtime ----------
 
 /** @type {{ rootDir: string, cliPath: string }} */
@@ -139,7 +150,7 @@ function registerIpc() {
       commandId: 'login',
       profile,
       confirmed: true,
-      options: { headed: true },
+      options: { headed: true, force: true, timeout: 300 },
     });
     const status = normalizeAccountStatus(record.status);
     try {
@@ -181,6 +192,26 @@ function registerIpc() {
   ipcMain.handle('desktop:clearProductHistory', () =>
     clearProductHistory(userDataDir()),
   );
+
+  // --- Ozon draft / AI / submit ---
+  ipcMain.handle('desktop:getOzonSettings', () =>
+    loadOzonSettings(userDataDir()),
+  );
+  ipcMain.handle('desktop:saveOzonSettings', (_event, patch) =>
+    saveOzonSettings(userDataDir(), patch),
+  );
+  ipcMain.handle('desktop:getOzonStoreStats', () =>
+    getOzonStoreStats(userDataDir()),
+  );
+  ipcMain.handle('desktop:generateOzonDraft', async (_event, rows) =>
+    generateOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), rows),
+  );
+  ipcMain.handle('desktop:submitOzonDraft', async (_event, draft, confirmed) => {
+    if (confirmed !== true) {
+      throw new Error('提交 Ozon 前必须确认。');
+    }
+    return submitOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), draft);
+  });
 }
 
 // ---------- lifecycle ----------

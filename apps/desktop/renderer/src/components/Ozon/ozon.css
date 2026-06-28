@@ -1,0 +1,590 @@
+.ozon-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.ozon-backdrop.compact {
+  padding: 24px;
+}
+
+.ozon-modal {
+  width: min(1180px, calc(100vw - 56px));
+  max-height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 30px;
+  border: 1px solid rgba(255,255,255,0.72);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(219,234,254,0.76), transparent 36%),
+    radial-gradient(circle at 90% 18%, rgba(254,226,226,0.54), transparent 34%),
+    linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,255,255,0.68));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 30px 76px rgba(15,23,42,0.24);
+}
+
+.ozon-settings-modal {
+  width: min(760px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 28px;
+  border: 1px solid rgba(255,255,255,0.72);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(219,234,254,0.74), transparent 38%),
+    radial-gradient(circle at 92% 16%, rgba(254,226,226,0.48), transparent 34%),
+    linear-gradient(135deg, rgba(255,255,255,0.90), rgba(255,255,255,0.70));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 30px 76px rgba(15,23,42,0.24);
+}
+
+.ozon-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.50);
+}
+
+.ozon-modal-head span {
+  display: block;
+  color: rgba(15,23,42,0.46);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ozon-modal-head h3 {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: 22px;
+}
+
+.ozon-modal-head p {
+  margin: 6px 0 0;
+  color: rgba(15,23,42,0.54);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ozon-message {
+  margin: 12px 24px 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ozon-message.success { background: rgba(220,252,231,0.72); color: #15803d; }
+.ozon-message.warn { background: rgba(254,243,199,0.74); color: #b45309; }
+.ozon-message.error { background: rgba(254,226,226,0.78); color: #dc2626; }
+
+.ozon-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 24px 24px;
+  overflow: auto;
+}
+
+.ozon-source-card,
+.ozon-panel {
+  border: 1px solid rgba(255,255,255,0.70);
+  background: linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.42));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82), 0 14px 36px rgba(15,23,42,0.07);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  border-radius: 24px;
+}
+
+.ozon-source-card {
+  align-self: start;
+  padding: 14px;
+}
+
+.ozon-source-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.52);
+  margin-bottom: 12px;
+}
+
+.ozon-image-placeholder {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.42));
+  border: 1px solid rgba(255,255,255,0.64);
+  color: rgba(15,23,42,0.42);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.ozon-source-card h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.36;
+}
+
+.ozon-source-card p,
+.ozon-empty {
+  color: rgba(15,23,42,0.55);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ozon-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ozon-panel {
+  padding: 16px;
+}
+
+.compact-status-panel {
+  padding: 14px 16px;
+}
+
+.ozon-panel-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ozon-panel-title h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ozon-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ozon-form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.ozon-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ozon-form-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.ozon-form-grid span {
+  min-height: 16px;
+  color: rgba(15,23,42,0.52);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.ozon-form-grid input {
+  width: 100%;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,0.74);
+  border-radius: 14px;
+  outline: none;
+  padding: 0 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.80), rgba(255,255,255,0.48));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86);
+}
+
+.ozon-store-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ozon-store-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.ozon-store-form > label > span {
+  color: rgba(15,23,42,0.76);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ozon-store-form b {
+  color: #ef4444;
+  font-weight: 800;
+}
+
+.ozon-store-form input,
+.ozon-store-form select,
+.ozon-store-form textarea {
+  width: 100%;
+  border: 1px solid rgba(148,163,184,0.24);
+  border-radius: 14px;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  background: rgba(255,255,255,0.70);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.88);
+}
+
+.ozon-store-form input,
+.ozon-store-form select {
+  height: 42px;
+  padding: 0 14px;
+}
+
+.ozon-store-form .glass-select-trigger {
+  min-height: 42px;
+  font-size: 14px;
+  background: rgba(255,255,255,0.70);
+  border-color: rgba(148,163,184,0.24);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.88);
+}
+
+.ozon-store-form select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 42px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center,
+    rgba(255,255,255,0.70);
+}
+
+.ozon-store-form textarea {
+  min-height: 116px;
+  resize: vertical;
+  padding: 12px 14px;
+  line-height: 1.5;
+}
+
+.ozon-store-form input::placeholder,
+.ozon-store-form textarea::placeholder {
+  color: rgba(100,116,139,0.42);
+}
+
+.ozon-store-form small {
+  align-self: flex-end;
+  color: rgba(100,116,139,0.58);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ozon-store-help {
+  margin-top: -8px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.ozon-store-help:hover {
+  text-decoration: underline;
+}
+
+.ozon-radio-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  padding: 0;
+  border: 0;
+}
+
+.ozon-radio-group legend {
+  flex: 0 0 100%;
+  margin-bottom: 2px;
+  color: rgba(15,23,42,0.76);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ozon-radio-group label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: rgba(15,23,42,0.78);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ozon-radio-group input {
+  width: 16px;
+  height: 16px;
+  accent-color: #7c3aed;
+  box-shadow: none;
+}
+
+.ozon-settings-body {
+  padding: 16px 24px 22px;
+  overflow: auto;
+}
+
+.ozon-settings-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 5px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.46);
+  border: 1px solid rgba(255,255,255,0.66);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82);
+}
+
+.ozon-settings-tabs button {
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(15,23,42,0.62);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ozon-settings-tabs button.active {
+  color: #1d4ed8;
+  background: linear-gradient(135deg, rgba(219,234,254,0.92), rgba(255,255,255,0.74));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 8px 22px rgba(37,99,235,0.10);
+}
+
+.ozon-store-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ozon-manage-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.ozon-manage-toolbar strong {
+  display: block;
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.ozon-manage-toolbar span {
+  display: block;
+  margin-top: 3px;
+  color: rgba(100,116,139,0.74);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ozon-store-card {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ozon-store-card > div,
+.ozon-quota-panel {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.70);
+  background: linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.44));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.84), 0 12px 28px rgba(15,23,42,0.06);
+}
+
+.ozon-store-card > div {
+  min-height: 92px;
+  padding: 14px;
+}
+
+.ozon-store-card span,
+.ozon-quota-panel p,
+.ozon-quota-panel small {
+  color: rgba(100,116,139,0.74);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.ozon-store-card strong {
+  display: block;
+  margin-top: 8px;
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.ozon-store-card strong.ready { color: #16a34a; }
+.ozon-store-card strong.missing { color: #dc2626; }
+.ozon-store-card .quota-number { color: #1d4ed8; }
+
+.ozon-quota-panel {
+  padding: 16px;
+}
+
+.ozon-quota-panel h4 {
+  margin: 0 0 7px;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.ozon-quota-panel p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.ozon-quota-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.ozon-quota-grid span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.58);
+  border: 1px solid rgba(255,255,255,0.66);
+  color: rgba(15,23,42,0.62);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ozon-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 4px;
+}
+
+.ozon-settings-status,
+.ozon-settings-hint {
+  color: rgba(15,23,42,0.55);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ozon-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ozon-status-strip span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,0.62);
+  background: rgba(255,255,255,0.48);
+  color: rgba(15,23,42,0.64);
+}
+
+.ozon-status-strip span.ready {
+  background: rgba(220,252,231,0.62);
+  color: #15803d;
+}
+
+.ozon-status-strip span.missing {
+  background: rgba(254,243,199,0.66);
+  color: #b45309;
+}
+
+.ozon-draft-preview h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.ozon-category {
+  margin: 0 0 8px;
+  color: rgba(37,99,235,0.82);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ozon-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ozon-chip-row span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: rgba(15,23,42,0.66);
+  background: rgba(255,255,255,0.52);
+  border: 1px solid rgba(255,255,255,0.62);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ozon-warning {
+  margin-top: 10px;
+  border-radius: 16px;
+  padding: 9px 11px;
+  background: rgba(254,226,226,0.62);
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.ozon-json {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,0.66);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255,255,255,0.48);
+  color: rgba(15,23,42,0.72);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.ozon-json.success {
+  margin-top: 10px;
+  background: rgba(220,252,231,0.56);
+}
+
+.glass-btn-primary.danger {
+  background: linear-gradient(135deg, rgba(239,68,68,0.94), rgba(220,38,38,0.88));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.34), 0 12px 28px rgba(220,38,38,0.24);
+}
+
+@media (max-width: 900px) {
+  .ozon-layout { grid-template-columns: 1fr; }
+  .ozon-form-grid,
+  .ozon-form-grid.two { grid-template-columns: 1fr; }
+}

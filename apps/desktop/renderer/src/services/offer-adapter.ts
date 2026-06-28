@@ -159,8 +159,10 @@ function priceText(o: Record<string, unknown>): string {
 function skusFromDeep(deep: Record<string, unknown>): SkuViewModel[] {
   return arr(deep.skus).map((item) => {
     const sk = obj(item);
+    const rawSkuId = sk?.skuId;
+    const skuId = typeof rawSkuId === 'string' || typeof rawSkuId === 'number' ? rawSkuId : null;
     return {
-      skuId: sk?.skuId ?? null,
+      skuId,
       specs: s(sk?.specs) || s(sk?.skuId) || null,
       price: n(sk?.price ?? sk?.multiPrice),
       stock: n(sk?.stock),

@@ -240,20 +240,108 @@
 
 /* ── Result toolbar ── */
 .result-renderer { position: relative; }
-.result-toolbar {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 14px; gap: 8px;
+.result-unified-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 36px;
+  margin-bottom: 12px;
 }
-.mode-toggle { display: flex; gap: 0; }
+
+.result-left-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.result-inline-meta {
+  color: rgba(100,116,139,0.76);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.result-top-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 36px;
+  margin-bottom: 0;
+}
+
+.result-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
+.selection-action-btn {
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid rgba(255,255,255,0.66);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.74), rgba(255,255,255,0.44));
+  color: rgba(15,23,42,0.70);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82), 0 8px 20px rgba(15,23,42,0.05);
+  transition: transform 0.14s, background 0.14s, box-shadow 0.14s, color 0.14s;
+}
+
+.selection-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,255,255,0.56));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 12px 26px rgba(15,23,42,0.08);
+  color: #0f172a;
+}
+
+.selection-action-btn.danger {
+  color: #dc2626;
+  background: linear-gradient(135deg, rgba(254,242,242,0.82), rgba(255,255,255,0.48));
+}
+
+.selection-action-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.56);
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 0;
+}
+
 .mode-btn {
-  padding: 6px 14px; border: 1px solid rgba(255,255,255,0.34); background: rgba(255,255,255,0.32);
-  cursor: pointer; font-size: 12px; font-weight: 500;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255,255,255,0.34);
+  background: rgba(255,255,255,0.32);
+  cursor: pointer;
+  color: rgba(15,23,42,0.72);
+  font-size: 12px;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   transition: all 0.15s;
 }
+
 .mode-btn:first-child { border-radius: var(--radius-pill) 0 0 var(--radius-pill); }
 .mode-btn:last-child { border-radius: 0 var(--radius-pill) var(--radius-pill) 0; }
-.mode-btn.active { background: rgba(255,255,255,0.58); border-color: rgba(255,255,255,0.56); color: var(--text-primary); }
+.mode-btn.active {
+  background: rgba(255,255,255,0.68);
+  border-color: rgba(255,255,255,0.64);
+  color: var(--text-primary);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.80);
+}
 .mode-btn:not(.active):hover { background: rgba(255,255,255,0.48); }
 
 /* Glass toolbar button */
@@ -274,14 +362,6 @@
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 12px 30px rgba(15,23,42,0.10);
 }
 .toolbar-btn-icon { font-size: 13px; opacity: 0.78; }
-
-/* Result summary */
-.result-summary {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 10px; font-size: 13px;
-}
-.result-summary strong { font-weight: 700; color: var(--text-primary); }
-.result-summary span { color: var(--text-tertiary); }
 
 .offer-card-grid {
   display: flex; flex-direction: column; gap: 18px;
@@ -330,7 +410,7 @@
 }
 /* ── Compact control panel ── */
 .command-control-panel {
-  width: 100%; max-width: 1220px;
+  width: 100%;
   border-radius: 28px; padding: 20px 24px;
   background: linear-gradient(135deg, rgba(255,255,255,0.64), rgba(255,255,255,0.34));
   border: 1px solid rgba(255,255,255,0.70);
@@ -392,9 +472,17 @@
 .form-field.compact .glass-select { width: 100%; }
 
 /* Toggle chip row — boolean options as clickable pills */
+.command-action-row,
 .glass-toggle-row {
   display: flex; flex-wrap: wrap; gap: 8px;
   margin-bottom: 10px;
+  align-items: center;
+}
+.command-run-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .glass-toggle-chip {
   height: 34px; padding: 0 14px; border-radius: 999px;
@@ -413,6 +501,13 @@
   background: linear-gradient(135deg, rgba(219,234,254,0.92), rgba(224,231,255,0.72));
   border-color: rgba(96,165,250,0.50);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 6px 18px rgba(37,99,235,0.12);
+}
+.glass-toggle-chip.planned {
+  color: rgba(15,23,42,0.42);
+  background: rgba(255,255,255,0.28);
+  border-style: dashed;
+  cursor: not-allowed;
+  opacity: 0.82;
 }
 
 /* Advanced parameters — collapsible */
@@ -436,6 +531,7 @@
 
 /* ── Progress offer card (vertical 3:4) ── */
 .progress-offer-card {
+  position: relative;
   border-radius: 20px;
   background: linear-gradient(135deg, rgba(255,255,255,0.78), rgba(255,255,255,0.44));
   border: 1px solid rgba(255,255,255,0.70);
@@ -450,8 +546,53 @@
   transform: translateY(-2px);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 16px 36px rgba(15,23,42,0.10);
 }
+.progress-offer-card.selected {
+  border-color: rgba(96,165,250,0.66);
+  box-shadow:
+    0 0 0 3px rgba(96,165,250,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.88),
+    0 16px 36px rgba(37,99,235,0.12);
+}
 .card-status-deep-failed {
   border-color: rgba(239,68,68,0.20);
+}
+
+.progress-card-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.84);
+  background: rgba(255,255,255,0.72);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(10px) saturate(1.25);
+  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 8px 18px rgba(15,23,42,0.12);
+  transition: transform 0.14s, background 0.14s, border-color 0.14s, box-shadow 0.14s;
+}
+
+.progress-card-check:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,0.88);
+  border-color: rgba(96,165,250,0.58);
+}
+
+.progress-card-check.checked {
+  background: linear-gradient(135deg, rgba(37,99,235,0.94), rgba(59,130,246,0.88));
+  border-color: rgba(191,219,254,0.92);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.40), 0 10px 22px rgba(37,99,235,0.22);
+}
+
+.progress-card-check:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 /* Image wrap with overlay */
@@ -537,9 +678,17 @@
 .progress-summary {
   margin-bottom: 14px;
 }
+.progress-summary.compact {
+  margin-bottom: 0;
+  min-width: 0;
+}
 .progress-stats {
   display: flex; gap: 6px; flex-wrap: wrap; font-size: 13px; margin-bottom: 6px;
   color: var(--text-secondary);
+}
+.progress-summary.compact .progress-stats {
+  margin-bottom: 0;
+  align-items: center;
 }
 .progress-stats strong { font-weight: 700; color: var(--text-primary); }
 .progress-bar-track {
@@ -556,8 +705,9 @@
 }
 
 /* ── Detail modal (full-screen overlay via Portal) ── */
+.modal-backdrop.detail-backdrop,
 .detail-backdrop {
-  position: fixed; inset: 0; z-index: 9999;
+  position: fixed; inset: 0; z-index: 10050;
   display: flex; align-items: center; justify-content: center;
   padding: 32px;
   background: rgba(15, 23, 42, 0.42);

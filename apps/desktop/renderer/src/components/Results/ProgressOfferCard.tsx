@@ -2,10 +2,12 @@ import React from 'react';
 
 export type ProgressOfferCardStatus =
   | 'waiting'
+  | 'collecting'
   | 'basic-ready'
   | 'deep-collecting'
   | 'deep-success'
-  | 'deep-failed';
+  | 'deep-failed'
+  | 'failed';
 
 export interface ProgressOfferCardItem {
   slotIndex: number;
@@ -17,24 +19,32 @@ export interface ProgressOfferCardItem {
   message?: string;
   code?: string;
   attempts?: number;
+  pendingDeep?: boolean;
   raw?: unknown;
 }
 
 interface Props {
   item: ProgressOfferCardItem;
   onOpen?: (item: ProgressOfferCardItem) => void;
+  onOzon?: (item: ProgressOfferCardItem) => void;
+  selected?: boolean;
+  onSelectToggle?: (item: ProgressOfferCardItem) => void;
 }
 
 const overlayLabel: Record<string, string> = {
   'basic-ready': '等待深度采集',
+  'collecting': '正在采集',
   'deep-collecting': '正在进行深度采集',
   'deep-failed': '深度采集失败',
+  'failed': '采集失败',
 };
 
 const overlayDetail: Record<string, string> = {
   'basic-ready': '系统将采集 SKU、属性、详情图',
+  'collecting': '正在读取 1688 商品信息',
   'deep-collecting': 'SKU / 属性 / 详情图采集中',
   'deep-failed': '页面被验证码拦截或详情异常',
+  'failed': '页面被验证码拦截或详情异常',
 };
 
 function extractSearchPriceText(base: Record<string, unknown>): string {
@@ -103,7 +113,8 @@ export function toProgressCards(
         title: String(base.title || ''),
         price: extractSearchPriceText(base),
         image: String(base.image || ''),
-        status: isDeepPro ? 'basic-ready' : 'basic-ready',
+        status: 'basic-ready',
+        pendingDeep: isDeepPro,
         raw: base,
       };
     }
@@ -125,18 +136,35 @@ function failureReasonZh(code: string, fallback?: string): string {
   return map[code] || fallback || code || '采集失败';
 }
 
-export default function ProgressOfferCard({ item, onOpen }: Props) {
+export default function ProgressOfferCard({ item, onOpen, onOzon, selected, onSelectToggle }: Props) {
   const showImage = Boolean(item.image);
-  const hasOverlay = item.status === 'basic-ready' || item.status === 'deep-collecting' || item.status === 'deep-failed';
-  const isFailed = item.status === 'deep-failed';
+  const hasOverlay = (item.status === 'basic-ready' && item.pendingDeep === true) || item.status === 'collecting' || item.status === 'deep-collecting' || item.status === 'deep-failed' || item.status === 'failed';
+  const isFailed = item.status === 'deep-failed' || item.status === 'failed';
   const isClickable = Boolean(item.offerId || item.raw || item.title || item.image);
+  const canSelect = isClickable || item.status !== 'waiting';
 
   return (
     <article
-      className={`progress-offer-card card-status-${item.status}`}
+      className={`progress-offer-card card-status-${item.status} ${selected ? 'selected' : ''}`}
       onClick={() => { if (isClickable) onOpen?.(item); }}
       title={item.title || item.offerId || ''}
     >
+      <button
+        type="button"
+        className={`progress-card-check ${selected ? 'checked' : ''}`}
+        disabled={!canSelect}
+        aria-label={selected ? '取消选择商品' : '选择商品'}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (canSelect) onSelectToggle?.(item);
+        }}
+      >
+        {selected && (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        )}
+      </button>
       {/* Image area 1:1 with optional overlay */}
       <div className="progress-card-image-wrap">
         {showImage ? (
@@ -148,7 +176,7 @@ export default function ProgressOfferCard({ item, onOpen }: Props) {
         {hasOverlay && (
           <div className={`progress-card-overlay ${isFailed ? 'failed' : ''}`}>
             <div className="progress-card-overlay-inner">
-              {item.status === 'deep-collecting' && <div className="progress-card-spinner" />}
+              {(item.status === 'deep-collecting' || item.status === 'collecting') && <div className="progress-card-spinner" />}
               {isFailed && (
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.7)" strokeWidth="1.5">
                   <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
@@ -171,13 +199,13 @@ export default function ProgressOfferCard({ item, onOpen }: Props) {
         {item.price && <p className="progress-card-price">{item.price}</p>}
         <button
           className="progress-card-ozon-btn"
-          disabled={item.status !== 'deep-success'}
+          disabled={!isClickable}
           onClick={(e) => {
             e.stopPropagation();
-            if (item.status === 'deep-success') alert('功能开发中');
+            if (isClickable) onOzon?.(item);
           }}
         >
-          上架至 Ozon
+          {item.status === 'deep-success' ? '上架至 Ozon' : 'Ozon 草稿'}
         </button>
       </div>
     </article>

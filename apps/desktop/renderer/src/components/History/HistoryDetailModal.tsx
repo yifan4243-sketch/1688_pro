@@ -17,7 +17,7 @@ export default function HistoryDetailModal({ record, onClose }: Props) {
 
   const startedMs = new Date(record.startedAt).getTime();
   const endedMs = record.endedAt ? new Date(record.endedAt).getTime() : Date.now();
-  const durationMs = (record as Record<string, unknown>).durationMs as number | undefined ?? (endedMs - startedMs);
+  const durationMs = record.durationMs ?? (endedMs - startedMs);
 
   return createPortal(
     <div className="history-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -53,7 +53,7 @@ export default function HistoryDetailModal({ record, onClose }: Props) {
           </details>
         )}
 
-        {record.stdoutJson && (
+        {record.stdoutJson != null && (
           <details className="advanced-section" style={{ marginTop: 8 }}>
             <summary className="advanced-toggle">输出 JSON</summary>
             <pre style={{ maxHeight: 300, overflow: 'auto', fontSize: 11, marginTop: 6 }}>{JSON.stringify(record.stdoutJson, null, 2)}</pre>
