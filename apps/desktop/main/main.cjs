@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 const { resolveCliPath, getRootDir } = require('./cli-resolver.cjs');
 
 // Reuse existing modules (placed in apps/desktop/ for backward compat).
@@ -212,6 +213,51 @@ function registerIpc() {
     }
     return submitOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), draft);
   });
+
+  // --- terminal login (detached pwsh windows) ---
+  ipcMain.handle('desktop:loginAccountInTerminal', async (_event, profile) => {
+    console.log('[login-terminal] opening', profile);
+    return openLoginTerminal(profile);
+  });
+  ipcMain.handle('desktop:loginAccountsInTerminal', async (_event, profiles) => {
+    const uniqueProfiles = Array.from(new Set(
+      (profiles || []).map(String).map((s) => s.trim()).filter(Boolean),
+    )).slice(0, 3);
+    console.log('[login-terminal] requested profiles', uniqueProfiles);
+    const opened = [];
+    for (const profile of uniqueProfiles) {
+      opened.push(openLoginTerminal(profile).profile);
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    return { ok: true, requestedProfiles: uniqueProfiles, openedProfiles: opened, openedCount: opened.length };
+  });
+}
+
+function quotePowerShell(value) {
+  return String(value).replace(/`/g, '``').replace(/"/g, '`"');
+}
+function openLoginTerminal(profile) {
+  const root = runtime.rootDir;
+  const p = String(profile).trim();
+  if (!p) throw new Error('profile 不能为空');
+  const command = [
+    `$Host.UI.RawUI.WindowTitle = "1688 登录 - ${quotePowerShell(p)}"`,
+    `cd "${quotePowerShell(root)}"`,
+    `Write-Host "正在登录 profile: ${quotePowerShell(p)}" -ForegroundColor Cyan`,
+    `node .\\dist\\cli.js daemon stop --profile "${quotePowerShell(p)}"`,
+    `node .\\dist\\cli.js login --profile "${quotePowerShell(p)}" --force --headed --timeout 300 --no-daemon --json --pretty`,
+    `Write-Host ""`,
+    `Write-Host "登录流程结束：${quotePowerShell(p)}。请回到桌面端点击刷新状态。" -ForegroundColor Cyan`,
+  ].join('; ');
+  const args = ['-NoExit', '-Command', command];
+  let child;
+  try {
+    child = spawn('pwsh.exe', args, { cwd: root, detached: true, stdio: 'ignore', windowsHide: false });
+  } catch {
+    child = spawn('powershell.exe', args, { cwd: root, detached: true, stdio: 'ignore', windowsHide: false });
+  }
+  child.unref();
+  return { ok: true, profile: p, mode: 'terminal' };
 }
 
 // ---------- lifecycle ----------

@@ -55,6 +55,36 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
     finally { setLoginBusy(false); }
   };
 
+  const openProfilesInTerminal = async (profiles: string[], label: string) => {
+    const uniqueProfiles = Array.from(new Set(profiles.map(String).map((s) => s.trim()).filter(Boolean))).slice(0, 3);
+    console.log('[batch-login]', label, uniqueProfiles);
+
+    if (uniqueProfiles.length === 0) {
+      setMsg('没有可登录的账号，请先新增登录账号。');
+      return;
+    }
+    if (uniqueProfiles.length < 2 && label.includes('同时')) {
+      setMsg(`当前只找到 ${uniqueProfiles.length} 个账号：${uniqueProfiles.join('、')}。如需同时登录两个账号，请先新增第二个账号。`);
+    }
+    try {
+      const result = await api.accounts.loginManyInTerminal(uniqueProfiles);
+      console.log('[batch-login] result', result);
+      setMsg(`已打开 ${result.openedCount} 个登录终端：${(result.openedProfiles || uniqueProfiles).join('、')}。请分别完成登录，完成后点击刷新状态。`);
+    } catch (e) {
+      setMsg((e as Error).message || '打开登录终端失败');
+    }
+  };
+
+  const handleLoginCurrent = () => openProfilesInTerminal([activeProfile], '登录当前账号');
+  const handleLoginAll = () => {
+    const profiles = accounts.accounts.map((a) => a.profile).filter(Boolean).slice(0, 3);
+    openProfilesInTerminal(profiles, '同时登录全部账号');
+  };
+  const handleLoginNotLoggedIn = () => {
+    const profiles = accounts.accounts.filter((a) => a.status !== 'logged_in').map((a) => a.profile).filter(Boolean).slice(0, 3);
+    openProfilesInTerminal(profiles, '同时登录未登录账号');
+  };
+
   return (
     <div className="glass-panel-card">
       <h2>1688账号档案</h2>
@@ -71,9 +101,13 @@ export default function AccountSelector({ accounts, activeProfile, onProfileChan
       </div>
       <div className="form-field" style={{ flexDirection: 'row', gap: 8 }}>
         <button type="button" className="glass-btn-secondary" onClick={openAdd} style={{ flex: 1 }}>新增登录账号</button>
-        <button type="button" className="glass-btn-secondary" disabled={loginBusy} onClick={() => handleLogin(activeProfile)} style={{ flex: 1 }}>
-          {loginBusy ? '登录中...' : '登录 / 重新登录'}
+        <button type="button" className="glass-btn-secondary" disabled={loginBusy} onClick={handleLoginCurrent} style={{ flex: 1 }}>
+          {loginBusy ? '登录中...' : '登录当前账号'}
         </button>
+      </div>
+      <div className="form-field" style={{ flexDirection: 'row', gap: 8 }}>
+        <button type="button" className="glass-btn-secondary" onClick={handleLoginAll} style={{ flex: 1 }}>同时登录全部账号</button>
+        <button type="button" className="glass-btn-secondary" onClick={handleLoginNotLoggedIn} style={{ flex: 1 }}>同时登录未登录账号</button>
       </div>
       {msg && <p className={`account-inline-message ${loginBusy ? 'loading' : ''}`}>{msg}</p>}
 

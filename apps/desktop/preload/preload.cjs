@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
     remove: (profile) => ipcRenderer.invoke('desktop:removeAccount', profile),
     setActive: (profile) => ipcRenderer.invoke('desktop:setActiveAccount', profile),
     login: (profile) => ipcRenderer.invoke('desktop:loginAccount', profile),
+    loginInTerminal: (profile) => ipcRenderer.invoke('desktop:loginAccountInTerminal', profile),
+    loginManyInTerminal: (profiles) => ipcRenderer.invoke('desktop:loginAccountsInTerminal', profiles),
     refreshStatus: (profile) => ipcRenderer.invoke('desktop:refreshAccountStatus', profile),
     suggestProfileName: () => ipcRenderer.invoke('desktop:suggestProfileName'),
   },
