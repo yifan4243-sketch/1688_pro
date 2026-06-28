@@ -209,7 +209,11 @@ function registerIpc() {
     if (confirmed !== true) {
       throw new Error('提交 Ozon 前必须确认。');
     }
-    return submitOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), draft);
+    const settings = loadOzonSettings(userDataDir(), { includeSecrets: true });
+    if (settings.ozon.enableRealSubmit !== true) {
+      throw new Error('真实 Ozon 提交未开启。请先在设置中显式开启。');
+    }
+    return submitOzonDraft(settings, draft);
   });
 
   // --- terminal login (kept for debug, not used by UI) ---

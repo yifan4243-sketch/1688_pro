@@ -150,6 +150,8 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     });
     const deepOffers = Object.values(deepJsonByOfferId);
     const failures = Object.values(deepFailuresByOfferId);
+    const hasManualDeep = deepOffers.length > 0 || failures.length > 0;
+    if (!hasManualDeep) return { ...baseData, offers };
     return { ...baseData, offers, deeppro: { ...(baseData.deeppro && typeof baseData.deeppro === 'object' ? baseData.deeppro as Record<string, unknown> : {}), enabled: true, mode: 'manual-per-card', success: deepOffers.length, failed: failures.length, offers: deepOffers, failures } };
   }, [baseData, deepJsonByOfferId, deepFailuresByOfferId]);
 
@@ -195,7 +197,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   // ----- per-card deep collect queue with profile fallback + task map + JSON merge -----
   const deepQueueRef = useRef<Array<{ key: string; item: ProgressOfferCardItem }>>([]);
   const deepRunningRef = useRef(false);
-  const deepTaskMapRef = useRef<Record<string, { key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; createdAt: string; finishedAt?: string }>>({});
+  const deepTaskMapRef = useRef<Record<string, { key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; profile?: string; attempt?: number; createdAt: string; updatedAt?: string; finishedAt?: string }>>({});
   const MAX_ATTEMPTS_PER_PROFILE = 2;
 
   const publishDeepTasks = () => {
@@ -208,8 +210,9 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     deepTaskMapRef.current[key] = {
       key, offerId: patch.offerId ?? prev?.offerId, title: patch.title ?? prev?.title,
       image: patch.image ?? prev?.image, status: patch.status ?? prev?.status ?? 'queued',
-      message: patch.message ?? prev?.message, createdAt: prev?.createdAt || patch.createdAt || new Date().toISOString(),
-      finishedAt: patch.finishedAt ?? prev?.finishedAt,
+      message: patch.message ?? prev?.message, profile: patch.profile ?? prev?.profile,
+      attempt: patch.attempt ?? prev?.attempt, createdAt: prev?.createdAt || patch.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(), finishedAt: patch.finishedAt ?? prev?.finishedAt,
     };
     publishDeepTasks();
   };
@@ -294,9 +297,9 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     if (deepRunningRef.current) return;
     const next = deepQueueRef.current[0];
     if (!next) return;
+    const { key, item } = next;
     deepRunningRef.current = true;
     upsertDeepTask(key, { status: 'collecting', message: '正在深度采集' });
-    const { key, item } = next;
     try { await runDeepCollectWithFallback(item, key); }
     finally {
       deepQueueRef.current = deepQueueRef.current.slice(1);

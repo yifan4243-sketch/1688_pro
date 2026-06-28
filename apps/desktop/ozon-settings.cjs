@@ -25,6 +25,7 @@ function defaultSettings() {
       defaultDescriptionCategoryId: '',
       defaultTypeId: '',
       defaultCategoryPath: '',
+      enableRealSubmit: false,
     },
   };
 }
@@ -47,6 +48,7 @@ function publicSettings(settings) {
       defaultDescriptionCategoryId: settings.ozon.defaultDescriptionCategoryId,
       defaultTypeId: settings.ozon.defaultTypeId,
       defaultCategoryPath: settings.ozon.defaultCategoryPath,
+      enableRealSubmit: Boolean(settings.ozon.enableRealSubmit),
     },
   };
 }
