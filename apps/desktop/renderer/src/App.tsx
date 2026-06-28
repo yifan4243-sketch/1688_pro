@@ -26,6 +26,8 @@ export default function App() {
   const [recentOpen, setRecentOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailRecord, setDetailRecord] = useState<CommandRecord | null>(null);
+  const [workspaceView, setWorkspaceView] = useState<'1688' | 'ozon'>('1688');
+  const [runtimeStatusOpen, setRuntimeStatusOpen] = useState(false);
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
@@ -110,49 +112,55 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className="side-nav">
-        <div className="brand-block">
-          <div className="brand-mark">1688</div>
-          <div>
-            <h1>1688 to Ozon</h1>
-            <p>Desktop Studio</p>
-          </div>
+      <aside className="side-nav app-side-switcher">
+        <div className="side-top-row">
+          <button type="button" className="runtime-status-trigger" onClick={() => setRuntimeStatusOpen(true)}>
+            运行状态
+          </button>
         </div>
-
-        <RuntimeStatusPanel
-          runtime={runtime}
-          cliInfo={cliInfo}
-          onRefresh={handleRefreshRuntime}
-          accounts={accounts.accounts}
-          activeProfile={activeProfile}
-        />
+        <div className="side-app-buttons">
+          <button type="button" className={`side-app-button ${workspaceView === '1688' ? 'active' : ''}`} onClick={() => setWorkspaceView('1688')} aria-label="1688">
+            <img src="/nav/1688.png" alt="1688" />
+          </button>
+          <button type="button" className={`side-app-button ${workspaceView === 'ozon' ? 'active' : ''}`} onClick={() => setWorkspaceView('ozon')} aria-label="Ozon">
+            <img src="/nav/ozon.png" alt="Ozon" />
+          </button>
+        </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">1688 CLI 全功能接入</p>
-            <h2>1688 to Ozon Studio</h2>
+            <p className="eyebrow">{workspaceView === '1688' ? '1688 CLI 全功能接入' : 'Ozon 工作台'}</p>
+            <h2>{workspaceView === '1688' ? '1688 to Ozon Studio' : 'Ozon Studio'}</h2>
           </div>
           <div className="topbar-actions">
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('ai')}>AI 设置</button>
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setOzonSettingsOpen('store')}>Ozon 店铺</button>
             <button className="glass-btn-secondary topbar-config-btn" onClick={() => setAccountSettingsOpen(true)}>1688账号</button>
-            <button className="glass-btn-secondary" onClick={handleRefreshRuntime}>刷新状态</button>
             <button className="glass-btn-secondary" onClick={openRecentTasks}>最近任务</button>
             <button className="glass-btn-secondary" onClick={openProductHistory}>历史记录</button>
           </div>
         </header>
 
         <div className="workspace-inner">
-          <ErrorBoundary>
-            <CommandPanel
-              registry={registry}
-              activeProfile={activeProfile}
-              accounts={accounts}
-              onHistoryRefresh={refreshRecentTasks}
-            />
-          </ErrorBoundary>
+          {workspaceView === '1688' ? (
+            <ErrorBoundary>
+              <CommandPanel
+                registry={registry}
+                activeProfile={activeProfile}
+                accounts={accounts}
+                onHistoryRefresh={refreshRecentTasks}
+              />
+            </ErrorBoundary>
+          ) : (
+            <div className="ozon-blank-page">
+              <div className="ozon-blank-card">
+                <h3>Ozon 工作台</h3>
+                <p>该页面暂未接入，后续用于 Ozon 上架、草稿、店铺任务。</p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -183,6 +191,21 @@ export default function App() {
         open={productHistoryOpen}
         onClose={() => setProductHistoryOpen(false)}
       />
+
+      {runtimeStatusOpen && (
+        <div className="runtime-status-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setRuntimeStatusOpen(false); }}>
+          <div className="runtime-status-modal">
+            <div className="runtime-status-modal-header">
+              <h3>运行状态</h3>
+              <button className="glass-btn-ghost" onClick={() => setRuntimeStatusOpen(false)}>关闭</button>
+            </div>
+            <RuntimeStatusPanel
+              runtime={runtime} cliInfo={cliInfo} onRefresh={handleRefreshRuntime}
+              accounts={accounts.accounts} activeProfile={activeProfile} embedded
+            />
+          </div>
+        </div>
+      )}
 
       <OzonSettingsModal
         mode={ozonSettingsOpen || 'ai'}
