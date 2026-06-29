@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { CommandRecord } from '../../services/api';
+import CommandErrorView from '../Results/CommandErrorView';
 
 function statusText(s: string): string {
   const map: Record<string, string> = { success: '成功', not_logged_in: '未登录', risk_control: '风控', profile_busy: '忙', network_error: '网络错误', cancelled: '已取消', failed: '失败', timeout: '超时' };
@@ -18,6 +19,8 @@ export default function HistoryDetailModal({ record, onClose }: Props) {
   const startedMs = new Date(record.startedAt).getTime();
   const endedMs = record.endedAt ? new Date(record.endedAt).getTime() : Date.now();
   const durationMs = record.durationMs ?? (endedMs - startedMs);
+
+  const isFailure = record.status !== 'success' && record.status !== 'running';
 
   return createPortal(
     <div className="history-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -45,6 +48,11 @@ export default function HistoryDetailModal({ record, onClose }: Props) {
           <span className="detail-key">耗时</span>
           <span className="detail-val">{(durationMs / 1000).toFixed(1)}s</span>
         </div>
+
+        {/* Chinese-friendly error block for failed records */}
+        {isFailure && (
+          <CommandErrorView record={record} />
+        )}
 
         {record.argv?.length > 0 && (
           <details className="advanced-section" style={{ marginTop: 12 }}>

@@ -9,6 +9,7 @@ import { useDeepCollectQueue } from './deepCollect/useDeepCollectQueue';
 import type { DeepCollectTask } from './deepCollect/types';
 import { useOzonListingQueue } from './ozonListing/useOzonListingQueue';
 import type { OzonListingTask } from './ozonListing/types';
+import CommandErrorView from './CommandErrorView';
 
 interface Props {
   record: CommandRecord | null;
@@ -407,22 +408,9 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
         </details>
       )}
 
-      {/* Error detail */}
+      {/* Command error — Chinese-friendly, technical details collapsed */}
       {record && record.status !== 'success' && record.status !== 'running' && (
-        <div className="result-preview error-detail">
-          <h4>错误详情</h4>
-          <div className="error-grid">
-            <div><span>状态</span><strong>{record.status}</strong></div>
-            <div><span>退出码</span><strong>{record.exitCode ?? '-'}</strong></div>
-            <div><span>错误信息</span><strong>{record.error?.message || record.stderrText || '-'}</strong></div>
-          </div>
-          {record.argv?.length > 0 && (
-            <div className="error-argv"><span>CLI 命令</span><code>{record.argv.join(' ')}</code></div>
-          )}
-          {record.stderrText && (
-            <div className="error-stderr"><span>stderr</span><pre>{record.stderrText}</pre></div>
-          )}
-        </div>
+        <CommandErrorView record={record} />
       )}
 
       {/* Detail modal */}

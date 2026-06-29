@@ -437,6 +437,110 @@
 .error-argv code { font-size: 11px; background: rgba(0,0,0,0.03); padding: 4px 6px; border-radius: 3px; display: block; word-break: break-all; }
 .error-stderr pre { font-size: 11px; max-height: 150px; overflow: auto; }
 
+/* ── Command error card (Chinese-friendly) ── */
+.command-error-card {
+  margin-top: 12px;
+  border-radius: 20px;
+  border: 1px solid;
+  padding: 20px 22px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.command-error-header {
+  margin-bottom: 12px;
+}
+.command-error-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+.command-error-summary {
+  font-size: 13px;
+  color: rgba(15,23,42,0.70);
+  line-height: 1.55;
+  margin: 0;
+}
+.command-error-label {
+  font-size: 12px;
+  font-weight: 750;
+  color: rgba(15,23,42,0.56);
+}
+.command-error-reason {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: rgba(15,23,42,0.64);
+  line-height: 1.5;
+}
+.command-error-advice {
+  margin-bottom: 12px;
+}
+.command-error-advice-list {
+  margin: 4px 0 0 18px;
+  padding: 0;
+  font-size: 13px;
+  color: rgba(15,23,42,0.72);
+  line-height: 1.65;
+}
+.command-error-advice-list li {
+  margin-bottom: 3px;
+}
+.command-error-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: rgba(15,23,42,0.52);
+  margin-bottom: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(15,23,42,0.06);
+}
+.command-error-meta-item strong {
+  color: rgba(15,23,42,0.72);
+  font-weight: 700;
+}
+.command-error-technical {
+  margin-top: 4px;
+}
+.command-error-technical-summary {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+}
+.command-error-technical-summary:hover {
+  color: #334155;
+}
+.command-error-technical-body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.command-error-tech-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.command-error-tech-row span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.command-error-tech-row code,
+.command-error-tech-row pre {
+  font-size: 11px;
+  background: rgba(0,0,0,0.03);
+  border-radius: 8px;
+  padding: 8px 10px;
+  word-break: break-all;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow: auto;
+  font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+}
+
 /* Toast */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

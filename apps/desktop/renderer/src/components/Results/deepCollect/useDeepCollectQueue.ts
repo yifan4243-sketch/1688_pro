@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { getApi } from '../../../services/api';
 import type { ProgressOfferCardItem } from '../ProgressOfferCard';
 import { deepCollectLog } from './debug';
+import { formatCommandError } from '../errorFormatter';
 import type {
   DeepCollectTask,
   DeepCollectTaskPatch,
@@ -463,7 +464,8 @@ export function useDeepCollectQueue({
       try {
         firstResult = await runOfferProOnce(entry, profile, 1);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error || '深度采集失败');
+        const rawMessage = error instanceof Error ? error.message : String(error || '');
+        const friendly = formatCommandError({ message: rawMessage, stderr: rawMessage, context: 'offer' });
 
         firstResult = {
           failedEntry: {
@@ -471,7 +473,8 @@ export function useDeepCollectQueue({
             failure: {
               offerId: entry.item.offerId,
               code: 'OFFER_EXCEPTION',
-              message,
+              message: friendly.summary,
+              rawTitle: rawMessage,
             },
           },
         };
@@ -525,7 +528,8 @@ export function useDeepCollectQueue({
       try {
         secondResult = await runOfferProOnce(entry, profile, 2, secondAttemptHeaded);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error || '深度采集二次测试失败');
+        const rawMessage = error instanceof Error ? error.message : String(error || '');
+        const friendly = formatCommandError({ message: rawMessage, stderr: rawMessage, context: 'offer' });
 
         secondResult = {
           failedEntry: {
@@ -533,7 +537,8 @@ export function useDeepCollectQueue({
             failure: {
               offerId: entry.item.offerId,
               code: 'OFFER_RETRY_EXCEPTION',
-              message,
+              message: friendly.summary,
+              rawTitle: rawMessage,
             },
           },
         };
