@@ -221,12 +221,14 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   };
 
   useEffect(() => {
+    if (!record?.runId) return;
+
     setSelectedKeys(new Set());
     setCardOverrides({});
     setDeepJsonByOfferId({});
     setDeepFailuresByOfferId({});
     resetDeepCollectQueue();
-  }, [record?.runId, resultType]);
+  }, [record?.runId]);
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;
   const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
 

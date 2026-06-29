@@ -58,6 +58,61 @@ function normalizeOfferBatchJson(value: unknown): OfferBatchJson {
   return {};
 }
 
+function classifyInvalidDeepOffer(deep: Record<string, unknown>): { code: string; message: string } | null {
+  const title = String(deep.title || deep.subject || deep.name || '').trim();
+  const code = String(deep.code || deep.errorCode || '').trim();
+  const message = String(deep.message || deep.error || deep.errorMessage || '').trim();
+  const url = String(deep.url || '').trim();
+
+  const joined = `${title} ${code} ${message} ${url}`;
+
+  if (/captcha interception/i.test(joined) || title === 'Captcha Interception') {
+    return {
+      code: 'CAPTCHA_INTERCEPTION',
+      message: '页面被验证码拦截，深度采集未成功',
+    };
+  }
+
+  if (/captcha|verify|verification|nocaptcha|x5sec|punish/i.test(joined)) {
+    return {
+      code: 'CAPTCHA_OR_VERIFY',
+      message: '页面触发验证码或安全验证，深度采集未成功',
+    };
+  }
+
+  if (/验证码|滑块|风控|安全验证|访问受限|验证失败|拦截/i.test(joined)) {
+    return {
+      code: 'RISK_OR_CAPTCHA',
+      message: '页面被风控或验证码拦截，深度采集未成功',
+    };
+  }
+
+  const images = Array.isArray(deep.images) ? deep.images : [];
+  const mainImage = String(deep.mainImage || '').trim();
+  const skus = Array.isArray(deep.skus) ? deep.skus : [];
+  const options = Array.isArray(deep.options) ? deep.options : [];
+
+  const hasUsefulTitle = Boolean(title) && !/^captcha/i.test(title);
+  const hasUsefulImage = Boolean(mainImage) || images.length > 0;
+  const hasUsefulDetail = skus.length > 0 || options.length > 0 || Boolean(deep.priceRange || deep.priceText);
+
+  if (!hasUsefulTitle) {
+    return {
+      code: 'MISSING_TITLE',
+      message: '深度采集结果缺少有效标题',
+    };
+  }
+
+  if (!hasUsefulImage && !hasUsefulDetail) {
+    return {
+      code: 'INVALID_DEEP_OFFER',
+      message: '深度采集结果不完整，未获得有效商品详情',
+    };
+  }
+
+  return null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -124,6 +179,13 @@ export function useDeepCollectQueue({
         },
       },
     }));
+
+    setDeepFailuresByOfferId((prev) => {
+      if (!prev[offerId]) return prev;
+      const next = { ...prev };
+      delete next[offerId];
+      return next;
+    });
   }
 
   function upsertDeepFailure(
@@ -136,6 +198,13 @@ export function useDeepCollectQueue({
       ...prev,
       [offerId]: failure,
     }));
+
+    setDeepJsonByOfferId((prev) => {
+      if (!prev[offerId]) return prev;
+      const next = { ...prev };
+      delete next[offerId];
+      return next;
+    });
   }
 
   async function getDeepCollectProfilePool(): Promise<string[]> {
@@ -152,59 +221,45 @@ export function useDeepCollectQueue({
     }
   }
 
-  async function runOfferProBatchOnce(
-    entries: DeepQueueEntry[],
+  async function runOfferProOnce(
+    entry: DeepQueueEntry,
     profile: string,
     attempt: number,
   ): Promise<{
-    okEntries: Array<{ entry: DeepQueueEntry; data: Record<string, unknown> }>;
-    failedEntries: Array<{ entry: DeepQueueEntry; failure: Record<string, unknown> }>;
+    okEntry?: { entry: DeepQueueEntry; data: Record<string, unknown> };
+    failedEntry?: { entry: DeepQueueEntry; failure: Record<string, unknown> };
   }> {
-    const ids = entries
-      .map((entry) => entry.item.offerId)
-      .filter(Boolean) as string[];
-
+    const offerId = String(entry.item.offerId || '');
     const modeLabel = manualDeepCollectHeaded ? '可视化' : '无头';
-    const entryByOfferId = new Map<string, DeepQueueEntry>();
 
-    for (const entry of entries) {
-      if (entry.item.offerId) {
-        entryByOfferId.set(String(entry.item.offerId), entry);
-      }
-    }
-
-    for (const entry of entries) {
-      setCardOverrides((prev) => ({
-        ...prev,
-        [entry.key]: {
-          status: 'deep-collecting',
-          message: `正在使用 ${profile} ${modeLabel}深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
-          code: '',
-        },
-      }));
-
-      upsertDeepTask(entry.key, {
-        status: 'collecting',
-        profile,
-        attempt,
+    setCardOverrides((prev) => ({
+      ...prev,
+      [entry.key]: {
+        status: 'deep-collecting',
         message: `正在使用 ${profile} ${modeLabel}深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
-      });
-    }
+        code: '',
+      },
+    }));
 
-    deepCollectLog('runOfferProBatchOnce call CLI', {
+    upsertDeepTask(entry.key, {
+      status: 'collecting',
+      profile,
+      attempt,
+      message: `正在使用 ${profile} ${modeLabel}深度采集，第 ${attempt}/${MAX_ATTEMPTS_PER_PROFILE} 次`,
+    });
+
+    deepCollectLog('runOfferProOnce call CLI', {
       profile,
       attempt,
       headed: manualDeepCollectHeaded,
       mode: manualDeepCollectHeaded ? 'headed' : 'headless',
-      count: ids.length,
-      ids,
-      offerIdsArg: ids.join('\\n'),
+      offerId,
     });
 
     const record = await api.commands.run({
       commandId: 'offer',
       args: {
-        offerIds: ids.join('\n'),
+        offerIds: offerId,
       },
       options: {
         pro: true,
@@ -214,12 +269,11 @@ export function useDeepCollectQueue({
       confirmed: true,
     });
 
-    deepCollectLog('runOfferProBatchOnce CLI returned', {
+    deepCollectLog('runOfferProOnce CLI returned', {
       profile,
       attempt,
       status: record.status,
       argv: record.argv,
-      stdoutMode: (record as unknown as Record<string, unknown>).outputKind,
       stderr: record.stderrText,
     });
 
@@ -227,63 +281,67 @@ export function useDeepCollectQueue({
     const offers = Array.isArray(data.offers) ? data.offers : [];
     const failures = Array.isArray(data.failures) ? data.failures : [];
 
-    const okEntries: Array<{ entry: DeepQueueEntry; data: Record<string, unknown> }> = [];
-    const failedEntries: Array<{ entry: DeepQueueEntry; failure: Record<string, unknown> }> = [];
-    const successIds = new Set<string>();
+    const deep = offers.find((item) => offerIdFromDeep(item) === offerId);
 
-    for (const deep of offers) {
-      const offerId = offerIdFromDeep(deep);
-      if (!offerId) continue;
+    if (deep) {
+      const invalid = classifyInvalidDeepOffer(deep);
 
-      const entry = entryByOfferId.get(offerId);
-      if (!entry) continue;
+      if (invalid) {
+        deepCollectLog('invalid deep offer detected', {
+          offerId,
+          code: invalid.code,
+          message: invalid.message,
+          title: deep.title,
+        });
 
-      successIds.add(offerId);
-      okEntries.push({
-        entry,
-        data: deep,
-      });
+        return {
+          failedEntry: {
+            entry,
+            failure: {
+              offerId,
+              code: invalid.code,
+              message: invalid.message,
+              rawTitle: deep.title,
+            },
+          },
+        };
+      }
+
+      return {
+        okEntry: {
+          entry,
+          data: deep,
+        },
+      };
     }
 
-    for (const failure of failures) {
-      const offerId = String(failure.offerId || failure.offer_id || failure.id || '');
-      const entry = entryByOfferId.get(offerId);
+    const failure = failures.find((item) => String(item.offerId || item.offer_id || item.id || '') === offerId);
 
-      if (entry) {
-        failedEntries.push({
+    if (failure) {
+      return {
+        failedEntry: {
           entry,
           failure,
-        });
-      }
+        },
+      };
     }
 
-    for (const entry of entries) {
-      const offerId = String(entry.item.offerId || '');
-      const alreadySuccess = successIds.has(offerId);
-      const alreadyFailed = failedEntries.some((item) => item.entry.key === entry.key);
-
-      if (!alreadySuccess && !alreadyFailed) {
-        const errorMessage =
-          record.error && typeof record.error === 'object'
-            ? String((record.error as { message?: unknown }).message || '')
-            : '';
-
-        failedEntries.push({
-          entry,
-          failure: {
-            offerId,
-            code: record.status === 'success'
-              ? 'MISSING_BATCH_RESULT'
-              : record.status || 'BATCH_FAILED',
-            message: errorMessage || record.stderrText || '批量深采未返回该商品结果',
-          },
-        });
-      }
-    }
+    const errorMessage =
+      record.error && typeof record.error === 'object'
+        ? String((record.error as { message?: unknown }).message || '')
+        : '';
 
     return {
-      okEntries,
-      failedEntries,
+      failedEntry: {
+        entry,
+        failure: {
+          offerId,
+          code: record.status === 'success'
+            ? 'MISSING_OFFER_RESULT'
+            : record.status || 'OFFER_FAILED',
+          message: errorMessage || record.stderrText || '深度采集未返回该商品结果',
+        },
+      },
     };
   }
 
@@ -343,6 +401,9 @@ export function useDeepCollectQueue({
     setCardOverrides((prev) => ({
       ...prev,
       [key]: {
+        title: item.title,
+        price: item.price,
+        image: item.image,
         status: 'deep-failed',
         message,
         code,
@@ -373,143 +434,144 @@ export function useDeepCollectQueue({
     });
   }
 
-  async function runDeepCollectBatchWithFallback(entries: DeepQueueEntry[]): Promise<void> {
-    if (entries.length === 0) return;
-
+  async function runDeepCollectEntryWithFallback(entry: DeepQueueEntry): Promise<void> {
     const profiles = await getDeepCollectProfilePool();
-    let remaining = entries;
 
-    for (let profileIndex = 0; profileIndex < profiles.length && remaining.length > 0; profileIndex += 1) {
+    for (let profileIndex = 0; profileIndex < profiles.length; profileIndex += 1) {
       const profile = profiles[profileIndex]!;
 
-      let firstResult: {
-        okEntries: Array<{ entry: DeepQueueEntry; data: Record<string, unknown> }>;
-        failedEntries: Array<{ entry: DeepQueueEntry; failure: Record<string, unknown> }>;
-      };
+      let firstResult: Awaited<ReturnType<typeof runOfferProOnce>>;
 
       try {
-        firstResult = await runOfferProBatchOnce(remaining, profile, 1);
+        firstResult = await runOfferProOnce(entry, profile, 1);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error || '批量深采失败');
+        const message = error instanceof Error ? error.message : String(error || '深度采集失败');
 
         firstResult = {
-          okEntries: [],
-          failedEntries: remaining.map((entry) => ({
+          failedEntry: {
             entry,
             failure: {
               offerId: entry.item.offerId,
-              code: 'BATCH_EXCEPTION',
+              code: 'OFFER_EXCEPTION',
               message,
             },
-          })),
+          },
         };
       }
 
-      for (const item of firstResult.okEntries) {
-        applyDeepSuccess(item.entry, item.data, profile, 1);
+      if (firstResult.okEntry) {
+        applyDeepSuccess(firstResult.okEntry.entry, firstResult.okEntry.data, profile, 1);
+        return;
       }
 
-      const firstFailed = firstResult.failedEntries;
+      const firstFailure = firstResult.failedEntry;
 
-      if (firstFailed.length === 0) {
-        remaining = [];
-        break;
-      }
-
-      for (const item of firstFailed) {
-        const message = `${profile} 第一次失败，重新打开浏览器进行第二次测试`;
-
-        upsertDeepTask(item.entry.key, {
-          status: 'collecting',
-          profile,
-          attempt: 2,
-          message,
-        });
-
-        setCardOverrides((prev) => ({
-          ...prev,
-          [item.entry.key]: {
-            status: 'deep-collecting',
-            message,
-            code: String(item.failure.code || ''),
+      if (!firstFailure) {
+        applyDeepFailed(
+          entry,
+          {
+            offerId: entry.item.offerId,
+            code: 'UNKNOWN_DEEP_FAILURE',
+            message: '深度采集失败，原因未知',
           },
-        }));
+          profile,
+          1,
+        );
+        return;
       }
 
-      let secondResult: {
-        okEntries: Array<{ entry: DeepQueueEntry; data: Record<string, unknown> }>;
-        failedEntries: Array<{ entry: DeepQueueEntry; failure: Record<string, unknown> }>;
-      };
+      const retryMessage = `${profile} 第一次失败，重新进行第二次测试`;
+
+      upsertDeepTask(entry.key, {
+        status: 'collecting',
+        profile,
+        attempt: 2,
+        message: retryMessage,
+      });
+
+      setCardOverrides((prev) => ({
+        ...prev,
+        [entry.key]: {
+          status: 'deep-collecting',
+          message: retryMessage,
+          code: String(firstFailure.failure.code || ''),
+        },
+      }));
+
+      let secondResult: Awaited<ReturnType<typeof runOfferProOnce>>;
 
       try {
-        secondResult = await runOfferProBatchOnce(
-          firstFailed.map((item) => item.entry),
-          profile,
-          2,
-        );
+        secondResult = await runOfferProOnce(entry, profile, 2);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error || '批量深采二次测试失败');
+        const message = error instanceof Error ? error.message : String(error || '深度采集二次测试失败');
 
         secondResult = {
-          okEntries: [],
-          failedEntries: firstFailed.map((item) => ({
-            entry: item.entry,
+          failedEntry: {
+            entry,
             failure: {
-              offerId: item.entry.item.offerId,
-              code: 'BATCH_RETRY_EXCEPTION',
+              offerId: entry.item.offerId,
+              code: 'OFFER_RETRY_EXCEPTION',
               message,
             },
-          })),
+          },
         };
       }
 
-      for (const item of secondResult.okEntries) {
-        applyDeepSuccess(item.entry, item.data, profile, 2);
+      if (secondResult.okEntry) {
+        applyDeepSuccess(secondResult.okEntry.entry, secondResult.okEntry.data, profile, 2);
+        return;
       }
 
-      const stillFailed = secondResult.failedEntries;
-
-      if (stillFailed.length === 0) {
-        remaining = [];
-        break;
-      }
-
+      const secondFailure = secondResult.failedEntry;
       const nextProfile = profiles[profileIndex + 1];
 
       if (nextProfile) {
-        for (const item of stillFailed) {
-          const message = `${profile} 二次测试失败，切换到 ${nextProfile}`;
+        const switchMessage = `${profile} 二次测试失败，切换到 ${nextProfile}`;
 
-          setCardOverrides((prev) => ({
-            ...prev,
-            [item.entry.key]: {
-              status: 'deep-collecting',
-              message,
-              code: String(item.failure.code || 'SWITCH_PROFILE'),
-            },
-          }));
+        setCardOverrides((prev) => ({
+          ...prev,
+          [entry.key]: {
+            status: 'deep-collecting',
+            message: switchMessage,
+            code: String(secondFailure?.failure.code || 'SWITCH_PROFILE'),
+          },
+        }));
 
-          upsertDeepTask(item.entry.key, {
-            status: 'collecting',
-            profile,
-            attempt: 2,
-            message,
-          });
-        }
+        upsertDeepTask(entry.key, {
+          status: 'collecting',
+          profile,
+          attempt: 2,
+          message: switchMessage,
+        });
 
-        remaining = stillFailed.map((item) => item.entry);
         await sleep(800);
         continue;
       }
 
-      for (const item of stillFailed) {
-        applyDeepFailed(item.entry, item.failure, profile, 2);
-      }
+      applyDeepFailed(
+        entry,
+        secondFailure?.failure || {
+          offerId: entry.item.offerId,
+          code: 'DEEP_COLLECT_FAILED',
+          message: '所有账号尝试后仍然失败',
+        },
+        profile,
+        2,
+      );
 
-      remaining = [];
+      return;
     }
 
-    showToast('深度采集队列已处理完成', 1800);
+    applyDeepFailed(
+      entry,
+      {
+        offerId: entry.item.offerId,
+        code: 'NO_PROFILE_AVAILABLE',
+        message: '没有可用账号进行深度采集',
+      },
+      activeProfile || 'default',
+      1,
+    );
   }
 
   async function processDeepQueue(): Promise<void> {
@@ -520,33 +582,42 @@ export function useDeepCollectQueue({
       deepQueueStartTimerRef.current = null;
     }
 
-    const batch = deepQueueRef.current.slice();
+    if (deepQueueRef.current.length === 0) return;
 
-    if (batch.length === 0) return;
-
-    deepCollectLog('processDeepQueue batch snapshot', {
-      batchSize: batch.length,
-      offerIds: batch.map((entry) => entry.item.offerId),
-    });
-
-    const processingKeys = new Set(batch.map((entry) => entry.key));
     deepRunningRef.current = true;
 
-    for (const entry of batch) {
-      upsertDeepTask(entry.key, {
-        status: 'collecting',
-        message: `等待批量深度采集启动，本批 ${batch.length} 个商品`,
-      });
-    }
+    deepCollectLog('processDeepQueue start serial queue', {
+      queueSize: deepQueueRef.current.length,
+      offerIds: deepQueueRef.current.map((item) => item.item.offerId),
+    });
 
     try {
-      await runDeepCollectBatchWithFallback(batch);
+      while (deepQueueRef.current.length > 0) {
+        const entry = deepQueueRef.current.shift();
+
+        if (!entry) break;
+
+        deepCollectLog('processDeepQueue run next item', {
+          offerId: entry.item.offerId,
+          remaining: deepQueueRef.current.length,
+        });
+
+        upsertDeepTask(entry.key, {
+          status: 'collecting',
+          message: `等待深度采集启动，剩余 ${deepQueueRef.current.length} 个任务`,
+        });
+
+        await runDeepCollectEntryWithFallback(entry);
+
+        if (deepQueueRef.current.length > 0) {
+          await sleep(300);
+        }
+      }
     } finally {
-      deepQueueRef.current = deepQueueRef.current.filter((entry) => !processingKeys.has(entry.key));
       deepRunningRef.current = false;
 
       if (deepQueueRef.current.length > 0) {
-        scheduleDeepQueueProcess(800);
+        scheduleDeepQueueProcess(500);
       }
     }
   }

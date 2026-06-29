@@ -191,6 +191,12 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
           <div className="progress-image-skeleton" />
         )}
 
+        {deepBadge && (
+          <span className={`progress-card-deep-badge ${deepBadge.kind}`}>
+            {deepBadge.text}
+          </span>
+        )}
+
         {hasOverlay && (
           <div className={`progress-card-overlay ${isFailed ? 'failed' : ''}`}>
             <div className="progress-card-overlay-inner">
