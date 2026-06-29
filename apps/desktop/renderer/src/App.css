@@ -49,48 +49,119 @@ select {
 }
 .app-side-switcher { align-items: stretch; }
 
-.side-app-buttons {
-  display: grid; grid-template-columns: 48px 24px 48px; gap: 8px;
-  justify-content: center; align-items: center; width: 100%;
+/* ── Brand flow: 1688 → Ozon ── */
+.brand-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 6px 14px;
 }
-.side-app-button {
-  width: 48px; height: 48px; padding: 0;
-  border: none; border-radius: 12px;
-  background: transparent; cursor: pointer;
-  overflow: hidden; display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
+
+.brand-logo-card {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: none;
+  border-radius: 17px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: linear-gradient(145deg, rgba(255,255,255,0.84), rgba(255,255,255,0.52));
+  border: 1px solid rgba(255,255,255,0.74);
+  box-shadow:
+    0 12px 28px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255,255,255,0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  overflow: hidden;
   transition: transform 0.16s, box-shadow 0.16s;
 }
-.side-app-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
-}
-.side-app-button.active {
-  border: none; background: transparent;
-  box-shadow:
-    0 0 0 1.25px rgba(59, 130, 246, 0.55),
-    0 8px 18px rgba(37, 99, 235, 0.16);
-}
-.side-app-button img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
 
-/* ── Brand flow arrow between 1688 → Ozon ── */
-.side-app-flow-arrow {
-  display: flex; align-items: center; justify-content: center;
-  width: 24px; height: 48px;
-}
-.side-app-flow-arrow-capsule {
-  display: flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, rgba(99,102,241,0.10), rgba(56,189,248,0.08));
-  border: 1px solid rgba(148,163,184,0.18);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.70), 0 2px 6px rgba(15,23,42,0.05);
-}
-.side-app-flow-arrow-capsule svg {
+.brand-logo-card img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  border-radius: 13px;
   display: block;
 }
+
+.brand-logo-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 16px 34px rgba(15, 23, 42, 0.11),
+    inset 0 1px 0 rgba(255,255,255,0.82);
+}
+
+.brand-logo-card.active {
+  box-shadow:
+    0 0 0 1.5px rgba(59, 130, 246, 0.55),
+    0 12px 28px rgba(37, 99, 235, 0.18),
+    inset 0 1px 0 rgba(255,255,255,0.80);
+}
+
+/* ── Flow bridge between logos ── */
+.brand-flow-bridge {
+  width: 42px;
+  height: 22px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-flow-line {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      rgba(255, 112, 67, 0.42),
+      rgba(96, 165, 250, 0.58),
+      rgba(37, 99, 235, 0.48)
+    );
+  box-shadow:
+    0 0 14px rgba(96, 165, 250, 0.20),
+    inset 0 1px 0 rgba(255,255,255,0.55);
+}
+
+.brand-flow-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.75), transparent);
+  transform: translateX(-100%);
+  animation: brand-flow-sheen 4.2s ease-in-out infinite;
+}
+
+@keyframes brand-flow-sheen {
+  0%, 55% { transform: translateX(-100%); opacity: 0; }
+  65% { opacity: 0.9; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.brand-flow-arrow {
+  position: absolute;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(147,197,253,0.50);
+  box-shadow: 0 6px 14px rgba(37,99,235,0.14);
+  color: rgba(37, 99, 235, 0.78);
+}
+
+.brand-flow-arrow svg {
+  display: block;
+}
+
 .workspace { display: flex; flex-direction: column; overflow: hidden; }
 
 /* Main content inner — scales to available width */

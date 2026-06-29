@@ -237,19 +237,37 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="side-nav app-side-switcher">
-        <div className="side-app-buttons">
-          <button type="button" className={`side-app-button ${workspaceView === '1688' ? 'active' : ''}`} onClick={() => setWorkspaceView('1688')} aria-label="1688">
+        <div className="brand-flow">
+          <button
+            type="button"
+            className={`brand-logo-card ${workspaceView === '1688' ? 'active' : ''}`}
+            onClick={() => setWorkspaceView('1688')}
+            aria-label="1688"
+          >
             <img src="/nav/1688.png" alt="1688" />
           </button>
-          <div className="side-app-flow-arrow">
-            <span className="side-app-flow-arrow-capsule">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="rgba(100,116,139,0.62)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 5h5" />
-                <path d="M6 3l2 2-2 2" />
+
+          <div className="brand-flow-bridge">
+            <span className="brand-flow-line" />
+            <span className="brand-flow-arrow">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path
+                  d="M2.25 6h7M6.75 3.5 9.25 6 6.75 8.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </span>
           </div>
-          <button type="button" className={`side-app-button ${workspaceView === 'ozon' ? 'active' : ''}`} onClick={() => setWorkspaceView('ozon')} aria-label="Ozon">
+
+          <button
+            type="button"
+            className={`brand-logo-card ${workspaceView === 'ozon' ? 'active' : ''}`}
+            onClick={() => setWorkspaceView('ozon')}
+            aria-label="Ozon"
+          >
             <img src="/nav/ozon.png" alt="Ozon" />
           </button>
         </div>
