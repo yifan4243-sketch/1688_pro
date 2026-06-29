@@ -1,0 +1,221 @@
+import React, { useMemo, useState } from 'react';
+import type { OzonListingTask } from '../Results/ozonListing/types';
+import OzonProductCard, {
+  isOzonTaskFailedStatus,
+  isOzonTaskProcessingStatus,
+  statusGroupOf,
+} from './OzonProductCard';
+import { formatOzonTaskDisplayMessage } from './ozonError';
+import './ozon.css';
+
+type OzonProductFilter = 'all' | 'success' | 'queued' | 'manual' | 'failed';
+type OzonSortMode = 'updated_desc' | 'updated_asc';
+
+type Props = {
+  tasks: OzonListingTask[];
+  onBackTo1688: () => void;
+};
+
+const filterOptions: Array<{ key: OzonProductFilter; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'success', label: '草稿' },
+  { key: 'queued', label: '处理中' },
+  { key: 'manual', label: '需补充' },
+  { key: 'failed', label: '失败' },
+];
+
+function taskTime(task: OzonListingTask): number {
+  const value = task.updatedAt || task.finishedAt || task.createdAt;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function filterTask(task: OzonListingTask, filter: OzonProductFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'success') return task.status === 'draft_ready';
+  if (filter === 'queued') return isOzonTaskProcessingStatus(task.status);
+  if (filter === 'manual') return task.status === 'needs_manual';
+  if (filter === 'failed') return isOzonTaskFailedStatus(task.status);
+  return true;
+}
+
+function titleOf(task: OzonListingTask): string {
+  return [task.title, task.offerId, task.draftId]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<OzonProductFilter>('all');
+  const [sortMode, setSortMode] = useState<OzonSortMode>('updated_desc');
+  const [selectedTask, setSelectedTask] = useState<OzonListingTask | null>(null);
+  const [toast, setToast] = useState('');
+
+  const counts = useMemo(() => {
+    const queued = tasks.filter((task) => isOzonTaskProcessingStatus(task.status)).length;
+    const success = tasks.filter((task) => task.status === 'draft_ready').length;
+    const manual = tasks.filter((task) => task.status === 'needs_manual').length;
+    const failed = tasks.filter((task) => isOzonTaskFailedStatus(task.status)).length;
+    return { all: tasks.length, success, queued, manual, failed };
+  }, [tasks]);
+
+  const visibleTasks = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    const filtered = tasks
+      .filter((task) => filterTask(task, filter))
+      .filter((task) => !keyword || titleOf(task).toLowerCase().includes(keyword));
+
+    return filtered.sort((a, b) => {
+      const diff = taskTime(a) - taskTime(b);
+      return sortMode === 'updated_desc' ? -diff : diff;
+    });
+  }, [filter, query, sortMode, tasks]);
+
+  const latestText = tasks.length > 0
+    ? new Date(Math.max(...tasks.map(taskTime))).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '--';
+
+  async function copyDraft(task: OzonListingTask): Promise<void> {
+    if (!task.draft) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(task.draft, null, 2));
+      setToast('已复制草稿 JSON');
+      window.setTimeout(() => setToast(''), 1600);
+    } catch {
+      setToast('复制失败，请稍后重试');
+      window.setTimeout(() => setToast(''), 1600);
+    }
+  }
+
+  return (
+    <div className="ozon-product-page">
+      <section className="ozon-products-hero">
+        <div>
+          <span className="ozon-products-eyebrow">Ozon 工作台</span>
+          <h2>草稿商品 / 上架任务</h2>
+          <p>这里汇总从 1688 商品卡生成的 Ozon 草稿、处理中任务、需人工补充项和失败任务。</p>
+        </div>
+        <div className="ozon-products-hero-meta">
+          <span>最近更新</span>
+          <strong>{latestText}</strong>
+        </div>
+      </section>
+
+      <section className="ozon-products-stats">
+        {filterOptions.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`ozon-products-stat ozon-products-stat--${item.key} ${filter === item.key ? 'active' : ''}`}
+            onClick={() => setFilter(item.key)}
+          >
+            <span>{item.label}</span>
+            <strong>{counts[item.key]}</strong>
+          </button>
+        ))}
+      </section>
+
+      <section className="ozon-products-toolbar">
+        <div className="ozon-products-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            value={query}
+            placeholder="按标题 / Offer ID / 草稿 ID 搜索"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+
+        <select value={filter} onChange={(event) => setFilter(event.target.value as OzonProductFilter)}>
+          {filterOptions.map((item) => (
+            <option key={item.key} value={item.key}>{item.label}</option>
+          ))}
+        </select>
+
+        <select value={sortMode} onChange={(event) => setSortMode(event.target.value as OzonSortMode)}>
+          <option value="updated_desc">最近更新优先</option>
+          <option value="updated_asc">最早更新优先</option>
+        </select>
+      </section>
+
+      <section className="ozon-products-list-shell">
+        <div className="ozon-products-list-head">
+          <strong>商品列表</strong>
+          <span>当前显示 {visibleTasks.length} 件，任务总数 {tasks.length} 件</span>
+        </div>
+
+        {visibleTasks.length === 0 ? (
+          <div className="ozon-products-empty">
+            <div className="ozon-products-empty-visual" aria-hidden="true">
+              <div className="ozon-products-empty-sheet back" />
+              <div className="ozon-products-empty-sheet front">
+                <svg viewBox="0 0 48 48">
+                  <rect x="10" y="8" width="28" height="32" rx="8" fill="rgba(219,234,254,0.9)" />
+                  <path d="M17 18h14M17 25h14M17 32h8" fill="none" stroke="rgba(37,99,235,0.72)" strokeWidth="3" strokeLinecap="round" />
+                  <circle cx="34" cy="34" r="6" fill="#fff" />
+                  <path d="M31.5 34.2l1.7 1.7 3.6-4.2" fill="none" stroke="#16a34a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </div>
+            <h3>暂无 Ozon 草稿商品</h3>
+            <p>在 1688 页面点击“上架至 OZON”后，商品会出现在这里，并按草稿、处理中、需补充和失败状态分类。</p>
+            <button type="button" onClick={onBackTo1688}>返回 1688 选择商品</button>
+          </div>
+        ) : (
+          <div className="ozon-products-grid">
+            {visibleTasks.map((task) => (
+              <OzonProductCard
+                key={task.sidebarKey || `${task.key}-${task.createdAt}`}
+                task={task}
+                onInspect={setSelectedTask}
+                onCopyDraft={copyDraft}
+                onBackTo1688={onBackTo1688}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {selectedTask && (
+        <div className="ozon-product-detail-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedTask(null);
+        }}>
+          <aside className="ozon-product-detail-panel">
+            <div className="ozon-product-detail-head">
+              <div>
+                <span>{selectedTask.offerId || '无 Offer ID'}</span>
+                <h3>{selectedTask.title || selectedTask.draftId || 'Ozon 草稿详情'}</h3>
+              </div>
+              <button type="button" onClick={() => setSelectedTask(null)}>关闭</button>
+            </div>
+            <div className={`ozon-product-detail-status ozon-product-detail-status--${statusGroupOf(selectedTask.status)}`}>
+              {formatOzonTaskDisplayMessage(selectedTask)}
+            </div>
+            <pre className="ozon-product-detail-json">
+              {selectedTask.draft ? JSON.stringify(selectedTask.draft, null, 2) : '当前任务还没有生成草稿 JSON。'}
+            </pre>
+            <div className="ozon-product-detail-actions">
+              <button type="button" disabled={!selectedTask.draft} onClick={() => copyDraft(selectedTask)}>
+                复制草稿 JSON
+              </button>
+              <button type="button" onClick={onBackTo1688}>
+                返回 1688
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}

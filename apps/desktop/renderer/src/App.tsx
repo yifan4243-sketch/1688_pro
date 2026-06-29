@@ -7,8 +7,10 @@ import HistoryModal from './components/History/HistoryModal';
 import HistoryDetailModal from './components/History/HistoryDetailModal';
 import ProductHistoryModal from './components/History/ProductHistoryModal';
 import OzonSettingsModal from './components/Ozon/OzonSettingsModal';
+import OzonProductPage from './components/Ozon/OzonProductPage';
 import AccountSettingsModal from './components/Account/AccountSettingsModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import { formatOzonTaskDisplayMessage } from './components/Ozon/ozonError';
 import type { OzonListingTask, OzonListingTaskStatus } from './components/Results/ozonListing/types';
 import './styles/tokens.css';
 import './styles/controls.css';
@@ -322,25 +324,29 @@ export default function App() {
                   <div className="deep-task-empty">暂无上架任务</div>
                 ) : (
                   <div className="deep-task-list custom-scrollbar">
-                    {filtered.map((task) => (
-                      <div key={task.sidebarKey || `${task.key}-${task.createdAt}`} className={`deep-task-item ${ozonTaskClass(task.status)}`} title={task.message || ''}>
-                        {task.image ? (
-                          <img className="deep-task-thumb" src={task.image} alt="" />
-                        ) : (
-                          <div className="deep-task-thumb placeholder" />
-                        )}
-                        <div className="deep-task-info">
-                          <div className="deep-task-title">{task.title || '未命名任务'}</div>
-                          <div className="deep-task-meta">
-                            <span className={`deep-task-status ${ozonTaskClass(task.status)}`}>
-                              {ozonTaskStatusLabel(task.status)}
-                            </span>
-                            <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    {filtered.map((task) => {
+                      const message = formatOzonTaskDisplayMessage(task);
+
+                      return (
+                        <div key={task.sidebarKey || `${task.key}-${task.createdAt}`} className={`deep-task-item ${ozonTaskClass(task.status)}`} title={message}>
+                          {task.image ? (
+                            <img className="deep-task-thumb" src={task.image} alt="" />
+                          ) : (
+                            <div className="deep-task-thumb placeholder" />
+                          )}
+                          <div className="deep-task-info">
+                            <div className="deep-task-title">{task.title || '未命名任务'}</div>
+                            <div className="deep-task-meta">
+                              <span className={`deep-task-status ${ozonTaskClass(task.status)}`}>
+                                {ozonTaskStatusLabel(task.status)}
+                              </span>
+                              <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                            </div>
+                            {message && <div className="deep-task-message">{message}</div>}
                           </div>
-                          {task.message && <div className="deep-task-message">{task.message}</div>}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -386,12 +392,10 @@ export default function App() {
             className={`workspace-view-panel ${workspaceView === 'ozon' ? 'active' : 'hidden'}`}
             aria-hidden={workspaceView !== 'ozon'}
           >
-            <div className="ozon-blank-page">
-              <div className="ozon-blank-card">
-                <h3>Ozon 工作台</h3>
-                <p>该页面暂未接入，后续用于 Ozon 上架、草稿、店铺任务。</p>
-              </div>
-            </div>
+            <OzonProductPage
+              tasks={ozonTasks}
+              onBackTo1688={() => setWorkspaceView('1688')}
+            />
           </section>
         </div>
       </main>

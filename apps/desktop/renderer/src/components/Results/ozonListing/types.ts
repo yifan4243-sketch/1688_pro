@@ -17,11 +17,14 @@ export type OzonListingTask = {
   offerId?: string;
   title?: string;
   image?: string;
+  price?: string;
+  sourceUrl?: string;
   status: OzonListingTaskStatus;
   message?: string;
   missingFields?: string[];
   draftId?: string;
   draft?: OzonDraft;
+  debug?: Record<string, unknown>;
   createdAt: string;
   updatedAt?: string;
   finishedAt?: string;

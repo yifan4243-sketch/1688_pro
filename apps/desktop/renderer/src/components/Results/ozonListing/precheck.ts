@@ -3,8 +3,8 @@ import type { ProgressOfferCardItem } from '../ProgressOfferCard';
 type Row = Record<string, unknown>;
 
 const MISSING_FIELD_LABELS: Record<string, string> = {
-  ai_api_key: 'AI Key',
-  offer_id: 'Offer ID',
+  ai_api_key: 'AI 服务配置',
+  offer_id: '1688 Offer ID',
   detail_url: '1688 详情链接',
   product_title: '商品标题',
   main_image_url: '主图',
@@ -13,6 +13,25 @@ const MISSING_FIELD_LABELS: Record<string, string> = {
   width_cm: '宽',
   height_cm: '高',
   weight_g: '重量',
+  description_category_id: 'Ozon 类目',
+  type_id: 'Ozon 商品类型',
+  attributes: '类目属性',
+  product_attributes_structured: '类目属性',
+  images: '商品图片',
+  primary_image: '主图',
+  price: '价格',
+  length: '长',
+  width: '宽',
+  height: '高',
+  weight: '重量',
+  '俄语标题': '俄语标题',
+  'Ozon 类目': 'Ozon 类目',
+  '主图': '主图',
+  '价格': '价格',
+  '长': '长',
+  '宽': '宽',
+  '高': '高',
+  '重量': '重量',
 };
 
 export type OzonPrecheckResult = {

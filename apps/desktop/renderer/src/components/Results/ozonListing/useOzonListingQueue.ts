@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { getApi } from '../../../services/api';
 import { progressCardToOzonRows } from '../../../services/ozon-source-adapter';
+import { normalizeOzonTaskError } from '../../Ozon/ozonError';
 import type { ProgressOfferCardItem } from '../ProgressOfferCard';
 import { ozonListingLog } from './debug';
 import {
   collectRowMissingFields,
-  formatMissingFields,
   isAiKeyMissingMessage,
   precheckProgressCardForOzon,
   unique,
@@ -51,6 +51,12 @@ function text(value: unknown): string {
   return String(value).trim();
 }
 
+function sourceUrlOf(item: ProgressOfferCardItem): string {
+  const raw = objectOf(item.raw);
+  const offerId = text(raw.offerId) || item.offerId || '';
+  return text(raw.url) || text(raw.detailUrl) || (offerId ? `https://detail.1688.com/offer/${offerId}.html` : '');
+}
+
 function isDeepSuccess(item: ProgressOfferCardItem): boolean {
   const raw = objectOf(item.raw);
 
@@ -74,10 +80,6 @@ function isDeepFailure(item: ProgressOfferCardItem): boolean {
 
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'Ozon 草稿生成失败');
-}
-
-function taskMessageForMissing(fields: string[]): string {
-  return fields.length ? `需人工补充：${formatMissingFields(fields)}` : '需人工补充';
 }
 
 export function useOzonListingQueue({
@@ -119,11 +121,14 @@ export function useOzonListingQueue({
       offerId: patch.offerId ?? prev?.offerId,
       title: patch.title ?? prev?.title,
       image: patch.image ?? prev?.image,
+      price: patch.price ?? prev?.price,
+      sourceUrl: patch.sourceUrl ?? prev?.sourceUrl,
       status: patch.status ?? prev?.status ?? 'queued',
       message: patch.message ?? prev?.message,
       missingFields: patch.missingFields ?? prev?.missingFields,
       draftId: patch.draftId ?? prev?.draftId,
       draft: patch.draft ?? prev?.draft,
+      debug: patch.debug ?? prev?.debug,
       createdAt: prev?.createdAt || patch.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       finishedAt: patch.finishedAt ?? prev?.finishedAt,
@@ -176,7 +181,7 @@ export function useOzonListingQueue({
       upsertOzonTask(entry.key, {
         status: 'needs_manual',
         missingFields,
-        message: taskMessageForMissing(missingFields),
+        message: normalizeOzonTaskError('', { phase: 'missing_fields', missingFields }),
         finishedAt: new Date().toISOString(),
       });
       return null;
@@ -213,8 +218,10 @@ export function useOzonListingQueue({
       upsertOzonTask(entry.key, {
         title: deepResult.item.title || latest.title,
         image: deepResult.item.image || latest.image,
+        price: deepResult.item.price || latest.price,
+        sourceUrl: sourceUrlOf(deepResult.item) || sourceUrlOf(latest),
         status: 'deep_failed',
-        message: deepResult.message,
+        message: normalizeOzonTaskError(deepResult.message, { phase: 'deep_collect' }),
         finishedAt: new Date().toISOString(),
       });
       return null;
@@ -222,7 +229,7 @@ export function useOzonListingQueue({
 
     upsertOzonTask(entry.key, {
       status: 'failed',
-      message: '等待深度采集超时，未生成 Ozon 草稿',
+      message: normalizeOzonTaskError('等待深度采集超时，未生成 Ozon 草稿', { phase: 'timeout' }),
       finishedAt: new Date().toISOString(),
     });
     return null;
@@ -243,6 +250,8 @@ export function useOzonListingQueue({
     upsertOzonTask(entry.key, {
       title: deepItem.title,
       image: deepItem.image,
+      price: deepItem.price,
+      sourceUrl: sourceUrlOf(deepItem),
       offerId: deepItem.offerId,
       status: 'generating_draft',
       missingFields: sourceMissingFields,
@@ -268,7 +277,7 @@ export function useOzonListingQueue({
         draftId: draft.draftId,
         draft,
         missingFields,
-        message: status === 'draft_ready' ? '草稿已生成' : taskMessageForMissing(missingFields),
+        message: status === 'draft_ready' ? '草稿已生成' : normalizeOzonTaskError('', { phase: 'missing_fields', missingFields }),
         finishedAt: new Date().toISOString(),
       });
 
@@ -286,7 +295,8 @@ export function useOzonListingQueue({
         upsertOzonTask(entry.key, {
           status: 'needs_manual',
           missingFields,
-          message: taskMessageForMissing(missingFields),
+          message: normalizeOzonTaskError(message, { phase: 'generate', missingFields }),
+          debug: { rawError: message },
           finishedAt: new Date().toISOString(),
         });
         return;
@@ -294,7 +304,8 @@ export function useOzonListingQueue({
 
       upsertOzonTask(entry.key, {
         status: 'failed',
-        message,
+        message: normalizeOzonTaskError(message, { phase: 'generate' }),
+        debug: { rawError: message },
         finishedAt: new Date().toISOString(),
       });
     }
@@ -396,6 +407,8 @@ export function useOzonListingQueue({
         offerId: item.offerId,
         title: item.title,
         image: item.image,
+        price: item.price,
+        sourceUrl: sourceUrlOf(item),
         status: 'queued',
         message: '排队等待生成 Ozon 草稿',
         missingFields: [],
