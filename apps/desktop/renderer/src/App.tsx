@@ -31,6 +31,19 @@ interface DeepCollectSidebarTask {
   finishedAt?: string;
 }
 
+type OzonUploadSidebarTaskStatus = 'queued' | 'uploading' | 'success' | 'failed';
+
+interface OzonUploadSidebarTask {
+  key: string;
+  title?: string;
+  image?: string;
+  status: OzonUploadSidebarTaskStatus;
+  message?: string;
+  createdAt: string;
+  updatedAt?: string;
+  finishedAt?: string;
+}
+
 export default function App() {
   const [registry, setRegistry] = useState<CommandRegistry | null>(null);
   const [accounts, setAccounts] = useState<AccountData | null>(null);
@@ -77,6 +90,15 @@ export default function App() {
       });
     });
   };
+  const [ozonTasks] = useState<OzonUploadSidebarTask[]>([]);
+  const [ozonTaskFilter, setOzonTaskFilter] = useState<'all' | 'success' | 'queued' | 'failed'>('all');
+  const ozonTaskCounts = useMemo(() => {
+    const queued = ozonTasks.filter((t) => t.status === 'queued' || t.status === 'uploading').length;
+    const success = ozonTasks.filter((t) => t.status === 'success').length;
+    const failed = ozonTasks.filter((t) => t.status === 'failed').length;
+    return { all: ozonTasks.length, queued, success, failed };
+  }, [ozonTasks]);
+
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
@@ -171,7 +193,8 @@ export default function App() {
           </button>
         </div>
 
-        <div className="deep-task-sidebar">
+        {/* ── 1688 采集任务列表 ── */}
+        <div className="deep-task-sidebar" style={{ display: workspaceView === '1688' ? 'flex' : 'none' }}>
           <div className="deep-task-sidebar-head">
             <span className="deep-task-sidebar-title">采集任务列表</span>
           </div>
@@ -192,7 +215,7 @@ export default function App() {
             return (
               <>
                 {filtered.length === 0 ? (
-                  <div className="deep-task-empty">暂无任务</div>
+                  <div className="deep-task-empty">暂无采集任务</div>
                 ) : (
                   <div className="deep-task-list custom-scrollbar">
                     {filtered.map((task) => (
@@ -207,6 +230,57 @@ export default function App() {
                           <div className="deep-task-meta">
                             <span className={`deep-task-status ${task.status}`}>
                               {task.status === 'collecting' ? '采集中' : task.status === 'queued' ? '排队中' : task.status === 'success' ? '已完成' : '失败'}
+                            </span>
+                            <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                          </div>
+                          {task.message && <div className="deep-task-message">{task.message}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+
+        {/* ── Ozon 上架任务列表 ── */}
+        <div className="deep-task-sidebar" style={{ display: workspaceView === 'ozon' ? 'flex' : 'none' }}>
+          <div className="deep-task-sidebar-head">
+            <span className="deep-task-sidebar-title">上架任务列表</span>
+          </div>
+          <div className="deep-task-filters">
+            <button className={ozonTaskFilter === 'all' ? 'active' : ''} onClick={() => setOzonTaskFilter('all')}> <span>全部</span> <strong>{ozonTaskCounts.all}</strong> </button>
+            <button className={ozonTaskFilter === 'success' ? 'active' : ''} onClick={() => setOzonTaskFilter('success')}> <span>已完成</span> <strong>{ozonTaskCounts.success}</strong> </button>
+            <button className={ozonTaskFilter === 'queued' ? 'active' : ''} onClick={() => setOzonTaskFilter('queued')}> <span>排队中</span> <strong>{ozonTaskCounts.queued}</strong> </button>
+            <button className={ozonTaskFilter === 'failed' ? 'active' : ''} onClick={() => setOzonTaskFilter('failed')}> <span>失败</span> <strong>{ozonTaskCounts.failed}</strong> </button>
+          </div>
+          {(() => {
+            const filtered = ozonTasks.filter((t) => {
+              if (ozonTaskFilter === 'all') return true;
+              if (ozonTaskFilter === 'success') return t.status === 'success';
+              if (ozonTaskFilter === 'queued') return t.status === 'queued' || t.status === 'uploading';
+              if (ozonTaskFilter === 'failed') return t.status === 'failed';
+              return true;
+            });
+            return (
+              <>
+                {filtered.length === 0 ? (
+                  <div className="deep-task-empty">暂无上架任务</div>
+                ) : (
+                  <div className="deep-task-list custom-scrollbar">
+                    {filtered.map((task) => (
+                      <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
+                        {task.image ? (
+                          <img className="deep-task-thumb" src={task.image} alt="" />
+                        ) : (
+                          <div className="deep-task-thumb placeholder" />
+                        )}
+                        <div className="deep-task-info">
+                          <div className="deep-task-title">{task.title || '未命名任务'}</div>
+                          <div className="deep-task-meta">
+                            <span className={`deep-task-status ${task.status}`}>
+                              {task.status === 'uploading' ? '上架中' : task.status === 'queued' ? '排队中' : task.status === 'success' ? '已完成' : '失败'}
                             </span>
                             <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                           </div>
@@ -239,7 +313,10 @@ export default function App() {
         </header>
 
         <div className="workspace-inner">
-          {workspaceView === '1688' ? (
+          <section
+            className={`workspace-view-panel ${workspaceView === '1688' ? 'active' : 'hidden'}`}
+            aria-hidden={workspaceView !== '1688'}
+          >
             <ErrorBoundary>
               <CommandPanel
                 registry={registry}
@@ -249,14 +326,19 @@ export default function App() {
                 onDeepTasksChange={handleDeepTasksChange}
               />
             </ErrorBoundary>
-          ) : (
+          </section>
+
+          <section
+            className={`workspace-view-panel ${workspaceView === 'ozon' ? 'active' : 'hidden'}`}
+            aria-hidden={workspaceView !== 'ozon'}
+          >
             <div className="ozon-blank-page">
               <div className="ozon-blank-card">
                 <h3>Ozon 工作台</h3>
                 <p>该页面暂未接入，后续用于 Ozon 上架、草稿、店铺任务。</p>
               </div>
             </div>
-          )}
+          </section>
         </div>
       </main>
 
