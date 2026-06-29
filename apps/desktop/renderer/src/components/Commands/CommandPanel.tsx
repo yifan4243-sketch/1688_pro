@@ -3,6 +3,8 @@ import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, Acc
 import ResultRenderer from '../Results/ResultRenderer';
 import LiveCollectionRenderer from '../Results/LiveCollectionRenderer';
 import { ProgressOfferCardItem } from '../Results/ProgressOfferCard';
+import type { DeepCollectTask } from '../Results/deepCollect/types';
+import type { OzonListingTask } from '../Results/ozonListing/types';
 import GlassSelect from '../Controls/GlassSelect';
 import '../../components/Results/results.css';
 
@@ -11,10 +13,11 @@ interface Props {
   activeProfile: string;
   accounts: AccountData;
   onHistoryRefresh: () => void;
-  onDeepTasksChange?: (tasks: Array<{ key: string; offerId?: string; title?: string; image?: string; status: 'queued' | 'collecting' | 'success' | 'failed'; message?: string; createdAt: string; finishedAt?: string }>) => void;
+  onDeepTasksChange?: (tasks: DeepCollectTask[]) => void;
+  onOzonTasksChange?: (tasks: OzonListingTask[]) => void;
 }
 
-export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange }: Props) {
+export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange, onOzonTasksChange }: Props) {
   const [activeCmdId, setActiveCmdId] = useState('search');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [args, setArgs] = useState<Record<string, string>>({});
@@ -539,6 +542,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               manualDeepCollectHeaded={!!options.headed}
               captchaRetryHeaded={!!options.captchaRetryHeaded}
               onDeepTasksChange={onDeepTasksChange}
+              onOzonTasksChange={onOzonTasksChange}
             />
           </>
         ) : lastRecord ? (
@@ -554,6 +558,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               captchaRetryHeaded={!!options.captchaRetryHeaded}
               autoDeepCollectOnMount={Boolean(lastRecord && lastRecord.runId?.startsWith('desktop-deeppro-base-'))}
               onDeepTasksChange={onDeepTasksChange}
+              onOzonTasksChange={onOzonTasksChange}
             />
           </>
         ) : (

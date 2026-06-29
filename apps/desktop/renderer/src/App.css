@@ -523,10 +523,15 @@ select {
   border-color: rgba(239,68,68,0.30);
   background: linear-gradient(135deg, rgba(254,242,242,0.88), rgba(255,255,255,0.62));
 }
+.deep-task-item.needs-manual {
+  border-color: rgba(245,158,11,0.34);
+  background: linear-gradient(135deg, rgba(255,251,235,0.9), rgba(255,255,255,0.62));
+}
 .deep-task-status.collecting { color: #2563eb; background: rgba(219,234,254,0.85); }
 .deep-task-status.queued { color: #64748b; background: rgba(241,245,249,0.9); }
 .deep-task-status.success { color: #16a34a; background: rgba(220,252,231,0.92); }
 .deep-task-status.failed { color: #dc2626; background: rgba(254,226,226,0.92); }
+.deep-task-status.needs-manual { color: #b45309; background: rgba(254,243,199,0.94); }
 
 .deep-task-meta {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
@@ -551,6 +556,9 @@ select {
 }
 .deep-task-item.failed .deep-task-message {
   color: #dc2626;
+}
+.deep-task-item.needs-manual .deep-task-message {
+  color: #b45309;
 }
 .deep-task-item.success .deep-task-message {
   color: #16a34a;

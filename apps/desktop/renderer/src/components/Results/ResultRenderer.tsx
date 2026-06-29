@@ -7,6 +7,8 @@ import ProgressSummary from './ProgressSummary';
 import { mergeDeepCollectData } from './deepCollect/jsonMerge';
 import { useDeepCollectQueue } from './deepCollect/useDeepCollectQueue';
 import type { DeepCollectTask } from './deepCollect/types';
+import { useOzonListingQueue } from './ozonListing/useOzonListingQueue';
+import type { OzonListingTask } from './ozonListing/types';
 
 interface Props {
   record: CommandRecord | null;
@@ -18,6 +20,7 @@ interface Props {
   captchaRetryHeaded?: boolean;
   autoDeepCollectOnMount?: boolean;
   onDeepTasksChange?: (tasks: DeepCollectTask[]) => void;
+  onOzonTasksChange?: (tasks: OzonListingTask[]) => void;
 }
 
 type ViewMode = 'card' | 'json';
@@ -125,7 +128,7 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange, onOzonTasksChange }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
@@ -208,6 +211,18 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     showToast,
   });
 
+  const {
+    enqueueSingleOzonListing,
+    enqueueMultipleOzonListing,
+    resetOzonListingQueue,
+  } = useOzonListingQueue({
+    api,
+    cards: visibleCards,
+    enqueueSingleDeepCollect,
+    onOzonTasksChange,
+    showToast,
+  });
+
   const handleBatchDeepCollect = () => {
     if (!canBatchOperate) {
       showToast('请至少选择 2 个商品');
@@ -216,12 +231,12 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     enqueueMultipleDeepCollect(selectedOfferCards);
   };
 
-  const handleBatchOzonPlaceholder = () => {
+  const handleBatchOzonListing = () => {
     if (!canBatchOperate) {
       showToast('请至少选择 2 个商品');
       return;
     }
-    showToast(`已选择 ${selectedOfferCards.length} 个商品，批量上架 OZON 暂未接入`, 1800);
+    enqueueMultipleOzonListing(selectedOfferCards);
   };
 
   useEffect(() => {
@@ -232,6 +247,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setDeepJsonByOfferId({});
     setDeepFailuresByOfferId({});
     resetDeepCollectQueue();
+    resetOzonListingQueue();
   }, [record?.runId]);
 
   const shouldAutoDeepCollect =
@@ -316,7 +332,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
                   type="button"
                   className="batch-toolbar-btn batch-toolbar-btn--ozon"
                   disabled={!canBatchOperate}
-                  onClick={handleBatchOzonPlaceholder}
+                  onClick={handleBatchOzonListing}
                   title={canBatchOperate ? '对已选择商品批量上架 OZON' : '至少选择 2 个商品后可用'}
                 >
                   批量上架OZON
@@ -348,10 +364,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
               selected={selectedKeys.has(cardKey(card))}
               onSelectToggle={toggleSelect}
               onDeepCollect={enqueueSingleDeepCollect}
-              onOzonPlaceholder={() => {
-                setToast('上架至 OZON 暂未接入');
-                setTimeout(() => setToast(''), 1600);
-              }}
+              onOzonPlaceholder={enqueueSingleOzonListing}
               onOpen={(item) => {
                 if (item.offerId || item.raw || item.title || item.image) {
                   setDetailItem(item);

@@ -17,7 +17,6 @@ export default function OzonDraftModal({ item, onClose }: Props) {
   const [draft, setDraft] = useState<OzonDraft | null>(null);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
-  const [submitResult, setSubmitResult] = useState<Record<string, unknown> | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
@@ -30,12 +29,10 @@ export default function OzonDraftModal({ item, onClose }: Props) {
 
   const sourceMissing = Array.from(new Set(rows.flatMap((row) => row.missing_fields as string[] || [])));
   const canGenerate = Boolean(settings?.ai.apiKeySet);
-  const canSubmit = Boolean(draft && draft.missing.length === 0 && settings?.ozon.apiKeySet && settings.ozon.clientId);
 
   const generate = async () => {
     setBusy('generate');
     setMessage(null);
-    setSubmitResult(null);
     try {
       if (!settings?.ai.apiKeySet) {
         setMessage({ kind: 'warn', text: '请先在右上角「AI 设置」中保存 DeepSeek API Key。' });
@@ -44,27 +41,6 @@ export default function OzonDraftModal({ item, onClose }: Props) {
       const result = await api.ozon.generateDraft(rows);
       setDraft(result);
       setMessage({ kind: result.missing.length ? 'warn' : 'success', text: result.missing.length ? `草稿已生成，但缺少：${result.missing.join('、')}` : 'Ozon 草稿已生成。' });
-    } catch (error) {
-      setMessage({ kind: 'error', text: (error as Error).message });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const submit = async () => {
-    if (!draft) return;
-    const ok = window.confirm('确认提交到 Ozon？这会创建真实 Ozon 导入任务。');
-    if (!ok) return;
-    setBusy('submit');
-    setMessage(null);
-    try {
-      if (!settings?.ozon.apiKeySet || !settings.ozon.clientId) {
-        setMessage({ kind: 'warn', text: '请先在右上角「Ozon 店铺」中绑定 Client-Id 和 API Key。' });
-        return;
-      }
-      const result = await api.ozon.submitDraft(draft, true);
-      setSubmitResult(result);
-      setMessage({ kind: 'success', text: 'Ozon 已接收上架任务。' });
     } catch (error) {
       setMessage({ kind: 'error', text: (error as Error).message });
     } finally {
@@ -159,12 +135,9 @@ export default function OzonDraftModal({ item, onClose }: Props) {
             <section className="ozon-panel">
               <div className="ozon-panel-title">
                 <h4>提交预览</h4>
-                <button className="glass-btn-primary danger" disabled={!canSubmit || busy === 'submit'} onClick={submit}>
-                  {busy === 'submit' ? '提交中...' : '提交到 Ozon'}
-                </button>
+                <span className="ozon-settings-hint">Phase 1 仅生成草稿，不提交到 Ozon。</span>
               </div>
               <pre className="ozon-json">{draft ? JSON.stringify(draft.items, null, 2) : '等待生成草稿...'}</pre>
-              {submitResult && <pre className="ozon-json success">{JSON.stringify(submitResult, null, 2)}</pre>}
             </section>
           </div>
         </div>

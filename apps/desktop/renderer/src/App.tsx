@@ -9,6 +9,7 @@ import ProductHistoryModal from './components/History/ProductHistoryModal';
 import OzonSettingsModal from './components/Ozon/OzonSettingsModal';
 import AccountSettingsModal from './components/Account/AccountSettingsModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import type { OzonListingTask, OzonListingTaskStatus } from './components/Results/ozonListing/types';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -31,17 +32,42 @@ interface DeepCollectSidebarTask {
   finishedAt?: string;
 }
 
-type OzonUploadSidebarTaskStatus = 'queued' | 'uploading' | 'success' | 'failed';
+type OzonTaskFilter = 'all' | 'success' | 'queued' | 'manual' | 'failed';
 
-interface OzonUploadSidebarTask {
-  key: string;
-  title?: string;
-  image?: string;
-  status: OzonUploadSidebarTaskStatus;
-  message?: string;
-  createdAt: string;
-  updatedAt?: string;
-  finishedAt?: string;
+function isOzonTaskProcessing(status: OzonListingTaskStatus): boolean {
+  return (
+    status === 'queued' ||
+    status === 'waiting_deep_collect' ||
+    status === 'deep_collecting' ||
+    status === 'generating_draft'
+  );
+}
+
+function isOzonTaskFailed(status: OzonListingTaskStatus): boolean {
+  return status === 'failed' || status === 'deep_failed';
+}
+
+function ozonTaskClass(status: OzonListingTaskStatus): string {
+  if (status === 'draft_ready') return 'success';
+  if (status === 'needs_manual') return 'needs-manual';
+  if (isOzonTaskFailed(status)) return 'failed';
+  if (status === 'deep_collecting' || status === 'generating_draft') return 'collecting';
+  return 'queued';
+}
+
+function ozonTaskStatusLabel(status: OzonListingTaskStatus): string {
+  const map: Record<OzonListingTaskStatus, string> = {
+    queued: '排队中',
+    waiting_deep_collect: '等深采',
+    deep_collecting: '深采中',
+    generating_draft: '生成中',
+    draft_ready: '草稿已生成',
+    needs_manual: '需人工补充',
+    deep_failed: '深采失败',
+    failed: '失败',
+  };
+
+  return map[status];
 }
 
 export default function App() {
@@ -90,14 +116,39 @@ export default function App() {
       });
     });
   };
-  const [ozonTasks] = useState<OzonUploadSidebarTask[]>([]);
-  const [ozonTaskFilter, setOzonTaskFilter] = useState<'all' | 'success' | 'queued' | 'failed'>('all');
+  const [ozonTasks, setOzonTasks] = useState<OzonListingTask[]>([]);
+  const [ozonTaskFilter, setOzonTaskFilter] = useState<OzonTaskFilter>('all');
   const ozonTaskCounts = useMemo(() => {
-    const queued = ozonTasks.filter((t) => t.status === 'queued' || t.status === 'uploading').length;
-    const success = ozonTasks.filter((t) => t.status === 'success').length;
-    const failed = ozonTasks.filter((t) => t.status === 'failed').length;
-    return { all: ozonTasks.length, queued, success, failed };
+    const queued = ozonTasks.filter((t) => isOzonTaskProcessing(t.status)).length;
+    const success = ozonTasks.filter((t) => t.status === 'draft_ready').length;
+    const manual = ozonTasks.filter((t) => t.status === 'needs_manual').length;
+    const failed = ozonTasks.filter((t) => isOzonTaskFailed(t.status)).length;
+    return { all: ozonTasks.length, queued, success, manual, failed };
   }, [ozonTasks]);
+
+  const handleOzonTasksChange = (tasks: OzonListingTask[]) => {
+    if (!tasks.length) return;
+
+    setOzonTasks((prev) => {
+      const map = new Map<string, OzonListingTask>();
+
+      for (const task of prev) {
+        const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
+        map.set(id, task);
+      }
+
+      for (const task of tasks) {
+        const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
+        map.set(id, task);
+      }
+
+      return Array.from(map.values()).sort((a, b) => {
+        const at = new Date(a.createdAt).getTime();
+        const bt = new Date(b.createdAt).getTime();
+        return bt - at;
+      });
+    });
+  };
 
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
@@ -251,16 +302,18 @@ export default function App() {
           </div>
           <div className="deep-task-filters">
             <button className={ozonTaskFilter === 'all' ? 'active' : ''} onClick={() => setOzonTaskFilter('all')}> <span>全部</span> <strong>{ozonTaskCounts.all}</strong> </button>
-            <button className={ozonTaskFilter === 'success' ? 'active' : ''} onClick={() => setOzonTaskFilter('success')}> <span>已完成</span> <strong>{ozonTaskCounts.success}</strong> </button>
-            <button className={ozonTaskFilter === 'queued' ? 'active' : ''} onClick={() => setOzonTaskFilter('queued')}> <span>排队中</span> <strong>{ozonTaskCounts.queued}</strong> </button>
+            <button className={ozonTaskFilter === 'success' ? 'active' : ''} onClick={() => setOzonTaskFilter('success')}> <span>草稿</span> <strong>{ozonTaskCounts.success}</strong> </button>
+            <button className={ozonTaskFilter === 'queued' ? 'active' : ''} onClick={() => setOzonTaskFilter('queued')}> <span>处理中</span> <strong>{ozonTaskCounts.queued}</strong> </button>
+            <button className={ozonTaskFilter === 'manual' ? 'active' : ''} onClick={() => setOzonTaskFilter('manual')}> <span>需补充</span> <strong>{ozonTaskCounts.manual}</strong> </button>
             <button className={ozonTaskFilter === 'failed' ? 'active' : ''} onClick={() => setOzonTaskFilter('failed')}> <span>失败</span> <strong>{ozonTaskCounts.failed}</strong> </button>
           </div>
           {(() => {
             const filtered = ozonTasks.filter((t) => {
               if (ozonTaskFilter === 'all') return true;
-              if (ozonTaskFilter === 'success') return t.status === 'success';
-              if (ozonTaskFilter === 'queued') return t.status === 'queued' || t.status === 'uploading';
-              if (ozonTaskFilter === 'failed') return t.status === 'failed';
+              if (ozonTaskFilter === 'success') return t.status === 'draft_ready';
+              if (ozonTaskFilter === 'queued') return isOzonTaskProcessing(t.status);
+              if (ozonTaskFilter === 'manual') return t.status === 'needs_manual';
+              if (ozonTaskFilter === 'failed') return isOzonTaskFailed(t.status);
               return true;
             });
             return (
@@ -270,7 +323,7 @@ export default function App() {
                 ) : (
                   <div className="deep-task-list custom-scrollbar">
                     {filtered.map((task) => (
-                      <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
+                      <div key={task.sidebarKey || `${task.key}-${task.createdAt}`} className={`deep-task-item ${ozonTaskClass(task.status)}`} title={task.message || ''}>
                         {task.image ? (
                           <img className="deep-task-thumb" src={task.image} alt="" />
                         ) : (
@@ -279,8 +332,8 @@ export default function App() {
                         <div className="deep-task-info">
                           <div className="deep-task-title">{task.title || '未命名任务'}</div>
                           <div className="deep-task-meta">
-                            <span className={`deep-task-status ${task.status}`}>
-                              {task.status === 'uploading' ? '上架中' : task.status === 'queued' ? '排队中' : task.status === 'success' ? '已完成' : '失败'}
+                            <span className={`deep-task-status ${ozonTaskClass(task.status)}`}>
+                              {ozonTaskStatusLabel(task.status)}
                             </span>
                             <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                           </div>
@@ -324,6 +377,7 @@ export default function App() {
                 accounts={accounts}
                 onHistoryRefresh={refreshRecentTasks}
                 onDeepTasksChange={handleDeepTasksChange}
+                onOzonTasksChange={handleOzonTasksChange}
               />
             </ErrorBoundary>
           </section>

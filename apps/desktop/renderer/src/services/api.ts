@@ -207,7 +207,6 @@ interface DesktopApi {
     saveSettings: (patch: OzonSettingsPatch) => Promise<OzonSettingsPublic>;
     getStoreStats: () => Promise<OzonStoreStats>;
     generateDraft: (rows: Array<Record<string, unknown>>) => Promise<OzonDraft>;
-    submitDraft: (draft: OzonDraft, confirmed: boolean) => Promise<Record<string, unknown>>;
   };
 }
 
