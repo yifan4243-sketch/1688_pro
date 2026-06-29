@@ -38,13 +38,15 @@ select {
   display: grid;
   grid-template-columns: var(--desktop-sidebar-width) minmax(0, 1fr);
   height: 100vh;
+  background: #ffffff;
 }
 .side-nav {
   width: var(--desktop-sidebar-width);
   min-width: var(--desktop-sidebar-width);
   max-width: var(--desktop-sidebar-width);
-  background: #ffffff; border-right: 1px solid rgba(0,0,0,0.06);
+  background: #ffffff; border-right: 1px solid #e5e7eb;
   padding: 12px 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
+  box-shadow: none;
 }
 .app-side-switcher { align-items: stretch; }
 
@@ -62,41 +64,34 @@ select {
   height: 58px;
   padding: 0;
   border: none;
-  border-radius: 18px;
+  border-radius: 14px;
   display: grid;
   place-items: center;
   cursor: pointer;
-  background: linear-gradient(145deg, rgba(255,255,255,0.86), rgba(255,255,255,0.56));
-  border: 1px solid rgba(0,0,0,0.06);
-  box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255,255,255,0.75);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: hidden;
-  transition: transform 0.16s, box-shadow 0.16s;
+  transition: border-color 0.16s, box-shadow 0.16s;
 }
 
 .brand-logo-card img {
   width: 48px;
   height: 48px;
   object-fit: contain;
-  border-radius: 14px;
+  border-radius: 12px;
   display: block;
 }
 
 .brand-logo-card:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 16px 34px rgba(15, 23, 42, 0.11),
-    inset 0 1px 0 rgba(255,255,255,0.82);
+  border-color: #cbd5e1;
 }
 
 .brand-logo-card.active {
-  box-shadow:
-    0 0 0 1.5px rgba(59, 130, 246, 0.55),
-    0 12px 28px rgba(37, 99, 235, 0.18),
-    inset 0 1px 0 rgba(255,255,255,0.80);
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.18);
+  border-color: #bfdbfe;
 }
 
 /* ── Flow bridge between logos ── */
@@ -116,31 +111,16 @@ select {
   right: 3px;
   height: 7px;
   border-radius: 999px;
-  background:
-    linear-gradient(90deg,
-      rgba(255, 112, 67, 0.42),
-      rgba(96, 165, 250, 0.58),
-      rgba(37, 99, 235, 0.48)
-    );
-  box-shadow:
-    0 0 14px rgba(96, 165, 250, 0.20),
-    inset 0 1px 0 rgba(255,255,255,0.55);
+  background: #e5e7eb;
+  box-shadow: none;
 }
 
 .brand-flow-line::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.75), transparent);
-  transform: translateX(-100%);
-  animation: brand-flow-sheen 4.2s ease-in-out infinite;
+  content: none;
 }
 
 @keyframes brand-flow-sheen {
-  0%, 55% { transform: translateX(-100%); opacity: 0; }
-  65% { opacity: 0.9; }
-  100% { transform: translateX(100%); opacity: 0; }
+  0%, 100% { opacity: 0; }
 }
 
 .brand-flow-arrow {
@@ -151,10 +131,10 @@ select {
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: rgba(255,255,255,0.80);
-  border: 1px solid rgba(147,197,253,0.50);
-  box-shadow: 0 6px 14px rgba(37,99,235,0.14);
-  color: rgba(37, 99, 235, 0.78);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: none;
+  color: #2563eb;
 }
 
 .brand-flow-arrow svg {
@@ -181,9 +161,9 @@ select {
 
 /* Top bar */
 .topbar {
-  background: rgba(255,255,255,0.42); border-bottom: 1px solid rgba(0,0,0,0.05);
-  padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: #ffffff; border-bottom: 1px solid #e5e7eb;
+  padding: 10px 24px; display: flex; justify-content: space-between; align-items: center;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 .topbar .eyebrow { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; }
 .topbar h2 { font-size: 16px; font-weight: 600; color: var(--text-primary); }
@@ -202,7 +182,7 @@ select {
 .topbar-config-btn {
   min-width: 96px;
   color: #1d4ed8;
-  background: linear-gradient(135deg, rgba(239,246,255,0.82), rgba(255,255,255,0.56));
+  background: #ffffff;
 }
 
 /* Section head */

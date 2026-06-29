@@ -1,41 +1,46 @@
-/* ── Apple Liquid Glass Design System ── */
+/* ── Professional Operations UI Tokens ── */
 :root {
-  /* Continuous corner radii */
-  --radius-window: 28px;
-  --radius-card: 24px;
-  --radius-panel: 20px;
-  --radius-section: 16px;
-  --radius-image-shell: 20px;
-  --radius-image: 16px;
-  --radius-control: 14px;
-  --radius-input: 14px;
-  --radius-pill: 999px;
+  /* Radii */
+  --radius-window: 0px;
+  --radius-card: 12px;
+  --radius-panel: 14px;
+  --radius-section: 12px;
+  --radius-image-shell: 10px;
+  --radius-image: 8px;
+  --radius-control: 8px;
+  --radius-input: 8px;
+  --radius-pill: 8px;
 
-  /* Glass surface opacities */
-  --glass-bg-strong: rgba(255,255,255,0.72);
-  --glass-bg-medium: rgba(255,255,255,0.50);
-  --glass-bg-soft: rgba(255,255,255,0.34);
+  /* Surfaces */
+  --glass-bg-strong: #ffffff;
+  --glass-bg-medium: #ffffff;
+  --glass-bg-soft: #f8fafc;
 
-  /* Glass borders */
-  --glass-border-strong: rgba(255,255,255,0.78);
-  --glass-border-soft: rgba(255,255,255,0.44);
+  /* Borders */
+  --glass-border-strong: #e5e7eb;
+  --glass-border-soft: #e5e7eb;
 
-  /* Text scale */
-  --text-primary: #0f172a;
-  --text-secondary: rgba(15,23,42,0.72);
-  --text-tertiary: rgba(15,23,42,0.52);
-  --text-muted: rgba(15,23,42,0.38);
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
+  --text-muted: #9ca3af;
 
-  /* Shadows — soft, layered */
-  --shadow-soft: 0 10px 30px rgba(15,23,42,0.08);
-  --shadow-medium: 0 18px 42px rgba(15,23,42,0.12);
-  --shadow-strong: 0 24px 70px rgba(15,23,42,0.14);
+  /* Shadows — minimal */
+  --shadow-soft: 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-medium: 0 4px 10px rgba(15,23,42,0.06);
+  --shadow-strong: 0 10px 24px rgba(15,23,42,0.08);
 
-  /* Glass inset highlight */
-  --glass-highlight: inset 0 1px 0 rgba(255,255,255,0.84), inset 0 -1px 0 rgba(255,255,255,0.18);
+  /* Highlight — disabled */
+  --glass-highlight: none;
 
   /* Accent */
-  --accent: #e6452e;
-  --accent-glow: rgba(230,69,46,0.26);
-  --focus-ring: rgba(99,102,241,0.40);
+  --accent: #2563eb;
+  --accent-glow: rgba(37,99,235,0.12);
+  --focus-ring: rgba(37,99,235,0.28);
+
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
 }
