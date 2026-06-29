@@ -154,15 +154,33 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     try {
       searchRecord = await api.commands.run(basicSearchPayload);
     } catch (e) {
-      setAlert({ text: '基础搜索失败: ' + (e as Error).message, kind: 'error' });
+      setAlert({
+        text: '基础搜索失败，已保留上一批结果：' + (e as Error).message,
+        kind: 'error',
+      });
       setRunning(false);
       setLiveMode(false);
+      setPlaceholderCount(0);
+      setLiveCards([]);
       return;
     }
 
     const data = searchRecord.stdoutJson as Record<string, unknown> | undefined;
     const baseOffers = (data?.offers as Array<Record<string, unknown>>) || [];
     const keyword = String(data?.keyword ?? '');
+
+    // Guard: don't overwrite results when search returns nothing
+    if (baseOffers.length === 0) {
+      setAlert({
+        text: '基础搜索未返回商品，未启动深度采集，已保留上一批结果',
+        kind: 'warn',
+      });
+      setLiveMode(false);
+      setRunning(false);
+      setPlaceholderCount(0);
+      setLiveCards([]);
+      return;
+    }
 
     // Write base offers to product history immediately
     try {
