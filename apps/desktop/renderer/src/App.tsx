@@ -241,6 +241,14 @@ export default function App() {
           <button type="button" className={`side-app-button ${workspaceView === '1688' ? 'active' : ''}`} onClick={() => setWorkspaceView('1688')} aria-label="1688">
             <img src="/nav/1688.png" alt="1688" />
           </button>
+          <div className="side-app-flow-arrow">
+            <span className="side-app-flow-arrow-capsule">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="rgba(100,116,139,0.62)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 5h5" />
+                <path d="M6 3l2 2-2 2" />
+              </svg>
+            </span>
+          </div>
           <button type="button" className={`side-app-button ${workspaceView === 'ozon' ? 'active' : ''}`} onClick={() => setWorkspaceView('ozon')} aria-label="Ozon">
             <img src="/nav/ozon.png" alt="Ozon" />
           </button>
