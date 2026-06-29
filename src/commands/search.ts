@@ -100,8 +100,9 @@ export async function execute(
     async () => {
       const sort = args.sort ?? 'relevance';
       const filters = args.filters ?? normalizeFilters({});
-      const fetchMax = hasActiveFilters(filters)
-        ? Math.min(Math.max(args.max * 3, PAGE_SIZE), PAGE_SIZE * MAX_PAGES)
+      const activeFilters = hasActiveFilters(filters);
+      const fetchMax = activeFilters
+        ? PAGE_SIZE * MAX_PAGES
         : args.max;
       const offers = await fetchSearch(
         ctx,
@@ -109,9 +110,18 @@ export async function execute(
         args.headed === true,
         fetchMax,
         sort,
+        activeFilters
+          ? (currentOffers) => applySearchControls(currentOffers, sort, filters).length >= args.max
+          : undefined,
       );
       const controlled = applySearchControls(offers, sort, filters);
       const slice = controlled.slice(0, args.max);
+
+      if (activeFilters) {
+        info(
+          `Search filters applied: raw=${offers.length}, matched=${controlled.length}, target=${args.max}`,
+        );
+      }
       return {
         keyword: args.keyword,
         sort,
@@ -214,6 +224,7 @@ async function fetchSearch(
   headed: boolean,
   maxResults: number,
   sort: SearchSort,
+  shouldStopAfterPage?: (offers: Offer[]) => boolean,
 ): Promise<Offer[]> {
   const page = await ctx.newPage();
 
@@ -560,6 +571,14 @@ async function fetchSearch(
       `Search page ${pageNum}/${pagesWanted}: ` +
         `added=${added}, total=${allOffers.length}`,
     );
+
+    if (shouldStopAfterPage?.(allOffers)) {
+      info(
+        `Search pagination stop: filtered target reached after page ${pageNum}. ` +
+          `rawTotal=${allOffers.length}`,
+      );
+      break;
+    }
 
     // Stop conditions:
     //  - collected enough for the caller's --max
