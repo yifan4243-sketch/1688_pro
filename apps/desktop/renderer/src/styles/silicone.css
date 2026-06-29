@@ -1,0 +1,718 @@
+/* ─────────────────────────────────────────────
+   Silicone Material UI Layer
+   1688 to Ozon Studio
+   Soft matte tactile interface, no glassmorphism
+   ───────────────────────────────────────────── */
+
+:root {
+  --silicone-bg: #ffffff;
+  --silicone-page: #ffffff;
+
+  --silicone-surface: #ffffff;
+  --silicone-surface-soft: #f8fafc;
+  --silicone-surface-pressed: #eef3f8;
+
+  --silicone-border: rgba(15, 23, 42, 0.08);
+  --silicone-border-strong: rgba(15, 23, 42, 0.14);
+
+  --silicone-text: #111827;
+  --silicone-text-secondary: #4b5563;
+  --silicone-text-muted: #6b7280;
+  --silicone-text-faint: #9ca3af;
+
+  --silicone-blue: #2563eb;
+  --silicone-blue-hover: #1d4ed8;
+  --silicone-blue-soft: #eff6ff;
+  --silicone-blue-border: #bfdbfe;
+
+  --silicone-red: #ef4444;
+  --silicone-red-hover: #dc2626;
+  --silicone-red-soft: #fef2f2;
+  --silicone-red-border: #fecaca;
+
+  --silicone-green: #059669;
+  --silicone-green-hover: #047857;
+  --silicone-green-soft: #ecfdf5;
+  --silicone-green-border: #bbf7d0;
+
+  --silicone-radius-xs: 7px;
+  --silicone-radius-sm: 8px;
+  --silicone-radius-md: 10px;
+  --silicone-radius-lg: 12px;
+  --silicone-radius-xl: 16px;
+  --silicone-radius-pill: 999px;
+
+  --silicone-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    inset 0 -1px 2px rgba(15, 23, 42, 0.04),
+    0 2px 6px rgba(15, 23, 42, 0.04);
+
+  --silicone-shadow-hover:
+    inset 0 1px 1px rgba(255, 255, 255, 0.94),
+    inset 0 -1px 2px rgba(15, 23, 42, 0.05),
+    0 4px 10px rgba(15, 23, 42, 0.07);
+
+  --silicone-shadow-pressed:
+    inset 0 3px 7px rgba(15, 23, 42, 0.10),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.76),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --silicone-focus:
+    0 0 0 3px rgba(37, 99, 235, 0.10),
+    inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* ─────────────────────────────────────────────
+   Global canvas
+   ───────────────────────────────────────────── */
+
+html,
+body,
+#root {
+  background: var(--silicone-page) !important;
+}
+
+body {
+  color: var(--silicone-text) !important;
+}
+
+.app-shell,
+.workspace,
+.workspace-inner,
+.workspace-view-panel {
+  background: var(--silicone-page) !important;
+}
+
+/* Remove large glass glow from the main app surfaces */
+.workspace,
+.workspace-inner {
+  box-shadow: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   App shell / sidebar / topbar
+   ───────────────────────────────────────────── */
+
+.side-nav {
+  background: #ffffff !important;
+  border-right: 1px solid #e5e7eb !important;
+  box-shadow: none !important;
+}
+
+.topbar {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.topbar h2 {
+  color: var(--silicone-text) !important;
+}
+
+.topbar .eyebrow,
+.section-head span,
+.result-count {
+  color: var(--silicone-text-muted) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Brand area
+   ───────────────────────────────────────────── */
+
+.brand-flow {
+  padding-top: 12px !important;
+  padding-bottom: 14px !important;
+}
+
+.brand-logo-card {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid var(--silicone-border) !important;
+  box-shadow: var(--silicone-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.brand-logo-card:hover {
+  transform: none !important;
+  border-color: var(--silicone-border-strong) !important;
+  box-shadow: var(--silicone-shadow-hover) !important;
+}
+
+.brand-logo-card.active {
+  border-color: var(--silicone-blue-border) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    inset 0 -1px 2px rgba(37, 99, 235, 0.05),
+    0 0 0 2px rgba(37, 99, 235, 0.10) !important;
+}
+
+.brand-flow-line {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(249, 115, 22, 0.58),
+      rgba(37, 99, 235, 0.62)
+    ) !important;
+  box-shadow: none !important;
+}
+
+.brand-flow-line::after {
+  display: none !important;
+  animation: none !important;
+}
+
+.brand-flow-arrow {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid var(--silicone-blue-border) !important;
+  color: var(--silicone-blue) !important;
+  box-shadow: var(--silicone-shadow) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Generic silicone surfaces
+   ───────────────────────────────────────────── */
+
+.command-control-panel,
+.result-workspace,
+.glass-panel-card,
+.glass-section,
+.result-preview,
+.history-modal,
+.product-history-shell,
+.runtime-status-modal,
+.account-add-modal,
+.confirm-modal,
+.detail-modal {
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-surface-soft) 100%) !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: var(--silicone-radius-xl) !important;
+  box-shadow: var(--silicone-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Main operation panels need to look flatter and more professional */
+.command-control-panel,
+.result-workspace {
+  border-radius: var(--silicone-radius-xl) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    inset 0 -1px 2px rgba(15, 23, 42, 0.035),
+    0 2px 8px rgba(15, 23, 42, 0.035) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Inputs / textarea / select
+   ───────────────────────────────────────────── */
+
+.glass-input,
+.glass-textarea,
+.glass-select,
+.glass-select-trigger,
+.search-command-input {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: var(--silicone-radius-md) !important;
+  color: var(--silicone-text) !important;
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.04),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.90) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.glass-input::placeholder,
+.glass-textarea::placeholder,
+.search-command-input::placeholder {
+  color: var(--silicone-text-faint) !important;
+}
+
+.glass-input:focus,
+.glass-textarea:focus,
+.glass-select:focus,
+.glass-select-trigger:focus-visible {
+  border-color: rgba(37, 99, 235, 0.58) !important;
+  box-shadow: var(--silicone-focus) !important;
+  background: #ffffff !important;
+}
+
+/* Custom select dropdown */
+.glass-select-menu {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: var(--silicone-radius-lg) !important;
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.10),
+    inset 0 1px 1px rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.glass-select-option {
+  border-radius: var(--silicone-radius-sm) !important;
+}
+
+.glass-select-option:hover {
+  background: #f8fafc !important;
+}
+
+.glass-select-option.active {
+  background: var(--silicone-blue-soft) !important;
+  color: var(--silicone-blue-hover) !important;
+  box-shadow: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   Search command input block
+   ───────────────────────────────────────────── */
+
+.search-command-box {
+  border-radius: var(--silicone-radius-lg) !important;
+  border: 1px solid #d1d5db !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.04),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.90) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.search-command-box:focus-within {
+  border-color: rgba(37, 99, 235, 0.58) !important;
+  box-shadow: var(--silicone-focus) !important;
+}
+
+.search-command-box.has-error {
+  border-color: var(--silicone-red) !important;
+  box-shadow:
+    0 0 0 3px rgba(239, 68, 68, 0.10),
+    inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  background: #ffffff !important;
+}
+
+/* ─────────────────────────────────────────────
+   Buttons
+   ───────────────────────────────────────────── */
+
+.glass-btn-secondary,
+.glass-btn-ghost,
+.selection-action-btn,
+.batch-toolbar-btn,
+.progress-card-action-btn,
+.progress-card-ozon-btn,
+.glass-toggle-chip,
+.account-action-btn,
+.clipboard-preview-clear {
+  border-radius: var(--silicone-radius-md) !important;
+  border: 1px solid #d1d5db !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  color: #374151 !important;
+  box-shadow: var(--silicone-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: none !important;
+}
+
+.glass-btn-secondary:hover,
+.glass-btn-ghost:hover,
+.selection-action-btn:hover:not(:disabled),
+.batch-toolbar-btn:hover:not(:disabled),
+.progress-card-action-btn:hover:not(:disabled),
+.progress-card-ozon-btn:hover:not(:disabled),
+.glass-toggle-chip:hover:not(:disabled),
+.account-action-btn:hover:not(:disabled) {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #eef3f8 100%) !important;
+  border-color: var(--silicone-border-strong) !important;
+  box-shadow: var(--silicone-shadow-hover) !important;
+  transform: none !important;
+}
+
+.glass-btn-secondary:active,
+.glass-btn-ghost:active,
+.selection-action-btn:active,
+.batch-toolbar-btn:active,
+.progress-card-action-btn:active,
+.progress-card-ozon-btn:active,
+.glass-toggle-chip:active,
+.account-action-btn:active {
+  box-shadow: var(--silicone-shadow-pressed) !important;
+  transform: translateY(1px) !important;
+}
+
+/* Primary / execute button */
+.glass-btn-primary,
+.search-command-button {
+  border-radius: var(--silicone-radius-md) !important;
+  border: 1px solid var(--silicone-red) !important;
+  background:
+    linear-gradient(180deg, #f87171 0%, #ef4444 58%, #dc2626 100%) !important;
+  color: #ffffff !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.30),
+    inset 0 -2px 4px rgba(127, 29, 29, 0.18),
+    0 4px 10px rgba(239, 68, 68, 0.16) !important;
+  text-shadow: 0 1px 0 rgba(127, 29, 29, 0.28) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: none !important;
+}
+
+.glass-btn-primary:hover:not(:disabled),
+.search-command-button:hover:not(:disabled) {
+  background:
+    linear-gradient(180deg, #fb6f6f 0%, #ef4444 55%, #dc2626 100%) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.34),
+    inset 0 -2px 4px rgba(127, 29, 29, 0.20),
+    0 6px 14px rgba(239, 68, 68, 0.20) !important;
+  transform: none !important;
+}
+
+.glass-btn-primary:active,
+.search-command-button:active {
+  box-shadow:
+    inset 0 4px 8px rgba(127, 29, 29, 0.22),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.28),
+    0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  transform: translateY(1px) !important;
+}
+
+.glass-btn-primary:disabled,
+.search-command-button:disabled,
+.progress-card-action-btn:disabled,
+.batch-toolbar-btn:disabled,
+.selection-action-btn:disabled {
+  opacity: 0.46 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.72),
+    inset 0 -1px 2px rgba(15, 23, 42, 0.04),
+    0 1px 2px rgba(15, 23, 42, 0.03) !important;
+}
+
+/* Topbar buttons should be calmer than action buttons */
+.topbar-actions .glass-btn-secondary {
+  height: 34px !important;
+  border-radius: var(--silicone-radius-md) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    inset 0 -1px 2px rgba(15, 23, 42, 0.035),
+    0 1px 3px rgba(15, 23, 42, 0.035) !important;
+}
+
+.topbar-config-btn {
+  color: var(--silicone-blue-hover) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
+  border-color: var(--silicone-blue-border) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Tabs / command segments / chips
+   ───────────────────────────────────────────── */
+
+.command-segment,
+.seg-btn {
+  border-radius: var(--silicone-radius-md) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--silicone-text-secondary) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.command-segment:hover,
+.seg-btn:hover {
+  background: #f8fafc !important;
+  border-color: #e5e7eb !important;
+}
+
+.command-segment.active,
+.seg-btn.active,
+.glass-toggle-chip.active {
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
+  border-color: var(--silicone-blue-border) !important;
+  color: var(--silicone-blue-hover) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.92),
+    inset 0 -1px 2px rgba(37, 99, 235, 0.05),
+    0 2px 6px rgba(37, 99, 235, 0.06) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Image-search paste zone
+   ───────────────────────────────────────────── */
+
+.image-search-paste-zone {
+  border-radius: var(--silicone-radius-lg) !important;
+  border: 1px dashed #cbd5e1 !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.035),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.90) !important;
+}
+
+.image-search-paste-zone:hover,
+.image-search-paste-zone:focus-within {
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
+  border-color: var(--silicone-blue-border) !important;
+}
+
+.clipboard-preview-img {
+  border-radius: var(--silicone-radius-md) !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: var(--silicone-shadow) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Result toolbar
+   ───────────────────────────────────────────── */
+
+.result-unified-toolbar {
+  background: transparent !important;
+}
+
+.result-batch-actions .batch-toolbar-btn--deep {
+  color: var(--silicone-blue-hover) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
+  border-color: var(--silicone-blue-border) !important;
+}
+
+.result-batch-actions .batch-toolbar-btn--ozon {
+  color: var(--silicone-green-hover) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-green-soft) 100%) !important;
+  border-color: var(--silicone-green-border) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Product cards
+   ───────────────────────────────────────────── */
+
+.progress-card-grid {
+  gap: 14px !important;
+}
+
+.progress-offer-card {
+  border-radius: var(--silicone-radius-xl) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: var(--silicone-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: hidden !important;
+  transform: none !important;
+}
+
+.progress-offer-card:hover {
+  transform: none !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: var(--silicone-shadow-hover) !important;
+}
+
+.progress-offer-card.selected {
+  border-color: var(--silicone-blue) !important;
+  box-shadow:
+    0 0 0 2px rgba(37, 99, 235, 0.12),
+    var(--silicone-shadow) !important;
+}
+
+.progress-card-image-wrap {
+  background: #f8fafc !important;
+  border-bottom: 1px solid #eef2f7 !important;
+}
+
+.progress-card-img {
+  background: #ffffff !important;
+}
+
+.progress-card-body {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+}
+
+.progress-card-title {
+  color: var(--silicone-text) !important;
+}
+
+.progress-card-price {
+  color: #dc2626 !important;
+}
+
+.progress-card-check {
+  border-radius: var(--silicone-radius-xs) !important;
+  border: 1px solid #d1d5db !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  box-shadow: var(--silicone-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.progress-card-check.checked {
+  background:
+    linear-gradient(180deg, #60a5fa 0%, #2563eb 100%) !important;
+  border-color: var(--silicone-blue) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.34),
+    inset 0 -1px 2px rgba(30, 64, 175, 0.18),
+    0 3px 8px rgba(37, 99, 235, 0.16) !important;
+}
+
+.progress-card-action-btn {
+  height: 30px !important;
+  border-radius: var(--silicone-radius-md) !important;
+}
+
+.progress-card-action-btn--deep {
+  color: var(--silicone-blue-hover) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
+  border-color: var(--silicone-blue-border) !important;
+}
+
+.progress-card-action-btn--ozon {
+  color: var(--silicone-green-hover) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-green-soft) 100%) !important;
+  border-color: var(--silicone-green-border) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Badges / status chips / task sidebar
+   ───────────────────────────────────────────── */
+
+.glass-chip,
+.status-badge,
+.deep-task-status,
+.running-chip {
+  border-radius: var(--silicone-radius-sm) !important;
+  border: 1px solid #e5e7eb !important;
+  background: #f8fafc !important;
+  color: var(--silicone-text-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.deep-task-filters button {
+  border-radius: var(--silicone-radius-md) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+.deep-task-filters button.active {
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
+  border-color: var(--silicone-blue-border) !important;
+  color: var(--silicone-blue-hover) !important;
+  box-shadow: var(--silicone-shadow) !important;
+}
+
+.deep-task-empty,
+.deep-task-item {
+  border-radius: var(--silicone-radius-lg) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: var(--silicone-shadow) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Error / alert / toast
+   ───────────────────────────────────────────── */
+
+.alert {
+  border-radius: var(--silicone-radius-md) !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: var(--silicone-shadow) !important;
+}
+
+.alert.info {
+  background: var(--silicone-blue-soft) !important;
+  color: var(--silicone-blue-hover) !important;
+  border-color: var(--silicone-blue-border) !important;
+}
+
+.alert.success {
+  background: var(--silicone-green-soft) !important;
+  color: var(--silicone-green-hover) !important;
+  border-color: var(--silicone-green-border) !important;
+}
+
+.alert.error,
+.error-detail {
+  background: var(--silicone-red-soft) !important;
+  color: #b91c1c !important;
+  border-color: var(--silicone-red-border) !important;
+}
+
+.toast {
+  border-radius: var(--silicone-radius-lg) !important;
+  background: rgba(17, 24, 39, 0.88) !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Modal overlays keep overlay, but content is silicone
+   ───────────────────────────────────────────── */
+
+.modal-backdrop,
+.history-modal-backdrop,
+.product-history-backdrop,
+.detail-backdrop,
+.runtime-status-modal-backdrop,
+.account-modal-backdrop,
+.confirm-backdrop {
+  background: rgba(15, 23, 42, 0.28) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.history-row,
+.product-history-tile {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: var(--silicone-radius-lg) !important;
+  box-shadow: var(--silicone-shadow) !important;
+}
+
+/* ─────────────────────────────────────────────
+   Kill obvious glass/neon effects on main UI only
+   ───────────────────────────────────────────── */
+
+.liquid-glass-card,
+.offer-main-image-shell,
+.metric-tile,
+.glass-pill-button {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: var(--silicone-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Keep SVG / images crisp */
+img,
+svg {
+  flex-shrink: 0;
+}
