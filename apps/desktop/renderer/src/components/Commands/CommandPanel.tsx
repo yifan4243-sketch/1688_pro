@@ -159,6 +159,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     const errors: Record<string, string> = {};
     for (const f of command.positional) {
       if (!f.required) continue;
+
+      // clipboard mode: pasted image satisfies the imagePath requirement
+      if (activeCmdId === 'image-search' && f.name === 'imagePath' && pastedImageFile) {
+        continue;
+      }
+
       const val = (args[f.name] || '').trim();
       if (!val) {
         // Human-friendly messages
@@ -311,6 +317,11 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       return;
     }
 
+    // Build payload locally so clipboard tmpPath is guaranteed to be included.
+    // React setArgs is async — calling collectPayload() after setArgs() may still
+    // read the old args object and miss the temp file path.
+    let payload = collectPayload(confirmed);
+
     // Clipboard mode: upload pasted image to temp file before running CLI
     if (activeCmdId === 'image-search' && pastedImageFile) {
       try {
@@ -322,6 +333,16 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
             .join(''),
         );
         const { path: tmpPath } = await api.files.writeTempImage(base64, pastedImageFile.type);
+
+        payload = {
+          ...payload,
+          args: {
+            ...payload.args,
+            imagePath: tmpPath,
+          },
+        };
+
+        // Sync state for UI preview / subsequent runs
         setArgs((prev) => ({ ...prev, imagePath: tmpPath }));
       } catch (e) {
         setAlert({ text: '图片上传失败: ' + (e as Error).message, kind: 'error' });
@@ -333,7 +354,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     setRunning(true);
     setAlert({ text: '命令执行中...', kind: 'info' });
     try {
-      const record = await api.commands.run(collectPayload(confirmed));
+      const record = await api.commands.run(payload);
       setLastRecord(record);
       // Write offers to product history
       if (activeCmdId === 'search' && record.stdoutJson) {
