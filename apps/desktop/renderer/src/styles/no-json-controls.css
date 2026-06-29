@@ -1,0 +1,13 @@
+/* Hide raw JSON controls from the operator-facing Studio result pages.
+   Raw command JSON remains available in history/internal data, but the main UI
+   should stay card-first for non-technical operators. */
+.result-renderer .mode-toggle,
+.result-renderer .mode-btn,
+.result-renderer .glass-toolbar-button {
+  display: none !important;
+}
+
+.result-renderer > .result-preview:has(> .json-output),
+.result-renderer .json-output {
+  display: none !important;
+}
