@@ -143,6 +143,29 @@ export async function releaseSharedContext(): Promise<void> {
   }
 }
 
+export async function recreateSharedContext(): Promise<void> {
+  const profile = sharedProfile;
+  await releaseSharedContext();
+  if (profile) {
+    // Re-create immediately so the next command on the queue gets a fresh context.
+    lockRelease = await acquireLock(profile);
+    const dir = profilePath(profile);
+    await fs.mkdir(dir, { recursive: true });
+    await clearStaleSingleton(dir);
+    sharedCtx = await launchPreferringChrome(dir, true);
+    sharedProfile = profile;
+    await sharedCtx.addInitScript(() => {
+      try {
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['zh-CN', 'zh', 'en'],
+        });
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+}
+
 async function launchPreferringChrome(
   dir: string,
   headless: boolean,

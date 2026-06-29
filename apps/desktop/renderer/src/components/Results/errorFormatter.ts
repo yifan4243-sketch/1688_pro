@@ -25,13 +25,31 @@ export function formatCommandError(input: {
   const exitCode = input.exitCode != null ? Number(input.exitCode) : undefined;
   const joined = `${status} ${code} ${message} ${stderrText}`;
 
-  // ── Browser closed / user cancelled ──
+  // ── Browser context broken (headless daemon crash) ──
+  if (
+    /browser.?closed|browser context|BROWSER_CONTEXT_BROKEN|context.*(?:closed|broken|crash)/i.test(joined)
+  ) {
+    return {
+      title: '浏览器会话中断',
+      summary: '无头采集的浏览器会话意外崩溃或断开，无法继续访问 1688 页面。',
+      reason: '后台浏览器进程（Chromium）异常退出，或持久化会话数据损坏。',
+      advice: [
+        '系统会自动尝试重新创建浏览器会话，稍后重试即可。',
+        '如果连续出现，可尝试重启应用。',
+        '也可开启"可视化打开浏览器"临时绕过。',
+      ],
+      level: 'warn',
+      technicalCode: 'BROWSER_CONTEXT_BROKEN',
+      exitCode,
+    };
+  }
+
+  // ── User cancelled / browser closed ──
   if (
     status === 'cancelled' ||
     status === 'canceled' ||
     exitCode === 130 ||
-    code === 'CANCELED' ||
-    /browser.?closed|browser context|BROWSER_CONTEXT_BROKEN/i.test(joined)
+    code === 'CANCELED'
   ) {
     return {
       title: '任务已取消',
@@ -44,7 +62,7 @@ export function formatCommandError(input: {
         '可尝试开启"可视化打开浏览器"，观察是否被 1688 风控或验证码拦截。',
       ],
       level: 'warn',
-      technicalCode: code || 'BROWSER_CONTEXT_BROKEN',
+      technicalCode: 'BROWSER_CONTEXT_BROKEN',
       exitCode,
     };
   }

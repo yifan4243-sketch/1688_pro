@@ -11,10 +11,11 @@ import {
 import {
   getSharedContext,
   getSharedContextStatus,
+  recreateSharedContext,
   releaseSharedContext,
   runOnSharedCtx,
 } from '../session/shared.js';
-import { loadExecutor } from '../session/dispatch.js';
+import { loadExecutor, type Executor } from '../session/dispatch.js';
 import { CliError } from '../io/errors.js';
 import { throttle } from './throttle.js';
 import type { Request, Response } from './protocol.js';
@@ -176,6 +177,41 @@ function handleClient(sock: net.Socket): void {
   });
 }
 
+async function executeWithContextRecovery(
+  fn: Executor<unknown, unknown>,
+  req: Request,
+): Promise<unknown> {
+  const meta = { requestId: req.id, cmd: req.cmd, args: req.args };
+  try {
+    return await runOnSharedCtx(
+      (ctx) => fn(ctx, req.args),
+      meta,
+      stats.profile,
+    );
+  } catch (firstError) {
+    // When the daemon's shared browser context crashes (BROWSER_CONTEXT_BROKEN,
+    // exit code 130), recreate the context and retry once. Without this, every
+    // subsequent headless command fails with "cancelled" until the daemon is
+    // restarted manually.
+    const isContextDead =
+      firstError instanceof CliError &&
+      (firstError.exitCode === 130 ||
+       firstError.code === 'BROWSER_CONTEXT_BROKEN' ||
+       String(firstError.details?.failureKind) === 'browser_context_broken');
+
+    if (!isContextDead) throw firstError;
+
+    log('browser context appears broken — recreating and retrying once');
+    await recreateSharedContext();
+
+    return await runOnSharedCtx(
+      (ctx) => fn(ctx, req.args),
+      meta,
+      stats.profile,
+    );
+  }
+}
+
 async function handleRequest(req: Request): Promise<Response> {
   lastActivityMs = Date.now();
   stats.lastRequestAt = new Date().toISOString();
@@ -208,11 +244,7 @@ async function handleRequest(req: Request): Promise<Response> {
     await enforceHealthPause();
     await throttle(req.cmd);
     const fn = await loadExecutor<unknown, unknown>(req.cmd);
-    const data = await runOnSharedCtx((ctx) => fn(ctx, req.args), {
-      requestId: req.id,
-      cmd: req.cmd,
-      args: req.args,
-    }, stats.profile);
+    const data = await executeWithContextRecovery(fn, req);
     recordSuccess();
     return { id: req.id, ok: true, data };
   } catch (e) {

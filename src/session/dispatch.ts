@@ -20,7 +20,7 @@ export interface DispatchOpts {
   noDaemon?: boolean;
 }
 
-type Executor<TArgs, TData> = (
+export type Executor<TArgs, TData> = (
   ctx: BrowserContext,
   args: TArgs,
 ) => Promise<TData>;
