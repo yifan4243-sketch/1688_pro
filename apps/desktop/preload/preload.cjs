@@ -39,6 +39,11 @@ contextBridge.exposeInMainWorld('desktopApi', {
     clear: () => ipcRenderer.invoke('desktop:clearProductHistory'),
   },
 
+  // File utilities
+  files: {
+    writeTempImage: (base64, contentType) => ipcRenderer.invoke('desktop:writeTempImage', { base64, contentType }),
+  },
+
   // Ozon AI drafts and submit
   ozon: {
     getSettings: () => ipcRenderer.invoke('desktop:getOzonSettings'),

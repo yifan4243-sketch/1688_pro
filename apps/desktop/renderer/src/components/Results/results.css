@@ -617,6 +617,64 @@
 }
 .search-command-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
+/* ── Image-search clipboard paste zone ── */
+.image-search-paste-zone {
+  position: relative; width: 100%; min-height: 42px;
+  border-radius: var(--radius-pill);
+  border: 1px dashed rgba(148,163,184,0.36);
+  background: rgba(255,255,255,0.38);
+  display: flex; align-items: center;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.image-search-paste-zone:hover,
+.image-search-paste-zone:focus-within {
+  border-color: rgba(59,130,246,0.44);
+  background: rgba(239,246,255,0.48);
+}
+.image-search-paste-zone .glass-input {
+  border: none; background: transparent; box-shadow: none;
+  width: 100%; height: 100%;
+}
+.image-search-paste-zone.field-error {
+  border-color: rgba(239,68,68,0.68) !important;
+  background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(254,242,242,0.74)) !important;
+}
+.clipboard-preview {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 8px 14px;
+}
+.clipboard-preview-img {
+  width: 56px; height: 56px; border-radius: 12px;
+  object-fit: cover; border: 1px solid rgba(255,255,255,0.7);
+  box-shadow: 0 4px 12px rgba(15,23,42,0.08);
+  background: rgba(0,0,0,0.04);
+}
+.clipboard-preview-info {
+  display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0;
+}
+.clipboard-preview-name {
+  font-size: 12px; font-weight: 700; color: #0f172a;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.clipboard-preview-size {
+  font-size: 11px; color: #64748b; font-weight: 600;
+}
+.clipboard-preview-clear {
+  margin-top: 2px; align-self: flex-start;
+  height: 26px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid rgba(239,68,68,0.28);
+  background: rgba(254,242,242,0.82);
+  color: #dc2626; font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: background 0.14s;
+}
+.clipboard-preview-clear:hover {
+  background: rgba(254,226,226,0.95);
+}
+.image-search-paste-hint {
+  margin-top: 6px; font-size: 11px; color: #94a3b8;
+  font-weight: 600; line-height: 1.4;
+}
+
 /* Compact grid for short fields */
 .compact-grid {
   display: grid;

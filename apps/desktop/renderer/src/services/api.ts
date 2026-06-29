@@ -202,6 +202,9 @@ interface DesktopApi {
     add: (products: unknown[], meta?: Record<string, unknown>) => Promise<unknown>;
     clear: () => Promise<unknown>;
   };
+  files: {
+    writeTempImage: (base64: string, contentType: string) => Promise<{ path: string }>;
+  };
   ozon: {
     getSettings: () => Promise<OzonSettingsPublic>;
     saveSettings: (patch: OzonSettingsPatch) => Promise<OzonSettingsPublic>;

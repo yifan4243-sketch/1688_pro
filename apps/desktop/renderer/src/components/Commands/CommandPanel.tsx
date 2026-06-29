@@ -35,6 +35,57 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [liveMode, setLiveMode] = useState(false);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
 
+  // Clipboard image paste state (image-search only)
+  const [pastedImageFile, setPastedImageFile] = useState<File | null>(null);
+  const [pastedImagePreviewUrl, setPastedImagePreviewUrl] = useState<string | null>(null);
+  const [pastedImageName, setPastedImageName] = useState<string | null>(null);
+  const [pastedImageSize, setPastedImageSize] = useState<number | null>(null);
+
+  const clearPastedImage = () => {
+    if (pastedImagePreviewUrl) URL.revokeObjectURL(pastedImagePreviewUrl);
+    setPastedImageFile(null);
+    setPastedImagePreviewUrl(null);
+    setPastedImageName(null);
+    setPastedImageSize(null);
+  };
+
+  const handlePasteImage = (event: React.ClipboardEvent) => {
+    const items = Array.from(event.clipboardData?.items ?? []);
+    const imageItem = items.find((item) => item.type.startsWith('image/'));
+
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/bmp'];
+    if (!allowed.includes(file.type)) {
+      setAlert({ text: '不支持的图片格式，请粘贴 PNG / JPEG / WebP / BMP 图片。', kind: 'warn' });
+      return;
+    }
+
+    const maxBytes = 20 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setAlert({ text: `图片过大 (${(file.size / 1024 / 1024).toFixed(1)}MB > 20MB)。`, kind: 'warn' });
+      return;
+    }
+
+    event.preventDefault();
+
+    if (pastedImagePreviewUrl) URL.revokeObjectURL(pastedImagePreviewUrl);
+
+    const previewUrl = URL.createObjectURL(file);
+    setPastedImageFile(file);
+    setPastedImagePreviewUrl(previewUrl);
+    setPastedImageName(file.name || `clipboard-${Date.now()}.${file.type.split('/')[1] || 'png'}`);
+    setPastedImageSize(file.size);
+    if (fieldErrors.imagePath) {
+      const e = { ...fieldErrors };
+      delete e.imagePath;
+      setFieldErrors(e);
+    }
+  };
+
   const api = getApi();
   const command = registry.commands[activeCmdId];
   const groupCommands = Object.values(registry.commands).filter((c) => c.group === 'sourcing' && c.id !== 'similar');
@@ -82,6 +133,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     setAlert(null);
     setFieldErrors({});
     setPlaceholderCount(0);
+    clearPastedImage();
     // Set defaults for non-boolean options
     const cmd = registry.commands[id];
     if (cmd) {
@@ -259,6 +311,24 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       return;
     }
 
+    // Clipboard mode: upload pasted image to temp file before running CLI
+    if (activeCmdId === 'image-search' && pastedImageFile) {
+      try {
+        setAlert({ text: '正在上传图片...', kind: 'info' });
+        const buf = await pastedImageFile.arrayBuffer();
+        const base64 = btoa(
+          Array.from(new Uint8Array(buf))
+            .map((b) => String.fromCharCode(b))
+            .join(''),
+        );
+        const { path: tmpPath } = await api.files.writeTempImage(base64, pastedImageFile.type);
+        setArgs((prev) => ({ ...prev, imagePath: tmpPath }));
+      } catch (e) {
+        setAlert({ text: '图片上传失败: ' + (e as Error).message, kind: 'error' });
+        return;
+      }
+    }
+
     setPlaceholderCount(placeholderCountForCommand());
     setRunning(true);
     setAlert({ text: '命令执行中...', kind: 'info' });
@@ -388,6 +458,46 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                           onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
                         />
                         {hasErr && <p className="field-error-text">{fieldErrors[f.name]}</p>}
+                      </>
+                    ) : activeCmdId === 'image-search' ? (
+                      /* Image-search: supports clipboard paste + URL input */
+                      <>
+                        <div
+                          className={`image-search-paste-zone ${hasErr ? 'field-error' : ''}`}
+                          tabIndex={0}
+                          onPaste={handlePasteImage}
+                        >
+                          {pastedImagePreviewUrl ? (
+                            <div className="clipboard-preview">
+                              <img src={pastedImagePreviewUrl} alt="已粘贴图片" className="clipboard-preview-img" />
+                              <div className="clipboard-preview-info">
+                                <span className="clipboard-preview-name">{pastedImageName || 'clipboard.png'}</span>
+                                <span className="clipboard-preview-size">
+                                  {pastedImageSize != null
+                                    ? pastedImageSize >= 1024 * 1024
+                                      ? `${(pastedImageSize / 1024 / 1024).toFixed(1)}MB`
+                                      : `${Math.round(pastedImageSize / 1024)}KB`
+                                    : ''}
+                                </span>
+                                <button type="button" className="clipboard-preview-clear" onClick={(e) => { e.stopPropagation(); clearPastedImage(); }}>
+                                  清除图片
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <input
+                              className={`glass-input ${hasErr ? 'field-error' : ''}`}
+                              type="text"
+                              value={args[f.name] || ''}
+                              placeholder="输入图片 URL，或点击此处后 Ctrl+V 粘贴图片"
+                              onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
+                            />
+                          )}
+                        </div>
+                        {hasErr && <p className="field-error-text">{fieldErrors[f.name]}</p>}
+                        <p className="image-search-paste-hint">
+                          💡 支持直接粘贴图片：复制任意商品图后在此区域 Ctrl+V
+                        </p>
                       </>
                     ) : (
                       <>

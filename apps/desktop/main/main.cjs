@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const { resolveCliPath, getRootDir } = require('./cli-resolver.cjs');
 
 // Reuse existing modules (placed in apps/desktop/ for backward compat).
@@ -131,6 +133,34 @@ function registerIpc() {
     } catch (error) {
       return { ok: false, message: (error && error.message) || String(error) };
     }
+  });
+
+  // --- file utilities (temp image for clipboard paste) ---
+  ipcMain.handle('desktop:writeTempImage', async (_event, { base64, contentType }) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/bmp'];
+    if (!allowed.includes(contentType)) {
+      throw new Error(`不支持的文件类型: ${contentType}`);
+    }
+    const buf = Buffer.from(base64, 'base64');
+    if (buf.length < 1024) throw new Error('图片数据过小 (< 1KB)');
+    if (buf.length > 20 * 1024 * 1024) throw new Error(`图片过大 (${(buf.length / 1024 / 1024).toFixed(1)}MB > 20MB)`);
+
+    // Validate magic bytes
+    const isJpg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    const isPng = buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isWebp = buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP';
+    const isBmp = buf[0] === 0x42 && buf[1] === 0x4d;
+    if (!isJpg && !isPng && !isWebp && !isBmp) {
+      throw new Error('文件内容不是有效图片 (magic bytes 不匹配)');
+    }
+
+    const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/bmp': '.bmp' };
+    const ext = extMap[contentType] || '.png';
+    const tmpName = `bb1688-clipboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+    const tmpPath = path.join(os.tmpdir(), tmpName);
+    await fs.promises.writeFile(tmpPath, buf);
+    console.log('[clipboard] wrote temp image', tmpPath, `(${(buf.length / 1024).toFixed(1)}KB)`);
+    return { path: tmpPath };
   });
 
   // --- accounts ---
