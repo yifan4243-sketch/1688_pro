@@ -443,13 +443,18 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     if (pendingPayload) runCommand(true);
   };
 
+  const visibleRecord =
+    lastRecord && lastRecord.commandId === activeCmdId
+      ? lastRecord
+      : null;
+
   const resultCount = useMemo(() => {
-    if (!lastRecord) return '等待执行';
-    const d = lastRecord.stdoutJson as Record<string, unknown> | undefined;
+    if (!visibleRecord) return '等待执行';
+    const d = visibleRecord.stdoutJson as Record<string, unknown> | undefined;
     if (d?.offers && Array.isArray(d.offers)) return `${d.offers.length} 个商品`;
     if (d?.items && Array.isArray(d.items)) return `${d.items.length} 条结果`;
     return '已执行';
-  }, [lastRecord]);
+  }, [visibleRecord]);
 
   const fillKeyword = (kw: string) => {
     setArgs({ ...args, keyword: kw });
@@ -737,18 +742,18 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               onOzonTasksChange={onOzonTasksChange}
             />
           </>
-        ) : lastRecord ? (
+        ) : visibleRecord ? (
           <>
             <p className="result-count">{resultCount}</p>
             <ResultRenderer
-              record={lastRecord}
+              record={visibleRecord}
               resultType={command.resultType}
               placeholderCards={placeholderCount}
               running={false}
               activeProfile={activeProfile}
               manualDeepCollectHeaded={!!options.headed}
               captchaRetryHeaded={!!options.captchaRetryHeaded}
-              autoDeepCollectOnMount={Boolean(lastRecord && lastRecord.runId?.startsWith('desktop-deeppro-base-'))}
+              autoDeepCollectOnMount={Boolean(visibleRecord && visibleRecord.runId?.startsWith('desktop-deeppro-base-'))}
               onDeepTasksChange={onDeepTasksChange}
               onOzonTasksChange={onOzonTasksChange}
             />
