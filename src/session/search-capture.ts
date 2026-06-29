@@ -11,6 +11,7 @@ export interface SearchOfferCaptureOptions {
   page: Page;
   requireMethod?: string;
   requireSortType?: string;
+  requireImageId?: string;
   allowUnscopedWirelessRecommend?: boolean;
   targetPage?: () => number;
   keep?: 'first' | 'largest';
@@ -21,6 +22,13 @@ export interface SearchOfferCaptureFailure {
   url: string;
   name?: string;
   message: string;
+}
+
+export interface MatchedSample {
+  url: string;
+  meta: import('./search-mtop.js').SearchMtopRequestMeta | null;
+  parsedCount: number;
+  offerIds: string[];
 }
 
 export interface SearchOfferCaptureDiagnostics {
@@ -38,6 +46,10 @@ export interface SearchOfferCaptureDiagnostics {
   lastParsedUrl?: string;
   lastError?: { name?: string; message: string };
   failures: SearchOfferCaptureFailure[];
+  selectedUrl?: string;
+  selectedMeta?: import('./search-mtop.js').SearchMtopRequestMeta | null;
+  selectedOfferIds?: string[];
+  matchedSamples?: MatchedSample[];
 }
 
 export type SearchOfferCaptureWaitStatus =
@@ -127,6 +139,10 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
     lastParsedUrl,
     lastError,
     failures: [...failures],
+    selectedUrl,
+    selectedMeta,
+    selectedOfferIds,
+    matchedSamples: [...matchedSamples],
   });
 
   const reset = () => {
@@ -142,7 +158,36 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
     lastParsedUrl = undefined;
     lastError = undefined;
     failures.length = 0;
+    matchedSamples.length = 0;
+    selectedUrl = undefined;
+    selectedMeta = null;
+    selectedOfferIds = undefined;
   };
+
+  const matchedSamples: MatchedSample[] = [];
+  let selectedUrl: string | undefined;
+  let selectedMeta: ReturnType<typeof readSearchMtopRequestMeta> = null;
+  let selectedOfferIds: string[] | undefined;
+
+  function metaMatchesImageId(meta: ReturnType<typeof readSearchMtopRequestMeta>, requiredImageId?: string): boolean {
+    if (!requiredImageId) return true;
+    if (!meta) return false;
+
+    const target = String(requiredImageId);
+
+    if (meta.imageId === target) return true;
+    if (meta.imageIds?.includes(target)) return true;
+
+    if (meta.rawParams) {
+      try {
+        if (JSON.stringify(meta.rawParams).includes(target)) return true;
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
+  }
 
   const onResponse = async (resp: PWResponse) => {
     if (disposed) return;
@@ -155,22 +200,43 @@ export function startSearchOfferCapture(opts: SearchOfferCaptureOptions) {
         if (meta.appId !== SEARCH_APP_ID) return;
         if (opts.requireMethod && meta.method !== opts.requireMethod) return;
         if (opts.requireSortType && meta.sortType !== opts.requireSortType) return;
+        if (opts.requireImageId && !metaMatchesImageId(meta, opts.requireImageId)) return;
         const targetPage = opts.targetPage?.();
         if (targetPage !== undefined && (meta.beginPage ?? 1) !== targetPage) return;
-      } else if (
-        !opts.allowUnscopedWirelessRecommend ||
-        !/mtop\.relationrecommend\.wirelessrecommend\.recommend/i.test(url)
-      ) {
-        return;
+      } else {
+        // No meta → unscoped response. If we require an imageId, reject it.
+        if (opts.requireImageId) return;
+        if (
+          !opts.allowUnscopedWirelessRecommend ||
+          !/mtop\.relationrecommend\.wirelessrecommend\.recommend/i.test(url)
+        ) {
+          return;
+        }
       }
       matchedCount++;
       lastMatchedUrl = url;
-      const parsed = parseOfferItemsFromMtopText(await resp.text());
+      const text = await resp.text();
+      const parsed = parseOfferItemsFromMtopText(text);
       if (parsed.length === 0) return;
+
+      // Record matched sample (capped at 20)
+      const offerIds = parsed.slice(0, 10).map((o) => o.offerId);
+      if (matchedSamples.length < 20) {
+        matchedSamples.push({ url, meta, parsedCount: parsed.length, offerIds });
+      }
+
       if (opts.keep === 'largest') {
-        if (parsed.length > offers.length) offers = parsed;
+        if (parsed.length > offers.length) {
+          offers = parsed;
+          selectedUrl = url;
+          selectedMeta = meta;
+          selectedOfferIds = parsed.map((o) => o.offerId);
+        }
       } else {
         offers = parsed;
+        selectedUrl = url;
+        selectedMeta = meta;
+        selectedOfferIds = parsed.map((o) => o.offerId);
       }
       parsedCount++;
       lastParsedUrl = url;

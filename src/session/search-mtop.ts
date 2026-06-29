@@ -65,6 +65,11 @@ export interface SearchMtopRequestMeta {
   method?: string;
   beginPage?: number;
   sortType?: string;
+  rawParams?: Record<string, unknown>;
+  rawData?: Record<string, unknown>;
+  rawUrl?: string;
+  imageId?: string;
+  imageIds?: string[];
 }
 
 function bool(s?: string): boolean {
@@ -167,6 +172,41 @@ export function mapOffer(item: RawOfferItem): Offer | null {
   };
 }
 
+function collectImageIds(value: unknown, depth: number, out: string[]): void {
+  if (depth > 8 || value == null) return;
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const s = String(value).trim();
+    if (/^\d{4,}$/.test(s)) out.push(s);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectImageIds(item, depth + 1, out);
+    return;
+  }
+
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    for (const [key, val] of Object.entries(obj)) {
+      const normalizedKey = key.toLowerCase().replace(/[_-]/g, '');
+      const isImageKey =
+        normalizedKey === 'imageid' ||
+        normalizedKey === 'imgid' ||
+        normalizedKey === 'picid' ||
+        normalizedKey === 'pictureid' ||
+        normalizedKey === 'imageids' ||
+        normalizedKey === 'imageidlist';
+
+      if (isImageKey) {
+        collectImageIds(val, depth + 1, out);
+      } else if (typeof val === 'object' && val !== null) {
+        collectImageIds(val, depth + 1, out);
+      }
+    }
+  }
+}
+
 export function readSearchMtopRequestMeta(url: string): SearchMtopRequestMeta | null {
   if (!url.includes(SEARCH_MTOP_API)) return null;
   try {
@@ -176,17 +216,28 @@ export function readSearchMtopRequestMeta(url: string): SearchMtopRequestMeta | 
       appId?: unknown;
       params?: string;
     };
-    const params = JSON.parse(dataObj.params ?? '{}') as {
+    const rawParams = JSON.parse(dataObj.params ?? '{}') as Record<string, unknown>;
+    const params = rawParams as {
       method?: string;
       beginPage?: number | string;
       sortType?: string;
     };
     const beginPage = params.beginPage === undefined ? undefined : Number(params.beginPage);
+
+    const imageIdCandidates: string[] = [];
+    collectImageIds(rawParams, 0, imageIdCandidates);
+    const uniqueIds = [...new Set(imageIdCandidates)];
+
     return {
       appId: String(dataObj.appId),
       method: params.method,
       beginPage,
       sortType: params.sortType,
+      rawParams,
+      rawData: dataObj as Record<string, unknown>,
+      rawUrl: url,
+      imageId: uniqueIds[0],
+      imageIds: uniqueIds.length ? uniqueIds : undefined,
     };
   } catch {
     return null;

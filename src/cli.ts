@@ -170,6 +170,7 @@ program
   .option('--max <n>', 'Maximum number of results', '20')
   .option('--profile <name>', 'Profile name (default: default)')
   .option('--headed', 'Open a window (fallback for risk control)')
+  .option('--debug-image', 'Include upload/capture diagnostics in JSON output')
   .action(async (imagePath, opts) => {
     const { run } = await import('./commands/image-search.js');
     await run({ ...opts, imagePath });
