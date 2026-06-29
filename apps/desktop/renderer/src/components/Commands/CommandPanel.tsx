@@ -136,7 +136,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     }
   };
 
-  // Two-stage desktop DEEPPRO: search first, then offer --pro per offerId
+  // Two-stage desktop DEEPPRO: search first, then delegate deep collect to unified queue
   const runDesktopDeepPro = async () => {
     const max = Number(options.max || 20);
     if (!max || max < 1) return;
@@ -190,59 +190,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       }
     }
     setLiveCards(baseCards);
-    setAlert({ text: `基础搜索完成，共 ${baseOffers.length} 个商品，开始深度采集...`, kind: 'info' });
 
-    const deepOffers: Record<string, unknown>[] = [];
-    const failures: Record<string, unknown>[] = [];
-
-    // Stage 2: offer --pro for each base card
-    for (let i = 0; i < baseCards.length; i++) {
-      const card = baseCards[i]!;
-      if (!card.offerId) continue;
-
-      // Mark as collecting
-      baseCards[i] = { ...card, status: 'deep-collecting' };
-      setLiveCards([...baseCards]);
-
-      const delayMs = (Math.random() * (Number(options.deepproDelayMax || 3) - Number(options.deepproDelayMin || 1)) + Number(options.deepproDelayMin || 1)) * 1000;
-      if (i > 0) await new Promise((r) => setTimeout(r, delayMs));
-
-      try {
-        const offerPayload: CommandPayload = {
-          commandId: 'offer',
-          args: { offerIds: card.offerId },
-          options: { pro: true, headed: !!options.headed },
-          profile: activeProfile,
-        };
-        const offerRecord = await api.commands.run(offerPayload);
-        const deep = offerRecord.stdoutJson as Record<string, unknown> | undefined;
-
-        if (deep && deep.title && deep.title !== 'Captcha Interception' && !/captcha|验证码|滑块|风控/i.test(String(deep.title))) {
-          baseCards[i] = {
-            ...card,
-            title: String(deep.title || card.title),
-            price: String(deep.priceRange || card.price),
-            image: String(deep.mainImage || (deep.images as string[])?.[0] || card.image),
-            status: 'deep-success' as const,
-            raw: deep,
-          };
-          deepOffers.push(deep);
-        } else {
-          const reason = !deep ? '返回结果为空' : deep.title === 'Captcha Interception' ? '页面被验证码拦截' : '深度采集结果不完整';
-          baseCards[i] = { ...card, status: 'deep-failed' as const, message: reason, code: 'INVALID_DEEP_OFFER' };
-          failures.push({ offerId: card.offerId, code: 'INVALID_DEEP_OFFER', message: reason, attempts: 1 });
-        }
-      } catch (e) {
-        const err = e as Error & { code?: string };
-        baseCards[i] = { ...card, status: 'deep-failed' as const, message: err.message || '采集失败', code: err.code || 'UNKNOWN_ERROR' };
-        failures.push({ offerId: card.offerId, code: err.code || 'UNKNOWN_ERROR', message: err.message || '采集失败', attempts: 1 });
-      }
-      setLiveCards([...baseCards]);
-    }
-
-    // Build synthetic record for history/JSON mode
+    // Build base synthetic record — deep collect delegated to ResultRenderer / unified queue
     const synthetic: CommandRecord = {
-      runId: 'desktop-deeppro-' + Date.now(),
+      runId: 'desktop-deeppro-base-' + Date.now(),
       commandId: 'search',
       resultType: 'products',
       status: 'success',
@@ -252,12 +203,13 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         offers: baseOffers,
         deeppro: {
           enabled: true,
-          total: max,
-          success: deepOffers.length,
-          failed: failures.length,
+          mode: 'queued-in-renderer',
+          total: baseOffers.length,
+          success: 0,
+          failed: 0,
           offerIds: baseCards.filter((c) => c.offerId).map((c) => c.offerId),
-          offers: deepOffers,
-          failures,
+          offers: [],
+          failures: [],
         },
       },
       stderrText: liveLogs.join('\n'),
@@ -268,7 +220,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     setLiveMode(false);
     setRunning(false);
     setPlaceholderCount(0);
-    setAlert({ text: `DEEPPRO 完成：${deepOffers.length}/${max} 成功` + (failures.length > 0 ? `，${failures.length} 失败` : ''), kind: 'success' });
+    setAlert({ text: `基础搜索完成，共 ${baseOffers.length} 个商品，已加入深度采集队列`, kind: 'info' });
     onHistoryRefresh();
   };
 
@@ -489,9 +441,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               {command.id === 'search' && (
                 <button
                   type="button"
-                  className="glass-toggle-chip planned"
-                  disabled
-                  title="预留功能：遇到验证码时自动打开浏览器手动过验证"
+                  className={`glass-toggle-chip ${options.captchaRetryHeaded ? 'active' : ''}`}
+                  disabled={!options.deeppro}
+                  title={options.deeppro ? '第一次无头采集遇到验证码/风控时，第二次自动打开浏览器供人工处理' : '请先勾选"采集商品详情"'}
+                  onClick={() => setOptions({ ...options, captchaRetryHeaded: !options.captchaRetryHeaded })}
                 >
                   验证码自动开浏览器
                 </button>
@@ -566,6 +519,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               running={true}
               activeProfile={activeProfile}
               manualDeepCollectHeaded={!!options.headed}
+              captchaRetryHeaded={!!options.captchaRetryHeaded}
               onDeepTasksChange={onDeepTasksChange}
             />
           </>
@@ -579,6 +533,8 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               running={false}
               activeProfile={activeProfile}
               manualDeepCollectHeaded={!!options.headed}
+              captchaRetryHeaded={!!options.captchaRetryHeaded}
+              autoDeepCollectOnMount={Boolean(lastRecord && lastRecord.runId?.startsWith('desktop-deeppro-base-'))}
               onDeepTasksChange={onDeepTasksChange}
             />
           </>

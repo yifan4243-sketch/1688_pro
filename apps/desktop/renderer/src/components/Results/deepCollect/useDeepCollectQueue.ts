@@ -17,6 +17,7 @@ type UseDeepCollectQueueArgs = {
   api: DesktopApi;
   activeProfile?: string;
   manualDeepCollectHeaded?: boolean;
+  captchaRetryHeaded?: boolean;
   onDeepTasksChange?: DeepTasksChangeHandler;
 
   cardOverrides: Record<string, Partial<ProgressOfferCardItem>>;
@@ -113,6 +114,18 @@ function classifyInvalidDeepOffer(deep: Record<string, unknown>): { code: string
   return null;
 }
 
+function isCaptchaLikeFailure(failure: Record<string, unknown> | undefined): boolean {
+  if (!failure) return false;
+
+  const code = String(failure.code || failure.errorCode || '').trim();
+  const message = String(failure.message || failure.error || failure.errorMessage || '').trim();
+  const rawTitle = String(failure.rawTitle || '').trim();
+
+  const joined = `${code} ${message} ${rawTitle}`;
+
+  return /CAPTCHA|VERIFY|RISK|PUNISH|SLIDER|验证码|滑块|风控|安全验证|访问受限|拦截/i.test(joined);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -121,6 +134,7 @@ export function useDeepCollectQueue({
   api,
   activeProfile,
   manualDeepCollectHeaded = false,
+  captchaRetryHeaded = false,
   onDeepTasksChange,
   cardOverrides,
   setCardOverrides,
@@ -225,12 +239,14 @@ export function useDeepCollectQueue({
     entry: DeepQueueEntry,
     profile: string,
     attempt: number,
+    forcedHeaded = false,
   ): Promise<{
     okEntry?: { entry: DeepQueueEntry; data: Record<string, unknown> };
     failedEntry?: { entry: DeepQueueEntry; failure: Record<string, unknown> };
   }> {
     const offerId = String(entry.item.offerId || '');
-    const modeLabel = manualDeepCollectHeaded ? '可视化' : '无头';
+    const effectiveHeaded = manualDeepCollectHeaded || forcedHeaded;
+    const modeLabel = effectiveHeaded ? '可视化' : '无头';
 
     setCardOverrides((prev) => ({
       ...prev,
@@ -251,8 +267,8 @@ export function useDeepCollectQueue({
     deepCollectLog('runOfferProOnce call CLI', {
       profile,
       attempt,
-      headed: manualDeepCollectHeaded,
-      mode: manualDeepCollectHeaded ? 'headed' : 'headless',
+      headed: effectiveHeaded,
+      mode: effectiveHeaded ? 'headed' : 'headless',
       offerId,
     });
 
@@ -263,7 +279,7 @@ export function useDeepCollectQueue({
       },
       options: {
         pro: true,
-        headed: manualDeepCollectHeaded,
+        headed: effectiveHeaded,
       },
       profile,
       confirmed: true,
@@ -480,7 +496,11 @@ export function useDeepCollectQueue({
         return;
       }
 
-      const retryMessage = `${profile} 第一次失败，重新进行第二次测试`;
+      const secondAttemptHeaded = captchaRetryHeaded && isCaptchaLikeFailure(firstFailure.failure);
+
+      const retryMessage = secondAttemptHeaded
+        ? `${profile} 第一次疑似验证码/风控失败，第二次打开浏览器等待人工处理`
+        : `${profile} 第一次失败，重新进行第二次测试`;
 
       upsertDeepTask(entry.key, {
         status: 'collecting',
@@ -501,7 +521,7 @@ export function useDeepCollectQueue({
       let secondResult: Awaited<ReturnType<typeof runOfferProOnce>>;
 
       try {
-        secondResult = await runOfferProOnce(entry, profile, 2);
+        secondResult = await runOfferProOnce(entry, profile, 2, secondAttemptHeaded);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error || '深度采集二次测试失败');
 
@@ -526,7 +546,7 @@ export function useDeepCollectQueue({
       const nextProfile = profiles[profileIndex + 1];
 
       if (nextProfile) {
-        const switchMessage = `${profile} 二次测试失败，切换到 ${nextProfile}`;
+        const switchMessage = `${profile} 第二次仍失败，切换账号 ${nextProfile} 继续采集`;
 
         setCardOverrides((prev) => ({
           ...prev,

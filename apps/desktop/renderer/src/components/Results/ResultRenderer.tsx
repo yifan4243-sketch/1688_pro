@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { getApi, CommandRecord } from '../../services/api';
 import { shouldDefaultCard } from '../../services/offer-adapter';
 import ProgressOfferCard, { toProgressCards, ProgressOfferCardItem } from './ProgressOfferCard';
@@ -15,6 +15,8 @@ interface Props {
   running?: boolean;
   activeProfile?: string;
   manualDeepCollectHeaded?: boolean;
+  captchaRetryHeaded?: boolean;
+  autoDeepCollectOnMount?: boolean;
   onDeepTasksChange?: (tasks: DeepCollectTask[]) => void;
 }
 
@@ -123,7 +125,7 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, onDeepTasksChange }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
@@ -134,6 +136,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   const [cardOverrides, setCardOverrides] = useState<Record<string, Partial<ProgressOfferCardItem>>>({});
   const [deepJsonByOfferId, setDeepJsonByOfferId] = useState<Record<string, Record<string, unknown>>>({});
   const [deepFailuresByOfferId, setDeepFailuresByOfferId] = useState<Record<string, Record<string, unknown>>>({});
+  const autoDeepCollectRunRef = useRef<string | null>(null);
 
   const baseData = record?.stdoutJson as Record<string, unknown> | undefined;
 
@@ -196,6 +199,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     api,
     activeProfile,
     manualDeepCollectHeaded,
+    captchaRetryHeaded,
     onDeepTasksChange,
     cardOverrides,
     setCardOverrides,
@@ -229,6 +233,20 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     setDeepFailuresByOfferId({});
     resetDeepCollectQueue();
   }, [record?.runId]);
+
+  useEffect(() => {
+    if (!autoDeepCollectOnMount) return;
+    if (!record?.runId) return;
+    if (autoDeepCollectRunRef.current === record.runId) return;
+
+    const autoCards = visibleCards.filter((card) => Boolean(card.offerId));
+
+    if (autoCards.length === 0) return;
+
+    autoDeepCollectRunRef.current = record.runId;
+    enqueueMultipleDeepCollect(autoCards);
+  }, [autoDeepCollectOnMount, record?.runId, visibleCards, enqueueMultipleDeepCollect]);
+
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;
   const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];
 

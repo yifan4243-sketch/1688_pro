@@ -185,6 +185,7 @@ export default function App() {
                             </span>
                             <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                           </div>
+                          {task.message && <div className="deep-task-message">{task.message}</div>}
                         </div>
                       </div>
                     ))}

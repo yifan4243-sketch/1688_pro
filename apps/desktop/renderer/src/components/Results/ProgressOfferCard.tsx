@@ -207,8 +207,8 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
                 </svg>
               )}
               <p className="overlay-title">{overlayLabel[item.status] || item.status}</p>
-              {isFailed && item.message ? (
-                <p className="overlay-detail">{failureReasonZh(item.code || '', item.message)}</p>
+              {item.message ? (
+                <p className="overlay-detail">{isFailed ? failureReasonZh(item.code || '', item.message) : item.message}</p>
               ) : (
                 <p className="overlay-detail">{overlayDetail[item.status] || ''}</p>
               )}
