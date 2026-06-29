@@ -17,6 +17,20 @@ interface Props {
   onOzonTasksChange?: (tasks: OzonListingTask[]) => void;
 }
 
+interface CommandUiSnapshot {
+  args: Record<string, string>;
+  options: Record<string, unknown>;
+  lastRecord: CommandRecord | null;
+  fieldErrors: Record<string, string>;
+  alert: { text: string; kind: string } | null;
+  placeholderCount: number;
+  showAdvanced: boolean;
+  pastedImageFile: File | null;
+  pastedImagePreviewUrl: string | null;
+  pastedImageName: string | null;
+  pastedImageSize: number | null;
+}
+
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange, onOzonTasksChange }: Props) {
   const [activeCmdId, setActiveCmdId] = useState('search');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -40,6 +54,8 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [pastedImagePreviewUrl, setPastedImagePreviewUrl] = useState<string | null>(null);
   const [pastedImageName, setPastedImageName] = useState<string | null>(null);
   const [pastedImageSize, setPastedImageSize] = useState<number | null>(null);
+
+  const [commandSnapshots, setCommandSnapshots] = useState<Record<string, CommandUiSnapshot>>({});
 
   const clearPastedImage = () => {
     if (pastedImagePreviewUrl) URL.revokeObjectURL(pastedImagePreviewUrl);
@@ -124,27 +140,71 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     return `当前任务：使用「${alias}」账号执行「${command?.label || activeCmdId}」。`;
   }, [activeCmdId, args, alias, command]);
 
+  const defaultOptionsForCommand = (cmd?: CommandDef): Record<string, unknown> => {
+    const defs: Record<string, unknown> = {};
+    if (!cmd) return defs;
+    for (const o of cmd.options) {
+      if (o.type === 'boolean' && o.default) defs[o.name] = true;
+      else if (o.default !== undefined && o.default !== '') defs[o.name] = o.default;
+    }
+    return defs;
+  };
+
+  const currentSnapshot = (): CommandUiSnapshot => ({
+    args,
+    options,
+    lastRecord,
+    fieldErrors,
+    alert,
+    placeholderCount,
+    showAdvanced,
+    pastedImageFile,
+    pastedImagePreviewUrl,
+    pastedImageName,
+    pastedImageSize,
+  });
+
   const selectCommand = (id: string) => {
     if (id === activeCmdId) return;
 
+    const targetSnapshot = commandSnapshots[id];
+    const targetCommand = registry.commands[id];
+
+    // Save current tab state before switching
+    setCommandSnapshots((prev) => ({
+      ...prev,
+      [activeCmdId]: currentSnapshot(),
+    }));
+
     setActiveCmdId(id);
+    setRunning(false);
+
+    if (targetSnapshot) {
+      setArgs(targetSnapshot.args);
+      setOptions(targetSnapshot.options);
+      setLastRecord(targetSnapshot.lastRecord);
+      setFieldErrors(targetSnapshot.fieldErrors);
+      setAlert(targetSnapshot.alert);
+      setPlaceholderCount(targetSnapshot.placeholderCount);
+      setShowAdvanced(targetSnapshot.showAdvanced);
+      setPastedImageFile(targetSnapshot.pastedImageFile);
+      setPastedImagePreviewUrl(targetSnapshot.pastedImagePreviewUrl);
+      setPastedImageName(targetSnapshot.pastedImageName);
+      setPastedImageSize(targetSnapshot.pastedImageSize);
+      return;
+    }
+
     setArgs({});
-    setOptions({});
+    setOptions(defaultOptionsForCommand(targetCommand));
     setLastRecord(null);
     setAlert(null);
     setFieldErrors({});
     setPlaceholderCount(0);
-    clearPastedImage();
-    // Set defaults for non-boolean options
-    const cmd = registry.commands[id];
-    if (cmd) {
-      const defs: Record<string, unknown> = {};
-      for (const o of cmd.options) {
-        if (o.type === 'boolean' && o.default) defs[o.name] = true;
-        else if (o.default !== undefined && o.default !== '') defs[o.name] = o.default;
-      }
-      setOptions(defs);
-    }
+    setShowAdvanced(false);
+    setPastedImageFile(null);
+    setPastedImagePreviewUrl(null);
+    setPastedImageName(null);
+    setPastedImageSize(null);
   };
 
   const collectPayload = (confirmed = false): CommandPayload => ({
