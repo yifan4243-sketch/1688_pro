@@ -92,6 +92,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const activeAccount = accounts.accounts.find((a) => a.profile === activeProfile);
   const alias = activeAccount?.alias || activeProfile;
   const hasEmbeddedRunButton = command?.positional.some((f) => f.name === 'keyword') ?? false;
+  const isImageSearchCommand = activeCmdId === 'imageSearch';
 
   const previewArgv = useMemo(() => {
     if (!command) return '';
@@ -161,7 +162,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       if (!f.required) continue;
 
       // clipboard mode: pasted image satisfies the imagePath requirement
-      if (activeCmdId === 'image-search' && f.name === 'imagePath' && pastedImageFile) {
+      if (isImageSearchCommand && f.name === 'imagePath' && pastedImageFile) {
         continue;
       }
 
@@ -323,7 +324,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     let payload = collectPayload(confirmed);
 
     // Clipboard mode: upload pasted image to temp file before running CLI
-    if (activeCmdId === 'image-search' && pastedImageFile) {
+    if (isImageSearchCommand && pastedImageFile) {
       try {
         setAlert({ text: '正在上传图片...', kind: 'info' });
         const buf = await pastedImageFile.arrayBuffer();
@@ -480,7 +481,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                         />
                         {hasErr && <p className="field-error-text">{fieldErrors[f.name]}</p>}
                       </>
-                    ) : activeCmdId === 'image-search' ? (
+                    ) : isImageSearchCommand ? (
                       /* Image-search: supports clipboard paste + URL input */
                       <>
                         <div
