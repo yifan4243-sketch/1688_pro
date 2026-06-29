@@ -234,18 +234,28 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     resetDeepCollectQueue();
   }, [record?.runId]);
 
+  const shouldAutoDeepCollect =
+    autoDeepCollectOnMount ||
+    Boolean((baseData?.deeppro as Record<string, unknown> | undefined)?.mode === 'queued-in-renderer');
+
   useEffect(() => {
-    if (!autoDeepCollectOnMount) return;
+    if (!shouldAutoDeepCollect) return;
     if (!record?.runId) return;
     if (autoDeepCollectRunRef.current === record.runId) return;
 
-    const autoCards = visibleCards.filter((card) => Boolean(card.offerId));
+    const timer = window.setTimeout(() => {
+      const autoCards = visibleCards.filter((card) => Boolean(card.offerId));
 
-    if (autoCards.length === 0) return;
+      if (autoCards.length === 0) return;
+      if (autoDeepCollectRunRef.current === record.runId) return;
 
-    autoDeepCollectRunRef.current = record.runId;
-    enqueueMultipleDeepCollect(autoCards);
-  }, [autoDeepCollectOnMount, record?.runId, visibleCards, enqueueMultipleDeepCollect]);
+      autoDeepCollectRunRef.current = record.runId;
+      showToast(`已自动加入 ${autoCards.length} 个商品到深采队列`, 1600);
+      enqueueMultipleDeepCollect(autoCards);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [shouldAutoDeepCollect, record?.runId, visibleCards, enqueueMultipleDeepCollect, showToast]);
 
   const deeppro = data?.deeppro as Record<string, unknown> | undefined;
   const deepproFailures = (deeppro?.failures as Array<Record<string, unknown>>) || [];

@@ -146,6 +146,7 @@ export function useDeepCollectQueue({
   const deepRunningRef = useRef(false);
   const deepQueueStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deepTaskMapRef = useRef<Record<string, DeepCollectTask>>({});
+  const runSessionIdRef = useRef<string>(`deep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   const MAX_ATTEMPTS_PER_PROFILE = 2;
 
@@ -161,6 +162,7 @@ export function useDeepCollectQueue({
 
     deepTaskMapRef.current[key] = {
       key,
+      sidebarKey: prev?.sidebarKey || `${runSessionIdRef.current}::${key}`,
       offerId: patch.offerId ?? prev?.offerId,
       title: patch.title ?? prev?.title,
       image: patch.image ?? prev?.image,
@@ -744,7 +746,7 @@ export function useDeepCollectQueue({
     deepQueueRef.current = [];
     deepRunningRef.current = false;
     deepTaskMapRef.current = {};
-    onDeepTasksChange?.([]);
+    runSessionIdRef.current = `deep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   return {

@@ -18,6 +18,7 @@ type DeepCollectSidebarTaskStatus = 'queued' | 'collecting' | 'success' | 'faile
 
 interface DeepCollectSidebarTask {
   key: string;
+  sidebarKey?: string;
   offerId?: string;
   title?: string;
   image?: string;
@@ -52,6 +53,30 @@ export default function App() {
     const failed = deepTasks.filter((t) => t.status === 'failed').length;
     return { all: deepTasks.length, queued, success, failed };
   }, [deepTasks]);
+
+  const handleDeepTasksChange = (tasks: DeepCollectSidebarTask[]) => {
+    if (!tasks.length) return;
+
+    setDeepTasks((prev) => {
+      const map = new Map<string, DeepCollectSidebarTask>();
+
+      for (const task of prev) {
+        const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
+        map.set(id, task);
+      }
+
+      for (const task of tasks) {
+        const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
+        map.set(id, task);
+      }
+
+      return Array.from(map.values()).sort((a, b) => {
+        const at = new Date(a.createdAt).getTime();
+        const bt = new Date(b.createdAt).getTime();
+        return bt - at;
+      });
+    });
+  };
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
   const [ozonSettingsOpen, setOzonSettingsOpen] = useState<'ai' | 'store' | null>(null);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
@@ -171,7 +196,7 @@ export default function App() {
                 ) : (
                   <div className="deep-task-list custom-scrollbar">
                     {filtered.map((task) => (
-                      <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
+                      <div key={task.sidebarKey || `${task.key}-${task.createdAt}`} className={`deep-task-item ${task.status}`} title={task.message || ''}>
                         {task.image ? (
                           <img className="deep-task-thumb" src={task.image} alt="" />
                         ) : (
@@ -221,7 +246,7 @@ export default function App() {
                 activeProfile={activeProfile}
                 accounts={accounts}
                 onHistoryRefresh={refreshRecentTasks}
-                onDeepTasksChange={setDeepTasks}
+                onDeepTasksChange={handleDeepTasksChange}
               />
             </ErrorBoundary>
           ) : (

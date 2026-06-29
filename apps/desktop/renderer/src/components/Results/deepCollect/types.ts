@@ -4,6 +4,7 @@ export type DeepCollectTaskStatus = 'queued' | 'collecting' | 'success' | 'faile
 
 export type DeepCollectTask = {
   key: string;
+  sidebarKey?: string;
   offerId?: string;
   title?: string;
   image?: string;
