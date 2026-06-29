@@ -164,15 +164,13 @@ export default function App() {
               if (deepTaskFilter === 'failed') return t.status === 'failed';
               return true;
             });
-            const visible = filtered.slice(0, 8);
-            const hidden = Math.max(0, filtered.length - visible.length);
             return (
               <>
-                {visible.length === 0 ? (
+                {filtered.length === 0 ? (
                   <div className="deep-task-empty">暂无任务</div>
                 ) : (
-                  <div className="deep-task-list">
-                    {visible.map((task) => (
+                  <div className="deep-task-list custom-scrollbar">
+                    {filtered.map((task) => (
                       <div key={task.key} className={`deep-task-item ${task.status}`} title={task.message || ''}>
                         {task.image ? (
                           <img className="deep-task-thumb" src={task.image} alt="" />
@@ -192,7 +190,6 @@ export default function App() {
                     ))}
                   </div>
                 )}
-                {hidden > 0 && <div className="deep-task-more">还有 {hidden} 个任务</div>}
               </>
             );
           })()}

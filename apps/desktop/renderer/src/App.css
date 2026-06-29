@@ -415,7 +415,7 @@ body {
 }
 
 /* ── Deep task sidebar ── */
-.deep-task-sidebar { width: 100%; margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.deep-task-sidebar { width: 100%; margin-top: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; overflow: hidden; }
 .deep-task-sidebar-head {
   display: flex; align-items: center; justify-content: flex-start; gap: 6px;
   width: 100%; padding: 0 4px; color: #0f172a; font-size: 12px;
@@ -429,7 +429,15 @@ body {
   color: #94a3b8; font-size: 12px;
   background: rgba(255,255,255,0.46); border: 1px solid rgba(255,255,255,0.58);
 }
-.deep-task-list { display: flex; flex-direction: column; gap: 8px; }
+.deep-task-list {
+  display: flex; flex-direction: column; gap: 8px;
+  min-height: 0; max-height: calc(100vh - 220px);
+  overflow-y: auto; padding-right: 3px; padding-bottom: 8px;
+}
+.deep-task-list::-webkit-scrollbar { width: 6px; }
+.deep-task-list::-webkit-scrollbar-track { background: transparent; }
+.deep-task-list::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.28); border-radius: 999px; }
+.deep-task-list::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.44); }
 .deep-task-item {
   display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 8px; align-items: center;
   min-height: 52px; padding: 7px; border-radius: 16px;

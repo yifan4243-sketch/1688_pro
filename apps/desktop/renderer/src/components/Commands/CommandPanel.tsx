@@ -70,6 +70,8 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   }, [activeCmdId, args, alias, command]);
 
   const selectCommand = (id: string) => {
+    if (id === activeCmdId) return;
+
     setActiveCmdId(id);
     setArgs({});
     setOptions({});

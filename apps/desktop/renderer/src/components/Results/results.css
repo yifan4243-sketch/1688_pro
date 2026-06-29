@@ -865,3 +865,18 @@
   .offer-card { flex-direction: column; }
   .offer-media-panel { width: 100%; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.04); }
 }
+
+.progress-card-deep-badge {
+  position: absolute; left: 8px; bottom: 8px; z-index: 4;
+  height: 22px; padding: 0 8px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; line-height: 1;
+  border: 1px solid rgba(255,255,255,0.72);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 20px rgba(15,23,42,0.12);
+}
+.progress-card-deep-badge.basic { color: #64748b; background: rgba(248,250,252,0.82); }
+.progress-card-deep-badge.queued { color: #2563eb; background: rgba(219,234,254,0.86); }
+.progress-card-deep-badge.collecting { color: #1d4ed8; background: rgba(219,234,254,0.92); }
+.progress-card-deep-badge.success { color: #16a34a; background: rgba(220,252,231,0.92); }
+.progress-card-deep-badge.failed { color: #dc2626; background: rgba(254,226,226,0.92); }

@@ -142,6 +142,15 @@ function failureReasonZh(code: string, fallback?: string): string {
 
 export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonPlaceholder, selected, onSelectToggle }: Props) {
   const showImage = Boolean(item.image);
+  const deepBadge = (() => {
+    if (item.status === 'deep-success') return { text: '已深采', kind: 'success' };
+    if (item.status === 'deep-failed' || item.status === 'failed') return { text: '深采失败', kind: 'failed' };
+    if (item.status === 'deep-queued') return { text: '排队中', kind: 'queued' };
+    if (item.status === 'deep-collecting' || item.status === 'collecting') return { text: '深采中', kind: 'collecting' };
+    if (item.status === 'basic-ready') return { text: '未深采', kind: 'basic' };
+    return null;
+  })();
+
   const hasOverlay =
     item.status === 'collecting' ||
     item.status === 'deep-queued' ||
