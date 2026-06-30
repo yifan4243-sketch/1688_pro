@@ -11,7 +11,7 @@ import OzonProductPage from './components/Ozon/OzonProductPage';
 import AccountSettingsModal from './components/Account/AccountSettingsModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import { formatOzonTaskDisplayMessage } from './components/Ozon/ozonError';
-import type { OzonListingTask, OzonListingTaskPatch, OzonListingTaskStatus } from './components/Results/ozonListing/types';
+import type { OzonListingTask, OzonListingTaskStatus } from './components/Results/ozonListing/types';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -152,13 +152,6 @@ export default function App() {
         return bt - at;
       });
     });
-  };
-
-  const handleOzonTaskUpdate = (key: string, patch: OzonListingTaskPatch) => {
-    setOzonTasks((prev) => prev.map((task) => {
-      const matches = task.key === key || task.sidebarKey === key;
-      return matches ? { ...task, ...patch, updatedAt: patch.updatedAt || new Date().toISOString() } : task;
-    }));
   };
 
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
@@ -430,7 +423,6 @@ export default function App() {
             <OzonProductPage
               tasks={ozonTasks}
               onBackTo1688={() => setWorkspaceView('1688')}
-              onTaskUpdate={handleOzonTaskUpdate}
             />
           </section>
         </div>
