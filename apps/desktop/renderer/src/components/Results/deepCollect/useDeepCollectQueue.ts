@@ -5,6 +5,7 @@ import type { ProgressOfferCardItem } from '../ProgressOfferCard';
 import { deepCollectLog } from './debug';
 import { formatCommandError } from '../errorFormatter';
 import type {
+  DeepCollectDataPatch,
   DeepCollectTask,
   DeepCollectTaskPatch,
   DeepQueueEntry,
@@ -20,6 +21,7 @@ type UseDeepCollectQueueArgs = {
   manualDeepCollectHeaded?: boolean;
   captchaRetryHeaded?: boolean;
   onDeepTasksChange?: DeepTasksChangeHandler;
+  onDeepCollectDataPatch?: (patch: DeepCollectDataPatch) => void;
 
   cardOverrides: Record<string, Partial<ProgressOfferCardItem>>;
   setCardOverrides: Dispatch<SetStateAction<Record<string, Partial<ProgressOfferCardItem>>>>;
@@ -29,6 +31,10 @@ type UseDeepCollectQueueArgs = {
 
   showToast: (message: string, timeout?: number) => void;
 };
+
+function objectOf(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
 
 function offerIdFromDeep(raw: Record<string, unknown>): string {
   return String(raw.offerId || raw.offer_id || raw.id || '');
@@ -137,6 +143,7 @@ export function useDeepCollectQueue({
   manualDeepCollectHeaded = false,
   captchaRetryHeaded = false,
   onDeepTasksChange,
+  onDeepCollectDataPatch,
   cardOverrides,
   setCardOverrides,
   setDeepJsonByOfferId,
@@ -186,13 +193,17 @@ export function useDeepCollectQueue({
   ): void {
     if (!offerId) return;
 
+    const existingMeta = objectOf(deep._deepCollectMeta) || {};
+    const collectedAt = String(existingMeta.collectedAt || meta.collectedAt || new Date().toISOString());
+
     setDeepJsonByOfferId((prev) => ({
       ...prev,
       [offerId]: {
         ...deep,
         _deepCollectMeta: {
+          ...existingMeta,
           ...meta,
-          collectedAt: new Date().toISOString(),
+          collectedAt,
         },
       },
     }));
@@ -376,6 +387,17 @@ export function useDeepCollectQueue({
     const title = String(deep.title || item.title || '');
     const image = String(deep.mainImage || images[0] || item.image || '');
     const price = String(deep.priceRange || deep.priceText || item.price || '');
+    const collectedAt = new Date().toISOString();
+    const deepWithMeta = {
+      ...deep,
+      _deepCollectMeta: {
+        ...(objectOf(deep._deepCollectMeta) || {}),
+        status: 'success',
+        profile,
+        attempt,
+        collectedAt,
+      },
+    };
 
     setCardOverrides((prev) => ({
       ...prev,
@@ -400,11 +422,19 @@ export function useDeepCollectQueue({
       finishedAt: new Date().toISOString(),
     });
 
-    upsertDeepJson(item.offerId, deep, {
+    upsertDeepJson(item.offerId, deepWithMeta, {
       status: 'success',
       profile,
       attempt,
+      collectedAt,
     });
+
+    if (item.offerId) {
+      onDeepCollectDataPatch?.({
+        offerId: item.offerId,
+        deep: deepWithMeta,
+      });
+    }
   }
 
   function applyDeepFailed(
@@ -416,6 +446,24 @@ export function useDeepCollectQueue({
     const { key, item } = entry;
     const message = String(failure.message || failure.error || failure.code || '深度采集失败');
     const code = String(failure.code || 'DEEP_COLLECT_FAILED');
+    const failedAt = new Date().toISOString();
+    const previousAttempts = Array.isArray(failure.attempts) ? failure.attempts : [];
+    const failurePatch = {
+      ...failure,
+      offerId: item.offerId,
+      code,
+      message,
+      failedAt,
+      attempts: [
+        ...previousAttempts,
+        {
+          profile,
+          attempt,
+          code,
+          message,
+        },
+      ],
+    };
 
     setCardOverrides((prev) => ({
       ...prev,
@@ -437,20 +485,14 @@ export function useDeepCollectQueue({
       finishedAt: new Date().toISOString(),
     });
 
-    upsertDeepFailure(item.offerId, {
-      offerId: item.offerId,
-      code,
-      message,
-      failedAt: new Date().toISOString(),
-      attempts: [
-        {
-          profile,
-          attempt,
-          code,
-          message,
-        },
-      ],
-    });
+    upsertDeepFailure(item.offerId, failurePatch);
+
+    if (item.offerId) {
+      onDeepCollectDataPatch?.({
+        offerId: item.offerId,
+        failure: failurePatch,
+      });
+    }
   }
 
   async function runDeepCollectEntryWithFallback(entry: DeepQueueEntry): Promise<void> {

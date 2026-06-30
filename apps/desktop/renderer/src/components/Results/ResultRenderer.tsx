@@ -6,7 +6,7 @@ import OfferDetailModal from './OfferDetailModal';
 import ProgressSummary from './ProgressSummary';
 import { mergeDeepCollectData } from './deepCollect/jsonMerge';
 import { useDeepCollectQueue } from './deepCollect/useDeepCollectQueue';
-import type { DeepCollectTask } from './deepCollect/types';
+import type { DeepCollectDataPatch, DeepCollectTask } from './deepCollect/types';
 import { useOzonListingQueue } from './ozonListing/useOzonListingQueue';
 import type { OzonListingTask } from './ozonListing/types';
 import CommandErrorView from './CommandErrorView';
@@ -27,6 +27,7 @@ interface Props {
   autoDeepCollectOnMount?: boolean;
   onDeepTasksChange?: (tasks: DeepCollectTask[]) => void;
   onOzonTasksChange?: (tasks: OzonListingTask[]) => void;
+  onDeepCollectDataPatch?: (patch: DeepCollectDataPatch) => void;
 }
 
 type ViewMode = 'card' | 'json';
@@ -134,7 +135,7 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange, onOzonTasksChange }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange, onOzonTasksChange, onDeepCollectDataPatch }: Props) {
   const api = getApi();
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
@@ -210,6 +211,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     manualDeepCollectHeaded,
     captchaRetryHeaded,
     onDeepTasksChange,
+    onDeepCollectDataPatch,
     cardOverrides,
     setCardOverrides,
     setDeepJsonByOfferId,

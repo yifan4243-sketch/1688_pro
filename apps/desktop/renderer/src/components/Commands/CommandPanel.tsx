@@ -3,7 +3,7 @@ import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, Acc
 import ResultRenderer from '../Results/ResultRenderer';
 import LiveCollectionRenderer from '../Results/LiveCollectionRenderer';
 import { ProgressOfferCardItem } from '../Results/ProgressOfferCard';
-import type { DeepCollectTask } from '../Results/deepCollect/types';
+import type { DeepCollectDataPatch, DeepCollectTask } from '../Results/deepCollect/types';
 import type { OzonListingTask } from '../Results/ozonListing/types';
 import GlassSelect from '../Controls/GlassSelect';
 import '../../components/Results/results.css';
@@ -29,6 +29,118 @@ interface CommandUiSnapshot {
   pastedImagePreviewUrl: string | null;
   pastedImageName: string | null;
   pastedImageSize: number | null;
+}
+
+function objectOf(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function offerIdOf(raw: Record<string, unknown>): string {
+  return String(raw.offerId || raw.offer_id || raw.id || '');
+}
+
+function asObjectArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.map(objectOf).filter(Boolean) as Array<Record<string, unknown>> : [];
+}
+
+function upsertByOfferId(
+  list: Array<Record<string, unknown>>,
+  item: Record<string, unknown>,
+  fallbackOfferId: string,
+): Array<Record<string, unknown>> {
+  const itemOfferId = offerIdOf(item) || fallbackOfferId;
+  const next = list.filter((entry) => offerIdOf(entry) !== itemOfferId);
+  next.push({ ...item, offerId: itemOfferId });
+  return next;
+}
+
+function removeByOfferId(
+  list: Array<Record<string, unknown>>,
+  offerId: string,
+): Array<Record<string, unknown>> {
+  return list.filter((entry) => offerIdOf(entry) !== offerId);
+}
+
+function applyDeepCollectDataPatchToRecord(
+  record: CommandRecord | null,
+  patch: DeepCollectDataPatch,
+): CommandRecord | null {
+  if (!record?.stdoutJson || !patch.offerId) return record;
+
+  const base = objectOf(record.stdoutJson);
+  if (!base) return record;
+  if (!Array.isArray(base.offers)) return record;
+
+  const offers = asObjectArray(base.offers);
+  const existingDeeppro = objectOf(base.deeppro) || {};
+  const currentDeepOffers = asObjectArray(existingDeeppro.offers);
+  const currentFailures = asObjectArray(existingDeeppro.failures);
+
+  let nextDeepOffers = currentDeepOffers;
+  let nextFailures = currentFailures;
+
+  if (patch.deep) {
+    nextDeepOffers = upsertByOfferId(currentDeepOffers, {
+      ...patch.deep,
+      offerId: patch.offerId,
+    }, patch.offerId);
+    nextFailures = removeByOfferId(currentFailures, patch.offerId);
+  }
+
+  if (patch.failure) {
+    nextFailures = upsertByOfferId(currentFailures, {
+      ...patch.failure,
+      offerId: patch.offerId,
+    }, patch.offerId);
+    nextDeepOffers = removeByOfferId(currentDeepOffers, patch.offerId);
+  }
+
+  const nextOffers = offers.map((offer) => {
+    if (offerIdOf(offer) !== patch.offerId) return offer;
+
+    if (patch.deep) {
+      const images = Array.isArray(patch.deep.images) ? patch.deep.images as string[] : [];
+      return {
+        ...offer,
+        title: patch.deep.title || offer.title,
+        image: patch.deep.mainImage || images[0] || offer.image,
+        priceRange: patch.deep.priceRange || offer.priceRange,
+        priceText: patch.deep.priceText || offer.priceText,
+        deepCollected: true,
+        deepCollectStatus: 'success',
+        deepOffer: patch.deep,
+        deepCollectMeta: patch.deep._deepCollectMeta,
+      };
+    }
+
+    if (patch.failure) {
+      return {
+        ...offer,
+        deepCollected: false,
+        deepCollectStatus: 'failed',
+        deepCollectFailure: patch.failure,
+      };
+    }
+
+    return offer;
+  });
+
+  return {
+    ...record,
+    stdoutJson: {
+      ...base,
+      offers: nextOffers,
+      deeppro: {
+        ...existingDeeppro,
+        enabled: true,
+        mode: existingDeeppro.mode || 'manual-per-card',
+        success: nextDeepOffers.length,
+        failed: nextFailures.length,
+        offers: nextDeepOffers,
+        failures: nextFailures,
+      },
+    },
+  };
 }
 
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange, onOzonTasksChange }: Props) {
@@ -163,6 +275,38 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     pastedImageName,
     pastedImageSize,
   });
+
+  const handleDeepCollectDataPatch = (
+    patch: DeepCollectDataPatch,
+    targetCommandId = activeCmdId,
+    targetRunId?: string,
+  ) => {
+    setLastRecord((prev) => {
+      if (!prev) return prev;
+      const isTargetRecord = targetRunId
+        ? prev.runId === targetRunId
+        : prev.commandId === targetCommandId;
+
+      return isTargetRecord ? applyDeepCollectDataPatchToRecord(prev, patch) : prev;
+    });
+
+    setCommandSnapshots((snapshots) => {
+      const existing = snapshots[targetCommandId];
+      if (!existing?.lastRecord) return snapshots;
+      if (targetRunId && existing.lastRecord.runId !== targetRunId) return snapshots;
+
+      const nextLastRecord = applyDeepCollectDataPatchToRecord(existing.lastRecord, patch);
+      if (nextLastRecord === existing.lastRecord) return snapshots;
+
+      return {
+        ...snapshots,
+        [targetCommandId]: {
+          ...existing,
+          lastRecord: nextLastRecord,
+        },
+      };
+    });
+  };
 
   const selectCommand = (id: string) => {
     if (id === activeCmdId) return;
@@ -740,6 +884,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               captchaRetryHeaded={!!options.captchaRetryHeaded}
               onDeepTasksChange={onDeepTasksChange}
               onOzonTasksChange={onOzonTasksChange}
+              onDeepCollectDataPatch={(patch) => handleDeepCollectDataPatch(patch, activeCmdId)}
             />
           </>
         ) : visibleRecord ? (
@@ -756,6 +901,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               autoDeepCollectOnMount={Boolean(visibleRecord && visibleRecord.runId?.startsWith('desktop-deeppro-base-'))}
               onDeepTasksChange={onDeepTasksChange}
               onOzonTasksChange={onOzonTasksChange}
+              onDeepCollectDataPatch={(patch) => handleDeepCollectDataPatch(patch, visibleRecord.commandId, visibleRecord.runId)}
             />
           </>
         ) : (

@@ -35,3 +35,9 @@ export type OfferBatchJson = {
 };
 
 export type DeepTasksChangeHandler = (tasks: DeepCollectTask[]) => void;
+
+export type DeepCollectDataPatch = {
+  offerId: string;
+  deep?: Record<string, unknown>;
+  failure?: Record<string, unknown>;
+};
