@@ -11,7 +11,7 @@ import OzonProductPage from './components/Ozon/OzonProductPage';
 import AccountSettingsModal from './components/Account/AccountSettingsModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import { formatOzonTaskDisplayMessage } from './components/Ozon/ozonError';
-import type { OzonListingTask, OzonListingTaskStatus } from './components/Results/ozonListing/types';
+import type { OzonListingTask, OzonListingTaskPatch, OzonListingTaskStatus } from './components/Results/ozonListing/types';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -102,12 +102,14 @@ export default function App() {
       const map = new Map<string, DeepCollectSidebarTask>();
 
       for (const task of prev) {
-        const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
+        // Prefer stable task.key (e.g. offer:123) for dedup; fall back to
+        // sidebarKey so existing tasks without key still work.
+        const id = task.key || task.offerId || task.sidebarKey || `${task.createdAt}`;
         map.set(id, task);
       }
 
       for (const task of tasks) {
-        const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
+        const id = task.key || task.offerId || task.sidebarKey || `${task.createdAt}`;
         map.set(id, task);
       }
 
@@ -150,6 +152,13 @@ export default function App() {
         return bt - at;
       });
     });
+  };
+
+  const handleOzonTaskUpdate = (key: string, patch: OzonListingTaskPatch) => {
+    setOzonTasks((prev) => prev.map((task) => {
+      const matches = task.key === key || task.sidebarKey === key;
+      return matches ? { ...task, ...patch, updatedAt: patch.updatedAt || new Date().toISOString() } : task;
+    }));
   };
 
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
@@ -421,6 +430,7 @@ export default function App() {
             <OzonProductPage
               tasks={ozonTasks}
               onBackTo1688={() => setWorkspaceView('1688')}
+              onTaskUpdate={handleOzonTaskUpdate}
             />
           </section>
         </div>

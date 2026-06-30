@@ -11,6 +11,11 @@ import { useOzonListingQueue } from './ozonListing/useOzonListingQueue';
 import type { OzonListingTask } from './ozonListing/types';
 import CommandErrorView from './CommandErrorView';
 
+// Global set to prevent duplicate auto deep collect across component remounts.
+// When the user switches tabs, ResultRenderer unmounts and remounts — without
+// this, the same desktop-deeppro-base-* runId would re-enqueue all offers.
+const autoDeepCollectStartedRunIds = new Set<string>();
+
 interface Props {
   record: CommandRecord | null;
   resultType?: string;
@@ -258,15 +263,24 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   useEffect(() => {
     if (!shouldAutoDeepCollect) return;
     if (!record?.runId) return;
-    if (autoDeepCollectRunRef.current === record.runId) return;
+
+    const runId = record.runId;
+
+    // Prevent duplicate auto-enqueue across tab switches (module-level guard).
+    if (autoDeepCollectStartedRunIds.has(runId)) return;
+    // Prevent duplicate within same component instance.
+    if (autoDeepCollectRunRef.current === runId) return;
 
     const timer = window.setTimeout(() => {
       const autoCards = visibleCards.filter((card) => Boolean(card.offerId));
 
       if (autoCards.length === 0) return;
-      if (autoDeepCollectRunRef.current === record.runId) return;
+      if (autoDeepCollectStartedRunIds.has(runId)) return;
+      if (autoDeepCollectRunRef.current === runId) return;
 
-      autoDeepCollectRunRef.current = record.runId;
+      autoDeepCollectStartedRunIds.add(runId);
+      autoDeepCollectRunRef.current = runId;
+
       showToast(`已自动加入 ${autoCards.length} 个商品到深采队列`, 1600);
       enqueueMultipleDeepCollect(autoCards);
     }, 250);
