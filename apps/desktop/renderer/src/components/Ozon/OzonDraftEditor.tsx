@@ -152,7 +152,7 @@ function imageLinesFromItem(item: Record<string, unknown>, task: OzonListingTask
 }
 
 function removeCjk(value: string): string {
-  return value.replace(/[\u3400-\u9fff]+/g, '').trim();
+  return value.replace(/[㐀-鿿]+/g, '').trim();
 }
 
 function formatTagsForUi(value: string): string {
@@ -518,6 +518,7 @@ type CategoryTreeViewNode = {
   id: string;
   label: string;
   path: string;
+  depth: number;
   descriptionCategoryId: number;
   typeId: number;
   selectable: boolean;
@@ -569,6 +570,7 @@ function buildCategoryTreeView(
         : `category:${descriptionCategoryId || path}:${path}`,
       label: label || path || '未命名类目',
       path,
+      depth: pathParts.length,
       descriptionCategoryId,
       typeId,
       selectable,
@@ -592,13 +594,71 @@ function treeNodeToCategoryEntry(node: CategoryTreeViewNode): OzonCategoryEntry 
   };
 }
 
-function countTreeSelectable(nodes: CategoryTreeViewNode[]): number {
-  let count = 0;
+function normalizeCategorySearchText(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function categorySearchTokens(query: string): string[] {
+  return normalizeCategorySearchText(query)
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isThirdLevelCategoryNode(node: CategoryTreeViewNode): boolean {
+  return node.selectable && node.depth === 3;
+}
+
+function thirdLevelCategoryNodeMatches(node: CategoryTreeViewNode, tokens: string[]): boolean {
+  if (!isThirdLevelCategoryNode(node)) return false;
+  if (!tokens.length) return true;
+
+  const haystack = normalizeCategorySearchText([
+    node.label,
+    node.path,
+    node.descriptionCategoryId,
+    node.typeId,
+  ].join(' '));
+
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function filterCategoryTree(
+  nodes: CategoryTreeViewNode[],
+  query: string,
+): CategoryTreeViewNode[] {
+  const tokens = categorySearchTokens(query);
+
+  if (!tokens.length) return nodes;
+
+  const result: CategoryTreeViewNode[] = [];
+
   for (const node of nodes) {
-    if (node.selectable) count += 1;
-    count += countTreeSelectable(node.children);
+    const children = filterCategoryTree(node.children, query);
+    const selfMatched = thirdLevelCategoryNodeMatches(node, tokens);
+
+    if (selfMatched || children.length > 0) {
+      result.push({
+        ...node,
+        children,
+      });
+    }
   }
-  return count;
+
+  return result;
+}
+
+function collectExpandedCategoryIds(
+  nodes: CategoryTreeViewNode[],
+  output: Record<string, boolean> = {},
+): Record<string, boolean> {
+  for (const node of nodes) {
+    if (node.children.length > 0) {
+      output[node.id] = true;
+      collectExpandedCategoryIds(node.children, output);
+    }
+  }
+  return output;
 }
 
 function CategoryTreeList({
@@ -625,14 +685,14 @@ function CategoryTreeList({
         return (
           <div key={node.id} className="ozon-category-tree-node">
             <div
-              className={`ozon-category-tree-row ${node.selectable ? 'selectable' : ''}`}
-              style={{ paddingLeft: `${level * 14 + 8}px` }}
+              className={`ozon-category-tree-row level-${level + 1} ${isThirdLevelCategoryNode(node) ? 'selectable' : ''}`}
+              style={{ paddingLeft: `${level * 24 + 8}px` }}
             >
               <button
                 type="button"
                 className="ozon-category-tree-toggle"
                 onClick={() => hasChildren ? onToggle(node.id) : onSelect(node)}
-                disabled={!hasChildren && !node.selectable}
+                disabled={!hasChildren && !isThirdLevelCategoryNode(node)}
                 title={hasChildren ? '展开/收起' : ''}
               >
                 {hasChildren ? (isExpanded ? '▾' : '▸') : '•'}
@@ -645,11 +705,6 @@ function CategoryTreeList({
                 title={node.path}
               >
                 <strong>{node.label}</strong>
-                {node.selectable ? (
-                  <small>description_category_id {node.descriptionCategoryId} · type_id {node.typeId}</small>
-                ) : (
-                  <small>{node.children.length} 个子项</small>
-                )}
               </button>
             </div>
 
@@ -676,9 +731,6 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onTo
   const [submitting, setSubmitting] = useState(false);
   const [shopLabel, setShopLabel] = useState('Ozon 店铺：未检查');
   const [categoryQuery, setCategoryQuery] = useState(() => createDraftForm(task).categoryPath);
-  const [categoryOptions, setCategoryOptions] = useState<OzonCategoryEntry[]>([]);
-  const [categoryLoading, setCategoryLoading] = useState(false);
-  const [categoryMessage, setCategoryMessage] = useState('');
   const [categoryAttributes, setCategoryAttributes] = useState<OzonCategoryAttribute[]>([]);
   const [attributesLoading, setAttributesLoading] = useState(false);
   const [attributesMessage, setAttributesMessage] = useState('尚未加载类目特征');
@@ -721,35 +773,6 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onTo
     loadCategoryTree(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-    const timer = window.setTimeout(() => {
-      setCategoryLoading(true);
-      getApi().ozon.searchCategories(categoryQuery, { limit: 5000, language: 'ZH_HANS' })
-        .then((response) => {
-          if (!alive) return;
-          setCategoryOptions(response.items || []);
-          const matched = response.matchedTotal ?? response.items?.length ?? 0;
-          setCategoryMessage(
-            `${response.message || 'Ozon 类目候选'}，命中 ${matched} / 总 ${response.total}，当前显示 ${response.items?.length || 0}`
-          );
-        })
-        .catch((error) => {
-          if (!alive) return;
-          setCategoryOptions([]);
-          setCategoryMessage(error instanceof Error ? error.message : String(error));
-        })
-        .finally(() => {
-          if (alive) setCategoryLoading(false);
-        });
-    }, 220);
-
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-  }, [categoryQuery]);
 
   useEffect(() => {
     const descriptionCategoryId = intForPayload(form.descriptionCategoryId);
@@ -804,6 +827,19 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onTo
   const featureAttributes = visibleCategoryAttributes(categoryAttributes, 'feature');
   const mediaAttributes = visibleCategoryAttributes(categoryAttributes, 'media');
 
+  const visibleCategoryTree = useMemo(
+    () => filterCategoryTree(categoryTreeNodes, categoryQuery),
+    [categoryTreeNodes, categoryQuery],
+  );
+
+  useEffect(() => {
+    const query = String(categoryQuery || '').trim();
+    if (!query) return;
+
+    const nextExpanded = collectExpandedCategoryIds(visibleCategoryTree);
+    setExpandedCategoryIds((prev) => ({ ...prev, ...nextExpanded }));
+  }, [categoryQuery, visibleCategoryTree]);
+
   function updateField<K extends keyof DraftForm>(key: K, value: DraftForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -835,18 +871,9 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onTo
       const treeNodes = buildCategoryTreeView(roots);
 
       setCategoryTreeNodes(treeNodes);
-      setCategoryMessage(
-        `${response.message || 'Ozon 类目树已加载'}，可选末级类型 ${countTreeSelectable(treeNodes)} 个，总扁平类目 ${response.total || 0} 个，来源 ${response.source}`
-      );
-
-      const firstExpanded: Record<string, boolean> = {};
-      for (const node of treeNodes.slice(0, 20)) {
-        firstExpanded[node.id] = false;
-      }
-      setExpandedCategoryIds((prev) => ({ ...firstExpanded, ...prev }));
+      setExpandedCategoryIds({});
     } catch (error) {
       setCategoryTreeNodes([]);
-      setCategoryMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setCategoryTreeLoading(false);
     }
@@ -857,10 +884,11 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onTo
   }
 
   function applyCategoryTreeNode(node: CategoryTreeViewNode) {
-    if (!node.selectable) {
+    if (!isThirdLevelCategoryNode(node)) {
       toggleCategoryNode(node.id);
       return;
     }
+
     applyCategory(treeNodeToCategoryEntry(node));
   }
 
@@ -1032,73 +1060,33 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onTo
               <FieldError show={attemptedProduct && productMissing.includes('类目和类型')} text="请选择带 type_id 的 Ozon 末级类目" />
               <div className="ozon-category-results">
                 <div className="ozon-category-results-head">
-                  <span>{categoryLoading || categoryTreeLoading ? '正在加载类目...' : categoryMessage || 'Ozon 类目候选'}</span>
+                  <span>{categoryTreeLoading ? '正在加载类目...' : 'Ozon 类目'}</span>
                   <div className="ozon-category-head-actions">
                     <button type="button" onClick={() => setShowCategoryTree((value) => !value)}>
-                      {showCategoryTree ? '隐藏类目树' : '浏览全部类目树'}
+                      {showCategoryTree ? '隐藏类目树' : '浏览类目树'}
                     </button>
                     <button type="button" onClick={() => loadCategoryTree(true)}>
                       同步 Ozon 最新类目
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const q = categoryQuery.trim() || form.name || task.title || '';
-                        setCategoryQuery(q);
-                        getApi().ozon.searchCategories(q, { limit: 5000, language: 'ZH_HANS' })
-                          .then((response) => {
-                            setCategoryOptions(response.items || []);
-                            setCategoryMessage(`命中 ${response.matchedTotal ?? response.items.length} / 总 ${response.total}，当前显示 ${response.items.length}`);
-                          })
-                          .catch((error) => setCategoryMessage(error instanceof Error ? error.message : String(error)));
-                      }}
-                    >
-                      重新搜索
                     </button>
                   </div>
                 </div>
 
                 {showCategoryTree && (
                   <div className="ozon-category-tree-panel">
-                    <div className="ozon-category-tree-hint">
-                      按层级展开 Ozon 类目；只有显示 type_id 的末级类型可以选择。
-                    </div>
-                    {categoryTreeNodes.length > 0 ? (
+                    {visibleCategoryTree.length > 0 ? (
                       <CategoryTreeList
-                        nodes={categoryTreeNodes}
+                        nodes={visibleCategoryTree}
                         expanded={expandedCategoryIds}
                         onToggle={toggleCategoryNode}
                         onSelect={applyCategoryTreeNode}
                       />
                     ) : (
-                      <div className="ozon-category-empty">暂无类目树。请点击"同步 Ozon 最新类目"，或确认本地缓存存在。</div>
+                      <div className="ozon-category-empty">
+                        未找到匹配的三级类目。
+                      </div>
                     )}
                   </div>
                 )}
-
-                <div className="ozon-category-search-panel">
-                  <div className="ozon-category-tree-hint">
-                    搜索结果：不再限制 18 个；支持俄文名称、路径、description_category_id、type_id。
-                  </div>
-
-                  {categoryOptions.length > 0 ? (
-                    categoryOptions.map((entry) => (
-                      <button
-                        type="button"
-                        key={`${categoryId(entry)}-${entry.path}`}
-                        className="ozon-category-option"
-                        onClick={() => applyCategory(entry)}
-                        title={entry.path}
-                      >
-                        <strong>{entry.keyword || entry.path}</strong>
-                        <span>{entry.path}</span>
-                        <small>description_category_id {categoryDescriptionId(entry)} · type_id {categoryTypeId(entry)}</small>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="ozon-category-empty">暂无类目候选。可以直接从上方类目树展开选择。</div>
-                  )}
-                </div>
               </div>
             </label>
 

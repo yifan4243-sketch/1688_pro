@@ -8,8 +8,21 @@ function settingsPath(userDataPath) {
   return path.join(userDataPath, SETTINGS_FILE);
 }
 
-function categoryTreePath(userDataPath) {
-  return path.join(userDataPath, CATEGORY_TREE_FILE);
+function normalizeOzonLanguage(value) {
+  const text = clean(value, 'ZH_HANS') || 'ZH_HANS';
+  return text.toUpperCase();
+}
+
+function categoryTreeFileName(language) {
+  const lang = normalizeOzonLanguage(language);
+  if (lang === 'ZH_HANS') return 'ozon_category_tree.zh_hans.json';
+  if (lang === 'EN') return 'ozon_category_tree.en.json';
+  if (lang === 'RU') return 'ozon_category_tree.ru.json';
+  return `ozon_category_tree.${lang.toLowerCase().replace(/[^a-z0-9_]/g, '_')}.json`;
+}
+
+function categoryTreePath(userDataPath, language = 'ZH_HANS') {
+  return path.join(userDataPath, categoryTreeFileName(language));
 }
 
 function defaultSettings() {
@@ -207,13 +220,30 @@ async function callOzonSellerApi(ozon, endpoint, body) {
   return { ok: true, data };
 }
 
+function containsCyrillic(value) {
+  return /[Ѐ-ӿ]/.test(String(value || ''));
+}
+
+function sampleCategoryTreeText(tree) {
+  try {
+    const roots = treeRoots(tree).slice(0, 20);
+    return JSON.stringify(roots).slice(0, 20000);
+  } catch {
+    return '';
+  }
+}
+
+function isProbablyRussianCategoryTree(tree) {
+  return containsCyrillic(sampleCategoryTreeText(tree));
+}
+
 async function getCategoryTree(userDataPath, options = {}) {
   const forceRefresh = options.forceRefresh === true;
-  const language = clean(options.language, 'ZH_HANS') || 'ZH_HANS';
-  const cached = readCategoryTreeCache(userDataPath);
+  const language = normalizeOzonLanguage(options.language);
+  const cached = readCategoryTreeCache(userDataPath, language);
 
   if (cached && !forceRefresh) {
-    return categoryTreeResponse(cached, 'cache', '已使用本地 Ozon 类目树缓存。');
+    return categoryTreeResponse(cached, 'cache', '已使用本地 Ozon 类目树缓存。', true, language);
   }
 
   const settings = loadSettings(userDataPath, { includeSecrets: true });
@@ -222,30 +252,57 @@ async function getCategoryTree(userDataPath, options = {}) {
   if (!shop.clientId || !shop.apiKey) {
     const fallback = defaultCategoryTreeFromSettings(settings);
     if (fallback) {
-      return categoryTreeResponse(fallback, 'settings', 'Ozon 店铺未绑定，已使用设置中的默认类目。');
+      return categoryTreeResponse(fallback, 'settings', 'Ozon 店铺未绑定，已使用设置中的默认类目。', true, language);
     }
     if (cached) {
-      return categoryTreeResponse(cached, 'cache', 'Ozon 店铺未绑定，已使用本地缓存。');
+      return categoryTreeResponse(cached, 'cache', 'Ozon 店铺未绑定，已使用本地缓存。', true, language);
     }
-    return categoryTreeResponse({ result: [] }, 'empty', '请先绑定 Ozon Client ID 和 API Key 后同步类目树。', false);
+    return categoryTreeResponse({ result: [] }, 'empty', '请先绑定 Ozon Client ID 和 API Key 后同步类目树。', false, language);
   }
 
   const response = await callOzonSellerApi(shop, '/v1/description-category/tree', { language });
   if (!response.ok) {
     if (cached) {
-      return categoryTreeResponse(cached, 'cache', `同步类目树失败，已使用本地缓存：HTTP ${response.data?.status || '?'}`);
+      return categoryTreeResponse(cached, 'cache', `同步类目树失败，已使用本地缓存：HTTP ${response.data?.status || '?'}`, true, language);
     }
     return categoryTreeResponse(
       { result: [] },
       'error',
       `同步 Ozon 类目树失败：HTTP ${response.data?.status || '?'} ${safeJson(response.data?.response || response.data)}`,
       false,
+      language,
     );
   }
 
   fs.mkdirSync(userDataPath, { recursive: true });
-  fs.writeFileSync(categoryTreePath(userDataPath), JSON.stringify(response.data, null, 2), 'utf8');
-  return categoryTreeResponse(response.data, 'api', 'Ozon 类目树已同步。');
+
+  if (language === 'ZH_HANS' && isProbablyRussianCategoryTree(response.data)) {
+    fs.writeFileSync(
+      categoryTreePath(userDataPath, language),
+      JSON.stringify(response.data, null, 2),
+      'utf8',
+    );
+    return categoryTreeResponse(
+      response.data,
+      'api',
+      'Ozon 接口按 ZH_HANS 请求后仍返回俄文类目，请检查 Ozon Seller API 是否支持中文类目；当前仅保存原始返回。',
+      true,
+      language,
+    );
+  }
+
+  fs.writeFileSync(
+    categoryTreePath(userDataPath, language),
+    JSON.stringify(response.data, null, 2),
+    'utf8',
+  );
+  return categoryTreeResponse(
+    response.data,
+    'api',
+    language === 'ZH_HANS' ? 'Ozon 中文类目树已同步。' : 'Ozon 类目树已同步。',
+    true,
+    language,
+  );
 }
 
 function normalizeCategorySearchLimit(value, fallback = 5000) {
@@ -371,8 +428,7 @@ function findQuotaObject(value, pathName = '') {
   return null;
 }
 
-function readCategoryTreeCache(userDataPath) {
-  const file = categoryTreePath(userDataPath);
+function readJsonFile(file) {
   if (!fs.existsSync(file)) return null;
   try {
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -382,11 +438,28 @@ function readCategoryTreeCache(userDataPath) {
   }
 }
 
-function categoryTreeResponse(tree, source, message, ok = true) {
+function readCategoryTreeCache(userDataPath, language = 'ZH_HANS') {
+  const lang = normalizeOzonLanguage(language);
+  const file = categoryTreePath(userDataPath, lang);
+  const data = readJsonFile(file);
+
+  if (data) return data;
+
+  // Legacy cache is likely Russian — never use for Chinese UI.
+  if (lang !== 'ZH_HANS') {
+    const legacy = readJsonFile(path.join(userDataPath, CATEGORY_TREE_FILE));
+    if (legacy) return legacy;
+  }
+
+  return null;
+}
+
+function categoryTreeResponse(tree, source, message, ok = true, language = 'ZH_HANS') {
   const items = flattenCategoryTree(tree);
   return {
     ok,
     source,
+    language: normalizeOzonLanguage(language),
     message,
     tree,
     items,

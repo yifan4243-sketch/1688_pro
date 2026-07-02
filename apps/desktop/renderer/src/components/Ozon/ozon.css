@@ -2131,8 +2131,8 @@
 .ozon-category-tree-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 460px;
+  gap: 4px;
+  max-height: 360px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -2144,27 +2144,38 @@
 
 .ozon-category-tree-row {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 6px;
   min-height: 34px;
   border-radius: 10px;
 }
 
-.ozon-category-tree-row:hover {
-  background: rgba(15, 23, 42, 0.04);
+.ozon-category-tree-row.level-1 {
+  font-weight: 800;
+  background: rgba(15, 23, 42, 0.035);
 }
 
-.ozon-category-tree-row.selectable {
-  background: rgba(16, 185, 129, 0.04);
+.ozon-category-tree-row.level-2 {
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.ozon-category-tree-row.level-3 {
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.045);
+}
+
+.ozon-category-tree-row:hover {
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .ozon-category-tree-toggle {
-  width: 28px;
-  min-width: 28px;
+  width: 24px;
+  min-width: 24px;
   border: 0;
   background: transparent;
-  color: rgba(71, 85, 105, 0.9);
   cursor: pointer;
+  color: rgba(71, 85, 105, 0.9);
 }
 
 .ozon-category-tree-toggle:disabled {
@@ -2177,20 +2188,11 @@
   border: 0;
   background: transparent;
   text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
+  padding: 7px 8px;
   cursor: pointer;
   color: inherit;
 }
 
 .ozon-category-tree-label strong {
   font-size: 13px;
-  color: rgba(15, 23, 42, 0.92);
-}
-
-.ozon-category-tree-label small {
-  font-size: 11px;
-  color: rgba(71, 85, 105, 0.72);
 }
