@@ -323,8 +323,8 @@ function KeywordCategoryTreeList({
         return (
           <div key={node.id} className="keyword-category-tree-node">
             <div
-              className={`keyword-category-tree-row ${node.selectable ? 'selectable' : ''}`}
-              style={{ paddingLeft: `${level * 14 + 8}px` }}
+              className={`keyword-category-tree-row level-${level + 1} ${isThirdLevelKeywordNode(node) ? 'selectable' : ''}`}
+              style={{ paddingLeft: `${level * 24 + 8}px` }}
             >
               <button
                 type="button"
@@ -1030,12 +1030,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       const treeNodes = buildKeywordCategoryTree(roots);
 
       setKeywordCategoryTreeNodes(treeNodes);
-
-      const firstExpanded: Record<string, boolean> = {};
-      for (const node of treeNodes.slice(0, 20)) {
-        firstExpanded[node.id] = false;
-      }
-      setExpandedKeywordCategoryIds((prev) => ({ ...firstExpanded, ...prev }));
+      setExpandedKeywordCategoryIds({});
     } catch (error) {
       setKeywordCategoryTreeNodes([]);
     } finally {
