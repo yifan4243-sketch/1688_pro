@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const ATTR_MODEL_NAME = 9048;
 const ATTR_DESCRIPTION = 4191;
@@ -14,6 +16,7 @@ async function generateOzonDraft(settings, rows = []) {
   const candidates = defaultCategoryCandidates(settings);
   const generated = await callAi(settings.ai, buildMessages(sourceRows, candidates));
   const normalized = normalizeGenerated(generated, candidates);
+  applyChineseCategoryPath(normalized, settings);
   const items = sourceRows.map((row, index) => buildOzonItem(row, normalized, settings, index));
   const missing = collectDraftMissing(items, { sourceRows, generated: normalized });
 
@@ -344,6 +347,8 @@ function buildMessages(rows, candidates) {
       'Do not invent brand, certification, warranty, or exact materials if not present.',
       'If source dimensions are missing, estimate reasonable packed dimensions.',
       'If category candidates are provided, choose one of them.',
+      'For matched_category.path, copy exactly from the chosen candidate. Do not translate or invent a Russian category path.',
+      'The UI category path will be resolved from the local Chinese Ozon category tree by description_category_id and type_id.',
     ],
     source_rows: rows.slice(0, 8),
     category_candidates: candidates,
@@ -409,7 +414,7 @@ function normalizeGenerated(data, candidates) {
     matched_category: {
       description_category_id: toInt(matched.description_category_id) || candidate?.description_category_id || 0,
       type_id: toInt(matched.type_id) || candidate?.type_id || 0,
-      path: String(matched.path || candidate?.path || '').trim(),
+      path: String(candidate?.path || matched.path || '').trim(),
     },
     estimated_dimensions: {
       length_cm: positiveNumber(data?.estimated_dimensions?.length_cm),
@@ -453,7 +458,7 @@ function buildOzonItem(row, generated, settings, index) {
     attributes: attrs,
     complex_attributes: [],
     _source: 'desktop_ai_draft',
-    _category_path: category.path || settings.ozon.defaultCategoryPath || '',
+    _category_path: cleanText(category.path) || cleanText(settings.ozon.defaultCategoryPath),
   };
 }
 
@@ -543,6 +548,114 @@ function stringifyForError(value) {
   } catch {
     return String(value);
   }
+}
+
+function containsCyrillic(value) {
+  return /[Ѐ-ӿ]/.test(String(value || ''));
+}
+
+function applyChineseCategoryPath(generated, settings) {
+  const category = generated?.matched_category;
+  if (!category || typeof category !== 'object') return generated;
+
+  const descId = toInt(category.description_category_id);
+  const typeId = toInt(category.type_id);
+
+  const chinesePath = findChineseCategoryPath(settings, descId, typeId);
+
+  if (chinesePath) {
+    category.path = chinesePath;
+    category.path_language = 'ZH_HANS';
+    return generated;
+  }
+
+  const defaultPath = cleanText(settings?.ozon?.defaultCategoryPath);
+  if (defaultPath && !containsCyrillic(defaultPath)) {
+    category.path = defaultPath;
+    category.path_language = 'ZH_HANS';
+    return generated;
+  }
+
+  // Fallback: keep original path but mark language
+  category.path_language = containsCyrillic(category.path) ? 'RU_OR_AI' : 'UNKNOWN';
+  return generated;
+}
+
+function findChineseCategoryPath(settings, descriptionCategoryId, typeId) {
+  const descId = toInt(descriptionCategoryId);
+  const tId = toInt(typeId);
+  if (!descId || !tId) return '';
+
+  const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || settings?.appDataPath);
+  const candidates = [];
+
+  if (userDataPath) {
+    candidates.push(path.join(userDataPath, 'ozon_category_tree.zh_hans.json'));
+  }
+
+  if (process.env.APPDATA) {
+    candidates.push(path.join(process.env.APPDATA, '1688 to Ozon Studio', 'ozon_category_tree.zh_hans.json'));
+  }
+
+  for (const file of candidates) {
+    const tree = readJsonFileSafe(file);
+    if (!tree) continue;
+
+    const found = walkCategoryTree(tree, descId, tId);
+    if (found) return found;
+  }
+
+  return '';
+}
+
+function readJsonFileSafe(file) {
+  if (!file || !fs.existsSync(file)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function walkCategoryTree(tree, descriptionCategoryId, typeId) {
+  const roots = categoryTreeRoots(tree);
+  for (const root of roots) {
+    const found = walkNode(root, [], 0, descriptionCategoryId, typeId);
+    if (found) return found;
+  }
+  return '';
+}
+
+function categoryTreeRoots(tree) {
+  if (!tree || typeof tree !== 'object') return [];
+  if (Array.isArray(tree.result)) return tree.result;
+  if (Array.isArray(tree.items)) return tree.items;
+  if (Array.isArray(tree.categories)) return tree.categories;
+  if (tree.data && typeof tree.data === 'object') return categoryTreeRoots(tree.data);
+  return [];
+}
+
+function walkNode(node, parents, inheritedDescriptionCategoryId, targetDescriptionCategoryId, targetTypeId) {
+  if (!node || typeof node !== 'object') return '';
+
+  const label = cleanText(node.category_name || node.type_name);
+  const descriptionCategoryId = toInt(node.description_category_id) || inheritedDescriptionCategoryId || 0;
+  const typeId = toInt(node.type_id) || 0;
+  const pathParts = label ? [...parents, label] : parents;
+
+  if (descriptionCategoryId === targetDescriptionCategoryId && typeId === targetTypeId) {
+    const joined = pathParts.join(' / ');
+    return joined && !containsCyrillic(joined) ? joined : '';
+  }
+
+  const children = Array.isArray(node.children) ? node.children : [];
+  for (const child of children) {
+    const found = walkNode(child, pathParts, descriptionCategoryId, targetDescriptionCategoryId, targetTypeId);
+    if (found) return found;
+  }
+
+  return '';
 }
 
 module.exports = { generateOzonDraft, submitOzonDraft, collectDraftMissing };

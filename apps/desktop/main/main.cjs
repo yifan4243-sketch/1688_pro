@@ -245,7 +245,7 @@ function registerIpc() {
     getOzonCategoryAttributes(userDataDir(), params || {}),
   );
   ipcMain.handle('desktop:generateOzonDraft', async (_event, rows) =>
-    generateOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), rows),
+    generateOzonDraft({ ...loadOzonSettings(userDataDir(), { includeSecrets: true }), userDataPath: userDataDir() }, rows),
   );
   ipcMain.handle('desktop:submitOzonDraft', async (_event, draft, confirmed) => {
     if (confirmed !== true) {
