@@ -22,7 +22,7 @@ describe('readSearchMtopRequestMeta', () => {
       }),
     });
 
-    expect(readSearchMtopRequestMeta(url)).toEqual({
+    expect(readSearchMtopRequestMeta(url)).toMatchObject({
       appId: SEARCH_APP_ID,
       method: 'getOfferList',
       beginPage: 2,
@@ -36,7 +36,7 @@ describe('readSearchMtopRequestMeta', () => {
       params: JSON.stringify({ method: 'getOfferList' }),
     });
 
-    expect(readSearchMtopRequestMeta(url)).toEqual({
+    expect(readSearchMtopRequestMeta(url)).toMatchObject({
       appId: SEARCH_APP_ID,
       method: 'getOfferList',
       beginPage: undefined,

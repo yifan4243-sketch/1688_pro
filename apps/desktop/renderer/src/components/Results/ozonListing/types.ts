@@ -7,9 +7,13 @@ export type OzonListingTaskStatus =
   | 'deep_collecting'
   | 'generating_draft'
   | 'draft_ready'
+  | 'import_pending'
+  | 'imported'
+  | 'listing_ready'
   | 'needs_manual'
   | 'deep_failed'
-  | 'failed';
+  | 'failed'
+  | 'submit_failed';
 
 export type OzonListingTask = {
   key: string;

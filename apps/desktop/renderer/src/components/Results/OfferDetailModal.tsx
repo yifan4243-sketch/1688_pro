@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ProgressOfferCardItem } from './ProgressOfferCard';
 
@@ -9,11 +9,46 @@ interface Props {
 
 function s(v: unknown): string { return v != null ? String(v) : ''; }
 
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const text = value.trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+function skuImage(sku: Record<string, unknown>): string {
+  return s(
+    sku.image ||
+    sku.skuImage ||
+    sku.imageUrl ||
+    sku.picUrl ||
+    sku.imgUrl ||
+    sku.mainImage ||
+    sku.previewImage,
+  );
+}
+
 export default function OfferDetailModal({ item, onClose }: Props) {
   const raw = item.raw as Record<string, unknown> | undefined;
   const skus = (raw?.skus as Array<Record<string, unknown>>) || [];
   const attrs = (raw?.attributes as Array<{ name: string; value: string }>) || [];
-  const images = (raw?.images as string[]) || (item.image ? [item.image] : []);
+  const images = useMemo(() => {
+    const rawImages = Array.isArray(raw?.images) ? raw?.images as string[] : [];
+    const skuImages = skus.map(skuImage).filter(Boolean);
+    return uniqueStrings([
+      s(raw?.mainImage),
+      ...rawImages.map(s),
+      s(item.image),
+      ...skuImages,
+    ]);
+  }, [raw, skus, item.image]);
+  const [activeImage, setActiveImage] = useState(images[0] || '');
+  const [activeSkuIndex, setActiveSkuIndex] = useState<number | null>(null);
   const supplier = raw?.supplier as Record<string, unknown> | undefined;
   const freight = raw?.freight as Record<string, unknown> | undefined;
   const saledCount = raw?.saledCount as number | undefined;
@@ -31,6 +66,17 @@ export default function OfferDetailModal({ item, onClose }: Props) {
   const turnover = s(raw?.turnover);
   const isP4P = raw?.isP4P === true;
 
+  useEffect(() => {
+    setActiveImage(images[0] || '');
+    setActiveSkuIndex(null);
+  }, [images, item.offerId]);
+
+  const selectSku = (sku: Record<string, unknown>, index: number) => {
+    const nextImage = skuImage(sku);
+    setActiveSkuIndex(index);
+    if (nextImage) setActiveImage(nextImage);
+  };
+
   const content = (
     <div className="modal-backdrop detail-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="detail-modal glass-panel-card">
@@ -41,11 +87,22 @@ export default function OfferDetailModal({ item, onClose }: Props) {
         {/* Images */}
         {images.length > 0 && (
           <div className="detail-images">
-            <img src={images[0]} alt={item.title || ''} className="detail-main-image" />
+            <img src={activeImage || images[0]} alt={item.title || ''} className="detail-main-image" />
             {images.length > 1 && (
               <div className="detail-thumbs">
                 {images.slice(0, 6).map((url, i) => (
-                  <img key={i} src={url} alt="" className="thumb" loading="lazy" />
+                  <button
+                    key={url}
+                    type="button"
+                    className={`detail-thumb-btn ${url === activeImage ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveImage(url);
+                      setActiveSkuIndex(null);
+                    }}
+                    aria-label={`查看商品图片 ${i + 1}`}
+                  >
+                    <img src={url} alt="" className="thumb" loading="lazy" />
+                  </button>
                 ))}
               </div>
             )}
@@ -168,13 +225,27 @@ export default function OfferDetailModal({ item, onClose }: Props) {
             {skus.length > 0 && (
               <div className="detail-section">
                 <h4>SKU ({skus.length})</h4>
-                {skus.slice(0, 10).map((sku, i) => (
-                  <div key={i} className="sku-row">
-                    <span className="sku-specs">{s(sku.specs || sku.skuId || '-')}</span>
-                    <span className="sku-price">¥{s(sku.price ?? '-')}</span>
-                    <span className="sku-stock">库存 {s(sku.stock ?? '-')}</span>
-                  </div>
-                ))}
+                <div className="detail-sku-list">
+                  {skus.slice(0, 10).map((sku, i) => {
+                    const specs = s(sku.specs || sku.skuId || '-');
+                    const image = skuImage(sku);
+                    const isActive = activeSkuIndex === i;
+                    return (
+                      <button
+                        key={s(sku.skuId) || `${specs}-${i}`}
+                        type="button"
+                        className={`sku-row sku-row-button ${isActive ? 'active' : ''}`}
+                        onClick={() => selectSku(sku, i)}
+                        title={image ? '点击查看该 SKU 图片' : '该 SKU 没有独立图片'}
+                      >
+                        {image && <img src={image} alt="" className="sku-row-thumb" loading="lazy" />}
+                        <span className="sku-specs">{specs}</span>
+                        <span className="sku-price">¥{s(sku.price ?? '-')}</span>
+                        <span className="sku-stock">库存 {s(sku.stock ?? '-')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {attrs.length > 0 && (

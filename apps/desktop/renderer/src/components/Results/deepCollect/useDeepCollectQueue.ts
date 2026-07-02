@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { getApi } from '../../../services/api';
 import type { ProgressOfferCardItem } from '../ProgressOfferCard';
@@ -16,6 +16,7 @@ import type {
 type DesktopApi = ReturnType<typeof getApi>;
 
 type UseDeepCollectQueueArgs = {
+  sessionKey?: string;
   api: DesktopApi;
   activeProfile?: string;
   manualDeepCollectHeaded?: boolean;
@@ -30,6 +31,125 @@ type UseDeepCollectQueueArgs = {
   setDeepFailuresByOfferId: Dispatch<SetStateAction<Record<string, Record<string, unknown>>>>;
 
   showToast: (message: string, timeout?: number) => void;
+};
+
+export type DeepCollectSessionSnapshot = {
+  cardOverrides: Record<string, Partial<ProgressOfferCardItem>>;
+  deepJsonByOfferId: Record<string, Record<string, unknown>>;
+  deepFailuresByOfferId: Record<string, Record<string, unknown>>;
+  tasks: DeepCollectTask[];
+};
+
+type DeepCollectSession = {
+  key: string;
+  queue: DeepQueueEntry[];
+  running: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  taskMap: Record<string, DeepCollectTask>;
+  runSessionId: string;
+  cardOverrides: Record<string, Partial<ProgressOfferCardItem>>;
+  deepJsonByOfferId: Record<string, Record<string, unknown>>;
+  deepFailuresByOfferId: Record<string, Record<string, unknown>>;
+  bindings: {
+    onDeepTasksChange?: DeepTasksChangeHandler;
+    setCardOverrides?: Dispatch<SetStateAction<Record<string, Partial<ProgressOfferCardItem>>>>;
+    setDeepJsonByOfferId?: Dispatch<SetStateAction<Record<string, Record<string, unknown>>>>;
+    setDeepFailuresByOfferId?: Dispatch<SetStateAction<Record<string, Record<string, unknown>>>>;
+  };
+};
+
+const DEFAULT_SESSION_KEY = 'default';
+const deepCollectSessions = new Map<string, DeepCollectSession>();
+
+function newRunSessionId(): string {
+  return `deep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createDeepCollectSession(key: string): DeepCollectSession {
+  return {
+    key,
+    queue: [],
+    running: false,
+    timer: null,
+    taskMap: {},
+    runSessionId: newRunSessionId(),
+    cardOverrides: {},
+    deepJsonByOfferId: {},
+    deepFailuresByOfferId: {},
+    bindings: {},
+  };
+}
+
+function getDeepCollectSession(sessionKey?: string): DeepCollectSession {
+  const key = sessionKey || DEFAULT_SESSION_KEY;
+  let session = deepCollectSessions.get(key);
+  if (!session) {
+    session = createDeepCollectSession(key);
+    deepCollectSessions.set(key, session);
+  }
+  return session;
+}
+
+function sortedDeepTasks(session: DeepCollectSession): DeepCollectTask[] {
+  return Object.values(session.taskMap)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+export function getDeepCollectSessionSnapshot(sessionKey?: string): DeepCollectSessionSnapshot {
+  const session = getDeepCollectSession(sessionKey);
+  return {
+    cardOverrides: { ...session.cardOverrides },
+    deepJsonByOfferId: { ...session.deepJsonByOfferId },
+    deepFailuresByOfferId: { ...session.deepFailuresByOfferId },
+    tasks: sortedDeepTasks(session),
+  };
+}
+
+export function hasDeepCollectSessionState(sessionKey?: string): boolean {
+  const session = deepCollectSessions.get(sessionKey || DEFAULT_SESSION_KEY);
+  if (!session) return false;
+  return (
+    session.queue.length > 0 ||
+    session.running ||
+    Object.keys(session.taskMap).length > 0 ||
+    Object.keys(session.cardOverrides).length > 0 ||
+    Object.keys(session.deepJsonByOfferId).length > 0 ||
+    Object.keys(session.deepFailuresByOfferId).length > 0
+  );
+}
+
+export const __deepCollectSessionTest = {
+  resetAll(): void {
+    for (const session of deepCollectSessions.values()) {
+      if (session.timer) clearTimeout(session.timer);
+    }
+    deepCollectSessions.clear();
+  },
+  bind(sessionKey: string, bindings: DeepCollectSession['bindings']): void {
+    const session = getDeepCollectSession(sessionKey);
+    session.bindings = bindings;
+  },
+  applyCardOverrides(
+    sessionKey: string,
+    nextCardOverrides: Record<string, Partial<ProgressOfferCardItem>>,
+  ): void {
+    const session = getDeepCollectSession(sessionKey);
+    session.cardOverrides = nextCardOverrides;
+    session.bindings.setCardOverrides?.(nextCardOverrides);
+  },
+  publishTasks(sessionKey: string): void {
+    const session = getDeepCollectSession(sessionKey);
+    session.bindings.onDeepTasksChange?.(sortedDeepTasks(session));
+  },
+  seed(sessionKey: string, patch: Partial<DeepCollectSessionSnapshot>): void {
+    const session = getDeepCollectSession(sessionKey);
+    session.cardOverrides = patch.cardOverrides ? { ...patch.cardOverrides } : session.cardOverrides;
+    session.deepJsonByOfferId = patch.deepJsonByOfferId ? { ...patch.deepJsonByOfferId } : session.deepJsonByOfferId;
+    session.deepFailuresByOfferId = patch.deepFailuresByOfferId ? { ...patch.deepFailuresByOfferId } : session.deepFailuresByOfferId;
+    if (patch.tasks) {
+      session.taskMap = Object.fromEntries(patch.tasks.map((task) => [task.key, task]));
+    }
+  },
 };
 
 function objectOf(value: unknown): Record<string, unknown> | null {
@@ -138,6 +258,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export function useDeepCollectQueue({
+  sessionKey = DEFAULT_SESSION_KEY,
   api,
   activeProfile,
   manualDeepCollectHeaded = false,
@@ -150,19 +271,81 @@ export function useDeepCollectQueue({
   setDeepFailuresByOfferId,
   showToast,
 }: UseDeepCollectQueueArgs) {
-  const deepQueueRef = useRef<DeepQueueEntry[]>([]);
-  const deepRunningRef = useRef(false);
-  const deepQueueStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deepTaskMapRef = useRef<Record<string, DeepCollectTask>>({});
-  const runSessionIdRef = useRef<string>(`deep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const sessionRef = useRef<DeepCollectSession>(getDeepCollectSession(sessionKey));
+  if (sessionRef.current.key !== sessionKey) {
+    sessionRef.current = getDeepCollectSession(sessionKey);
+  }
+
+  sessionRef.current.bindings = {
+    onDeepTasksChange,
+    setCardOverrides,
+    setDeepJsonByOfferId,
+    setDeepFailuresByOfferId,
+  };
+
+  const deepQueueRef = {
+    get current(): DeepQueueEntry[] { return sessionRef.current.queue; },
+    set current(value: DeepQueueEntry[]) { sessionRef.current.queue = value; },
+  };
+  const deepRunningRef = {
+    get current(): boolean { return sessionRef.current.running; },
+    set current(value: boolean) { sessionRef.current.running = value; },
+  };
+  const deepQueueStartTimerRef = {
+    get current(): ReturnType<typeof setTimeout> | null { return sessionRef.current.timer; },
+    set current(value: ReturnType<typeof setTimeout> | null) { sessionRef.current.timer = value; },
+  };
+  const deepTaskMapRef = {
+    get current(): Record<string, DeepCollectTask> { return sessionRef.current.taskMap; },
+    set current(value: Record<string, DeepCollectTask>) { sessionRef.current.taskMap = value; },
+  };
+  const runSessionIdRef = {
+    get current(): string { return sessionRef.current.runSessionId; },
+    set current(value: string) { sessionRef.current.runSessionId = value; },
+  };
 
   const MAX_ATTEMPTS_PER_PROFILE = 2;
 
-  function publishDeepTasks(): void {
-    const tasks = Object.values(deepTaskMapRef.current)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  function syncCardOverrides(action: SetStateAction<Record<string, Partial<ProgressOfferCardItem>>>): void {
+    const prev = sessionRef.current.cardOverrides;
+    const next = typeof action === 'function'
+      ? (action as (value: Record<string, Partial<ProgressOfferCardItem>>) => Record<string, Partial<ProgressOfferCardItem>>)(prev)
+      : action;
+    sessionRef.current.cardOverrides = next;
+    sessionRef.current.bindings.setCardOverrides?.(next);
+  }
 
-    onDeepTasksChange?.(tasks);
+  function syncDeepJsonByOfferId(action: SetStateAction<Record<string, Record<string, unknown>>>): void {
+    const prev = sessionRef.current.deepJsonByOfferId;
+    const next = typeof action === 'function'
+      ? (action as (value: Record<string, Record<string, unknown>>) => Record<string, Record<string, unknown>>)(prev)
+      : action;
+    sessionRef.current.deepJsonByOfferId = next;
+    sessionRef.current.bindings.setDeepJsonByOfferId?.(next);
+  }
+
+  function syncDeepFailuresByOfferId(action: SetStateAction<Record<string, Record<string, unknown>>>): void {
+    const prev = sessionRef.current.deepFailuresByOfferId;
+    const next = typeof action === 'function'
+      ? (action as (value: Record<string, Record<string, unknown>>) => Record<string, Record<string, unknown>>)(prev)
+      : action;
+    sessionRef.current.deepFailuresByOfferId = next;
+    sessionRef.current.bindings.setDeepFailuresByOfferId?.(next);
+  }
+
+  function hydrateRendererFromSession(): void {
+    sessionRef.current.bindings.setCardOverrides?.({ ...sessionRef.current.cardOverrides });
+    sessionRef.current.bindings.setDeepJsonByOfferId?.({ ...sessionRef.current.deepJsonByOfferId });
+    sessionRef.current.bindings.setDeepFailuresByOfferId?.({ ...sessionRef.current.deepFailuresByOfferId });
+    publishDeepTasks();
+  }
+
+  useEffect(() => {
+    hydrateRendererFromSession();
+  }, [sessionKey]);
+
+  function publishDeepTasks(): void {
+    sessionRef.current.bindings.onDeepTasksChange?.(sortedDeepTasks(sessionRef.current));
   }
 
   function upsertDeepTask(key: string, patch: DeepCollectTaskPatch): void {
@@ -196,7 +379,7 @@ export function useDeepCollectQueue({
     const existingMeta = objectOf(deep._deepCollectMeta) || {};
     const collectedAt = String(existingMeta.collectedAt || meta.collectedAt || new Date().toISOString());
 
-    setDeepJsonByOfferId((prev) => ({
+    syncDeepJsonByOfferId((prev) => ({
       ...prev,
       [offerId]: {
         ...deep,
@@ -208,7 +391,7 @@ export function useDeepCollectQueue({
       },
     }));
 
-    setDeepFailuresByOfferId((prev) => {
+    syncDeepFailuresByOfferId((prev) => {
       if (!prev[offerId]) return prev;
       const next = { ...prev };
       delete next[offerId];
@@ -222,12 +405,12 @@ export function useDeepCollectQueue({
   ): void {
     if (!offerId) return;
 
-    setDeepFailuresByOfferId((prev) => ({
+    syncDeepFailuresByOfferId((prev) => ({
       ...prev,
       [offerId]: failure,
     }));
 
-    setDeepJsonByOfferId((prev) => {
+    syncDeepJsonByOfferId((prev) => {
       if (!prev[offerId]) return prev;
       const next = { ...prev };
       delete next[offerId];
@@ -262,7 +445,7 @@ export function useDeepCollectQueue({
     const effectiveHeaded = manualDeepCollectHeaded || forcedHeaded;
     const modeLabel = effectiveHeaded ? '可视化' : '无头';
 
-    setCardOverrides((prev) => ({
+    syncCardOverrides((prev) => ({
       ...prev,
       [entry.key]: {
         status: 'deep-collecting',
@@ -399,7 +582,7 @@ export function useDeepCollectQueue({
       },
     };
 
-    setCardOverrides((prev) => ({
+    syncCardOverrides((prev) => ({
       ...prev,
       [key]: {
         title,
@@ -465,7 +648,7 @@ export function useDeepCollectQueue({
       ],
     };
 
-    setCardOverrides((prev) => ({
+    syncCardOverrides((prev) => ({
       ...prev,
       [key]: {
         title: item.title,
@@ -556,7 +739,7 @@ export function useDeepCollectQueue({
         message: retryMessage,
       });
 
-      setCardOverrides((prev) => ({
+      syncCardOverrides((prev) => ({
         ...prev,
         [entry.key]: {
           status: 'deep-collecting',
@@ -597,7 +780,7 @@ export function useDeepCollectQueue({
       if (nextProfile) {
         const switchMessage = `${profile} 第二次仍失败，切换账号 ${nextProfile} 继续采集`;
 
-        setCardOverrides((prev) => ({
+        syncCardOverrides((prev) => ({
           ...prev,
           [entry.key]: {
             status: 'deep-collecting',
@@ -744,7 +927,7 @@ export function useDeepCollectQueue({
         },
       ];
 
-      setCardOverrides((prev) => ({
+      syncCardOverrides((prev) => ({
         ...prev,
         [key]: {
           status: 'deep-queued',
@@ -793,7 +976,14 @@ export function useDeepCollectQueue({
     deepQueueRef.current = [];
     deepRunningRef.current = false;
     deepTaskMapRef.current = {};
-    runSessionIdRef.current = `deep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    sessionRef.current.cardOverrides = {};
+    sessionRef.current.deepJsonByOfferId = {};
+    sessionRef.current.deepFailuresByOfferId = {};
+    sessionRef.current.bindings.setCardOverrides?.({});
+    sessionRef.current.bindings.setDeepJsonByOfferId?.({});
+    sessionRef.current.bindings.setDeepFailuresByOfferId?.({});
+    runSessionIdRef.current = newRunSessionId();
+    publishDeepTasks();
   }
 
   return {

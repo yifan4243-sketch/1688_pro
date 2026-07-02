@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 export type ProgressOfferCardStatus =
   | 'waiting'
@@ -31,6 +31,7 @@ interface Props {
   onOzonPlaceholder?: (item: ProgressOfferCardItem) => void;
   selected?: boolean;
   onSelectToggle?: (item: ProgressOfferCardItem) => void;
+  actionsDisabled?: boolean;
 }
 
 const overlayLabel: Record<string, string> = {
@@ -140,8 +141,9 @@ function failureReasonZh(code: string, fallback?: string): string {
   return map[code] || fallback || code || '采集失败';
 }
 
-export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonPlaceholder, selected, onSelectToggle }: Props) {
-  const showImage = Boolean(item.image);
+export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonPlaceholder, selected, onSelectToggle, actionsDisabled = false }: Props) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(item.image) && !imageFailed;
   const deepBadge = (() => {
     if (item.status === 'deep-success') return { text: '已深采', kind: 'success' };
     if (item.status === 'deep-failed' || item.status === 'failed') return { text: '深采失败', kind: 'failed' };
@@ -160,6 +162,10 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
   const isFailed = item.status === 'deep-failed' || item.status === 'failed';
   const isClickable = Boolean(item.offerId || item.raw || item.title || item.image);
   const canSelect = isClickable || item.status !== 'waiting';
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [item.image]);
 
   return (
     <article
@@ -186,9 +192,17 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
       {/* Image area 1:1 with optional overlay */}
       <div className="progress-card-image-wrap">
         {showImage ? (
-          <img src={item.image} alt={item.title || ''} className="progress-card-img" loading="lazy" />
+          <img
+            src={item.image}
+            alt={item.title || ''}
+            className="progress-card-img"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
         ) : (
-          <div className="progress-image-skeleton" />
+          <div className="progress-image-skeleton">
+            <span>{item.image ? '图片加载失败' : '暂无图片'}</span>
+          </div>
         )}
 
         {deepBadge && (
@@ -225,10 +239,11 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
           <button
             type="button"
             className="progress-card-action-btn progress-card-action-btn--deep"
-            disabled={!item.offerId || item.status === 'deep-queued' || item.status === 'deep-collecting' || item.status === 'collecting'}
+            disabled={actionsDisabled || !item.offerId || item.status === 'deep-queued' || item.status === 'deep-collecting' || item.status === 'collecting'}
+            title={actionsDisabled ? '当前已有 1688 任务执行中，请等待完成' : undefined}
             onClick={(e) => {
               e.stopPropagation();
-              if (item.offerId && item.status !== 'deep-queued' && item.status !== 'deep-collecting' && item.status !== 'collecting') {
+              if (!actionsDisabled && item.offerId && item.status !== 'deep-queued' && item.status !== 'deep-collecting' && item.status !== 'collecting') {
                 onDeepCollect?.(item);
               }
             }}
@@ -238,13 +253,14 @@ export default function ProgressOfferCard({ item, onOpen, onDeepCollect, onOzonP
           <button
             type="button"
             className="progress-card-action-btn progress-card-action-btn--ozon"
-            disabled={!isClickable}
+            disabled={actionsDisabled || !isClickable}
+            title={actionsDisabled ? '当前已有 1688 任务执行中，请等待完成' : undefined}
             onClick={(e) => {
               e.stopPropagation();
-              if (isClickable) onOzonPlaceholder?.(item);
+              if (!actionsDisabled && isClickable) onOzonPlaceholder?.(item);
             }}
           >
-            上架至 OZON
+            生成 Ozon 草稿
           </button>
         </div>
       </div>

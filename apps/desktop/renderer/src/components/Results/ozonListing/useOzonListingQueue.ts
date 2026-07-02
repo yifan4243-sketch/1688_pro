@@ -20,6 +20,7 @@ import type {
 type DesktopApi = ReturnType<typeof getApi>;
 
 type UseOzonListingQueueArgs = {
+  sessionKey?: string;
   api: DesktopApi;
   cards: ProgressOfferCardItem[];
   enqueueSingleDeepCollect: (item: ProgressOfferCardItem) => void;
@@ -33,6 +34,76 @@ type DeepWaitResult =
   | { status: 'timeout'; item: ProgressOfferCardItem | null };
 
 const DEEP_COLLECT_TIMEOUT_MS = 12 * 60 * 1000;
+
+type OzonListingSession = {
+  key: string;
+  cards: ProgressOfferCardItem[];
+  enqueueSingleDeepCollect: (item: ProgressOfferCardItem) => void;
+  queue: OzonListingQueueEntry[];
+  running: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  taskMap: Record<string, OzonListingTask>;
+  runSessionId: string;
+};
+
+const DEFAULT_SESSION_KEY = 'default';
+const noopEnqueueDeep = () => {};
+const ozonListingSessions = new Map<string, OzonListingSession>();
+
+function newRunSessionId(): string {
+  return `ozon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createOzonListingSession(key: string): OzonListingSession {
+  return {
+    key,
+    cards: [],
+    enqueueSingleDeepCollect: noopEnqueueDeep,
+    queue: [],
+    running: false,
+    timer: null,
+    taskMap: {},
+    runSessionId: newRunSessionId(),
+  };
+}
+
+function getOzonListingSession(sessionKey?: string): OzonListingSession {
+  const key = sessionKey || DEFAULT_SESSION_KEY;
+  let session = ozonListingSessions.get(key);
+  if (!session) {
+    session = createOzonListingSession(key);
+    ozonListingSessions.set(key, session);
+  }
+  return session;
+}
+
+function sortedOzonTasks(session: OzonListingSession): OzonListingTask[] {
+  return Object.values(session.taskMap)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+export function getOzonListingSessionTasks(sessionKey?: string): OzonListingTask[] {
+  return sortedOzonTasks(getOzonListingSession(sessionKey));
+}
+
+export function hasOzonListingSessionState(sessionKey?: string): boolean {
+  const session = ozonListingSessions.get(sessionKey || DEFAULT_SESSION_KEY);
+  if (!session) return false;
+  return session.queue.length > 0 || session.running || Object.keys(session.taskMap).length > 0;
+}
+
+export const __ozonListingSessionTest = {
+  resetAll(): void {
+    for (const session of ozonListingSessions.values()) {
+      if (session.timer) clearTimeout(session.timer);
+    }
+    ozonListingSessions.clear();
+  },
+  seed(sessionKey: string, tasks: OzonListingTask[]): void {
+    const session = getOzonListingSession(sessionKey);
+    session.taskMap = Object.fromEntries(tasks.map((task) => [task.key, task]));
+  },
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -83,19 +154,49 @@ function errorMessageOf(error: unknown): string {
 }
 
 export function useOzonListingQueue({
+  sessionKey = DEFAULT_SESSION_KEY,
   api,
   cards,
   enqueueSingleDeepCollect,
   onOzonTasksChange,
   showToast,
 }: UseOzonListingQueueArgs) {
-  const cardsRef = useRef(cards);
-  const enqueueDeepRef = useRef(enqueueSingleDeepCollect);
-  const ozonQueueRef = useRef<OzonListingQueueEntry[]>([]);
-  const ozonRunningRef = useRef(false);
-  const ozonQueueStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ozonTaskMapRef = useRef<Record<string, OzonListingTask>>({});
-  const runSessionIdRef = useRef<string>(`ozon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const sessionRef = useRef<OzonListingSession>(getOzonListingSession(sessionKey));
+  if (sessionRef.current.key !== sessionKey) {
+    sessionRef.current = getOzonListingSession(sessionKey);
+  }
+
+  const onOzonTasksChangeRef = useRef(onOzonTasksChange);
+  onOzonTasksChangeRef.current = onOzonTasksChange;
+
+  const cardsRef = {
+    get current(): ProgressOfferCardItem[] { return sessionRef.current.cards; },
+    set current(value: ProgressOfferCardItem[]) { sessionRef.current.cards = value; },
+  };
+  const enqueueDeepRef = {
+    get current(): (item: ProgressOfferCardItem) => void { return sessionRef.current.enqueueSingleDeepCollect; },
+    set current(value: (item: ProgressOfferCardItem) => void) { sessionRef.current.enqueueSingleDeepCollect = value; },
+  };
+  const ozonQueueRef = {
+    get current(): OzonListingQueueEntry[] { return sessionRef.current.queue; },
+    set current(value: OzonListingQueueEntry[]) { sessionRef.current.queue = value; },
+  };
+  const ozonRunningRef = {
+    get current(): boolean { return sessionRef.current.running; },
+    set current(value: boolean) { sessionRef.current.running = value; },
+  };
+  const ozonQueueStartTimerRef = {
+    get current(): ReturnType<typeof setTimeout> | null { return sessionRef.current.timer; },
+    set current(value: ReturnType<typeof setTimeout> | null) { sessionRef.current.timer = value; },
+  };
+  const ozonTaskMapRef = {
+    get current(): Record<string, OzonListingTask> { return sessionRef.current.taskMap; },
+    set current(value: Record<string, OzonListingTask>) { sessionRef.current.taskMap = value; },
+  };
+  const runSessionIdRef = {
+    get current(): string { return sessionRef.current.runSessionId; },
+    set current(value: string) { sessionRef.current.runSessionId = value; },
+  };
 
   useEffect(() => {
     cardsRef.current = cards;
@@ -105,11 +206,12 @@ export function useOzonListingQueue({
     enqueueDeepRef.current = enqueueSingleDeepCollect;
   }, [enqueueSingleDeepCollect]);
 
-  function publishOzonTasks(): void {
-    const tasks = Object.values(ozonTaskMapRef.current)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  useEffect(() => {
+    publishOzonTasks();
+  }, [sessionKey]);
 
-    onOzonTasksChange?.(tasks);
+  function publishOzonTasks(): void {
+    onOzonTasksChangeRef.current?.(sortedOzonTasks(sessionRef.current));
   }
 
   function upsertOzonTask(key: string, patch: OzonListingTaskPatch): void {
@@ -446,7 +548,8 @@ export function useOzonListingQueue({
     ozonQueueRef.current = [];
     ozonRunningRef.current = false;
     ozonTaskMapRef.current = {};
-    runSessionIdRef.current = `ozon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    runSessionIdRef.current = newRunSessionId();
+    publishOzonTasks();
   }
 
   return {

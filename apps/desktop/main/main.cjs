@@ -33,6 +33,9 @@ const {
   loadSettings: loadOzonSettings,
   saveSettings: saveOzonSettings,
   getStoreStats: getOzonStoreStats,
+  getCategoryTree: getOzonCategoryTree,
+  searchCategories: searchOzonCategories,
+  getCategoryAttributes: getOzonCategoryAttributes,
 } = require('../ozon-settings.cjs');
 
 const {
@@ -231,6 +234,15 @@ function registerIpc() {
   );
   ipcMain.handle('desktop:getOzonStoreStats', () =>
     getOzonStoreStats(userDataDir()),
+  );
+  ipcMain.handle('desktop:getOzonCategoryTree', (_event, options) =>
+    getOzonCategoryTree(userDataDir(), options || {}),
+  );
+  ipcMain.handle('desktop:searchOzonCategories', (_event, query, options) =>
+    searchOzonCategories(userDataDir(), query || '', options || {}),
+  );
+  ipcMain.handle('desktop:getOzonCategoryAttributes', (_event, params) =>
+    getOzonCategoryAttributes(userDataDir(), params || {}),
   );
   ipcMain.handle('desktop:generateOzonDraft', async (_event, rows) =>
     generateOzonDraft(loadOzonSettings(userDataDir(), { includeSecrets: true }), rows),

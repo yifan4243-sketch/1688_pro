@@ -1,24 +1,28 @@
 import React, { useMemo, useState } from 'react';
-import type { OzonListingTask } from '../Results/ozonListing/types';
+import type { OzonListingTask, OzonListingTaskPatch } from '../Results/ozonListing/types';
 import OzonProductCard, {
+  isOzonTaskImportedStatus,
   isOzonTaskFailedStatus,
   isOzonTaskProcessingStatus,
   statusGroupOf,
 } from './OzonProductCard';
+import OzonDraftEditor from './OzonDraftEditor';
 import { formatOzonTaskDisplayMessage } from './ozonError';
 import './ozon.css';
 
-type OzonProductFilter = 'all' | 'success' | 'queued' | 'manual' | 'failed';
+type OzonProductFilter = 'all' | 'draft' | 'imported' | 'queued' | 'manual' | 'failed';
 type OzonSortMode = 'updated_desc' | 'updated_asc';
 
 type Props = {
   tasks: OzonListingTask[];
   onBackTo1688: () => void;
+  onTaskUpdate?: (key: string, patch: OzonListingTaskPatch) => void;
 };
 
 const filterOptions: Array<{ key: OzonProductFilter; label: string }> = [
   { key: 'all', label: '全部' },
-  { key: 'success', label: '草稿' },
+  { key: 'draft', label: '草稿' },
+  { key: 'imported', label: '已导入' },
   { key: 'queued', label: '处理中' },
   { key: 'manual', label: '需补充' },
   { key: 'failed', label: '失败' },
@@ -32,7 +36,8 @@ function taskTime(task: OzonListingTask): number {
 
 function filterTask(task: OzonListingTask, filter: OzonProductFilter): boolean {
   if (filter === 'all') return true;
-  if (filter === 'success') return task.status === 'draft_ready';
+  if (filter === 'draft') return task.status === 'draft_ready';
+  if (filter === 'imported') return isOzonTaskImportedStatus(task.status);
   if (filter === 'queued') return isOzonTaskProcessingStatus(task.status);
   if (filter === 'manual') return task.status === 'needs_manual';
   if (filter === 'failed') return isOzonTaskFailedStatus(task.status);
@@ -46,7 +51,7 @@ function titleOf(task: OzonListingTask): string {
     .join(' ');
 }
 
-export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
+export default function OzonProductPage({ tasks, onBackTo1688, onTaskUpdate }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<OzonProductFilter>('all');
   const [sortMode, setSortMode] = useState<OzonSortMode>('updated_desc');
@@ -55,10 +60,11 @@ export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
 
   const counts = useMemo(() => {
     const queued = tasks.filter((task) => isOzonTaskProcessingStatus(task.status)).length;
-    const success = tasks.filter((task) => task.status === 'draft_ready').length;
+    const draft = tasks.filter((task) => task.status === 'draft_ready').length;
+    const imported = tasks.filter((task) => isOzonTaskImportedStatus(task.status)).length;
     const manual = tasks.filter((task) => task.status === 'needs_manual').length;
     const failed = tasks.filter((task) => isOzonTaskFailedStatus(task.status)).length;
-    return { all: tasks.length, success, queued, manual, failed };
+    return { all: tasks.length, draft, imported, queued, manual, failed };
   }, [tasks]);
 
   const visibleTasks = useMemo(() => {
@@ -85,13 +91,27 @@ export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
   async function copyDraft(task: OzonListingTask): Promise<void> {
     if (!task.draft) return;
     try {
-      await navigator.clipboard.writeText(JSON.stringify(task.draft, null, 2));
-      setToast('已复制草稿 JSON');
+      await navigator.clipboard.writeText(JSON.stringify({ items: task.draft.items }, null, 2));
+      setToast('已复制 Ozon 回传 Payload');
       window.setTimeout(() => setToast(''), 1600);
     } catch {
       setToast('复制失败，请稍后重试');
       window.setTimeout(() => setToast(''), 1600);
     }
+  }
+
+  function showToast(message: string): void {
+    setToast(message);
+    window.setTimeout(() => setToast(''), 1600);
+  }
+
+  function handleTaskUpdate(key: string, patch: OzonListingTaskPatch): void {
+    onTaskUpdate?.(key, patch);
+    setSelectedTask((prev) => {
+      if (!prev) return prev;
+      if (prev.key !== key && prev.sidebarKey !== key) return prev;
+      return { ...prev, ...patch };
+    });
   }
 
   return (
@@ -100,7 +120,7 @@ export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
         <div>
           <span className="ozon-products-eyebrow">Ozon 工作台</span>
           <h2>草稿商品 / 上架任务</h2>
-          <p>这里汇总从 1688 商品卡生成的 Ozon 草稿、处理中任务、需人工补充项和失败任务。</p>
+          <p>这里汇总从 1688 商品卡生成的 Ozon 草稿、导入任务、需人工补充项和失败任务。</p>
         </div>
         <div className="ozon-products-hero-meta">
           <span>最近更新</span>
@@ -167,7 +187,7 @@ export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
               </div>
             </div>
             <h3>暂无 Ozon 草稿商品</h3>
-            <p>在 1688 页面点击“上架至 OZON”后，商品会出现在这里，并按草稿、处理中、需补充和失败状态分类。</p>
+            <p>在 1688 页面点击“生成 Ozon 草稿”后，商品会出现在这里，并按草稿、导入、需补充和失败状态分类。</p>
             <button type="button" onClick={onBackTo1688}>返回 1688 选择商品</button>
           </div>
         ) : (
@@ -189,7 +209,7 @@ export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
         <div className="ozon-product-detail-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setSelectedTask(null);
         }}>
-          <aside className="ozon-product-detail-panel">
+          <aside className="ozon-product-detail-panel ozon-product-detail-panel--visual">
             <div className="ozon-product-detail-head">
               <div>
                 <span>{selectedTask.offerId || '无 Offer ID'}</span>
@@ -200,17 +220,12 @@ export default function OzonProductPage({ tasks, onBackTo1688 }: Props) {
             <div className={`ozon-product-detail-status ozon-product-detail-status--${statusGroupOf(selectedTask.status)}`}>
               {formatOzonTaskDisplayMessage(selectedTask)}
             </div>
-            <pre className="ozon-product-detail-json">
-              {selectedTask.draft ? JSON.stringify(selectedTask.draft, null, 2) : '当前任务还没有生成草稿 JSON。'}
-            </pre>
-            <div className="ozon-product-detail-actions">
-              <button type="button" disabled={!selectedTask.draft} onClick={() => copyDraft(selectedTask)}>
-                复制草稿 JSON
-              </button>
-              <button type="button" onClick={onBackTo1688}>
-                返回 1688
-              </button>
-            </div>
+            <OzonDraftEditor
+              task={selectedTask}
+              onTaskUpdate={handleTaskUpdate}
+              onBackTo1688={onBackTo1688}
+              onToast={showToast}
+            />
           </aside>
         </div>
       )}

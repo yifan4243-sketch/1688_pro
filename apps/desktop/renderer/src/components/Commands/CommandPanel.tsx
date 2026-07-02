@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, AccountData } from '../../services/api';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, AccountData, type OzonCategoryEntry } from '../../services/api';
 import ResultRenderer from '../Results/ResultRenderer';
 import LiveCollectionRenderer from '../Results/LiveCollectionRenderer';
 import { ProgressOfferCardItem } from '../Results/ProgressOfferCard';
@@ -145,10 +145,18 @@ function applyDeepCollectDataPatchToRecord(
 
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange, onOzonTasksChange }: Props) {
   const [activeCmdId, setActiveCmdId] = useState('search');
+  const activeCmdIdRef = useRef(activeCmdId);
+  activeCmdIdRef.current = activeCmdId;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [args, setArgs] = useState<Record<string, string>>({});
   const [options, setOptions] = useState<Record<string, unknown>>({});
   const [running, setRunning] = useState(false);
+  const [runningCommandId, setRunningCommandId] = useState<string | null>(null);
+  const runningCommandIdRef = useRef<string | null>(runningCommandId);
+  runningCommandIdRef.current = runningCommandId;
+  const [deepQueueBusy, setDeepQueueBusy] = useState(false);
+  const deepQueueBusyRef = useRef(deepQueueBusy);
+  deepQueueBusyRef.current = deepQueueBusy;
   const [lastRecord, setLastRecord] = useState<CommandRecord | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<{ text: string; kind: string } | null>(null);
@@ -166,6 +174,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [pastedImagePreviewUrl, setPastedImagePreviewUrl] = useState<string | null>(null);
   const [pastedImageName, setPastedImageName] = useState<string | null>(null);
   const [pastedImageSize, setPastedImageSize] = useState<number | null>(null);
+  const [keywordCategoryOptions, setKeywordCategoryOptions] = useState<OzonCategoryEntry[]>([]);
+  const [keywordCategoryLoading, setKeywordCategoryLoading] = useState(false);
+  const [keywordCategoryMessage, setKeywordCategoryMessage] = useState('');
+  const [showKeywordCategories, setShowKeywordCategories] = useState(false);
 
   const [commandSnapshots, setCommandSnapshots] = useState<Record<string, CommandUiSnapshot>>({});
 
@@ -216,27 +228,94 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
   const api = getApi();
   const command = registry.commands[activeCmdId];
+  const commandPositionals = command?.positional ?? [];
+  const commandOptions = command?.options ?? [];
   const groupCommands = Object.values(registry.commands).filter((c) => c.group === 'sourcing' && c.id !== 'similar');
   const activeAccount = accounts.accounts.find((a) => a.profile === activeProfile);
   const alias = activeAccount?.alias || activeProfile;
-  const hasEmbeddedRunButton = command?.positional.some((f) => f.name === 'keyword') ?? false;
+  const hasEmbeddedRunButton = commandPositionals.some((f) => f.name === 'keyword');
   const isImageSearchCommand = activeCmdId === 'imageSearch';
+  const isAny1688TaskRunning = Boolean(runningCommandId) || deepQueueBusy;
+  const runningCommandLabel = runningCommandId
+    ? registry.commands[runningCommandId]?.label || runningCommandId
+    : deepQueueBusy
+      ? '深度采集'
+      : '';
+
+  const setDeepQueueBusyState = (value: boolean) => {
+    deepQueueBusyRef.current = value;
+    setDeepQueueBusy(value);
+  };
+
+  const beginCommandRun = (commandId: string): boolean => {
+    if (runningCommandIdRef.current || deepQueueBusyRef.current) {
+      const label = runningCommandIdRef.current
+        ? registry.commands[runningCommandIdRef.current]?.label || runningCommandIdRef.current
+        : '深度采集';
+      setAlert({ text: `当前已有 1688 任务执行中（${label}），请等待完成后再执行。`, kind: 'warn' });
+      return false;
+    }
+
+    runningCommandIdRef.current = commandId;
+    setRunningCommandId(commandId);
+    return true;
+  };
+
+  const finishCommandRun = (commandId: string) => {
+    if (runningCommandIdRef.current !== commandId) return;
+    runningCommandIdRef.current = null;
+    setRunningCommandId(null);
+  };
+
+  const handleRendererDeepTasksChange = (tasks: DeepCollectTask[]) => {
+    const busy = tasks.some((task) => task.status === 'queued' || task.status === 'collecting');
+    setDeepQueueBusyState(busy);
+    onDeepTasksChange?.(tasks);
+  };
 
   const previewArgv = useMemo(() => {
     if (!command) return '';
-    const parts = ['1688', ...command.argvPreview.split(' ').filter(Boolean)];
-    for (const f of command.positional) {
+    const parts = ['1688', ...String(command.argvPreview || command.id || '').split(' ').filter(Boolean)];
+    for (const f of commandPositionals) {
       const v = args[f.name] || '';
       parts.push(...v.split(/[\r\n,]+/).filter(Boolean));
     }
-    for (const o of command.options) {
+    for (const o of commandOptions) {
       const v = options[o.name];
       if (o.type === 'boolean') { if (v) parts.push(o.flag); }
       else if (String(v ?? '').trim()) parts.push(o.flag, String(v).trim());
     }
     parts.push('--profile', activeProfile, '--json', '--pretty');
     return parts.join(' ');
-  }, [command, args, options, activeProfile]);
+  }, [command, commandOptions, commandPositionals, args, options, activeProfile]);
+
+  useEffect(() => {
+    if (activeCmdId !== 'search') return;
+    let alive = true;
+    const query = String(args.keyword || '').trim();
+    const timer = window.setTimeout(() => {
+      setKeywordCategoryLoading(true);
+      api.ozon.searchCategories(query, { limit: 10 })
+        .then((response) => {
+          if (!alive) return;
+          setKeywordCategoryOptions(response.items || []);
+          setKeywordCategoryMessage(response.message || '');
+        })
+        .catch((error) => {
+          if (!alive) return;
+          setKeywordCategoryOptions([]);
+          setKeywordCategoryMessage(error instanceof Error ? error.message : String(error));
+        })
+        .finally(() => {
+          if (alive) setKeywordCategoryLoading(false);
+        });
+    }, 220);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [activeCmdId, api.ozon, args.keyword]);
 
   const chineseHint = useMemo(() => {
     if (activeCmdId === 'search') {
@@ -255,7 +334,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const defaultOptionsForCommand = (cmd?: CommandDef): Record<string, unknown> => {
     const defs: Record<string, unknown> = {};
     if (!cmd) return defs;
-    for (const o of cmd.options) {
+    for (const o of cmd.options ?? []) {
       if (o.type === 'boolean' && o.default) defs[o.name] = true;
       else if (o.default !== undefined && o.default !== '') defs[o.name] = o.default;
     }
@@ -275,6 +354,63 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     pastedImageName,
     pastedImageSize,
   });
+
+  const snapshotBaseForCommand = (
+    commandId: string,
+    fallback?: Partial<CommandUiSnapshot>,
+  ): CommandUiSnapshot => ({
+    args: fallback?.args || {},
+    options: fallback?.options || defaultOptionsForCommand(registry.commands[commandId]),
+    lastRecord: fallback?.lastRecord ?? null,
+    fieldErrors: fallback?.fieldErrors || {},
+    alert: fallback?.alert || null,
+    placeholderCount: fallback?.placeholderCount || 0,
+    showAdvanced: fallback?.showAdvanced || false,
+    pastedImageFile: fallback?.pastedImageFile || null,
+    pastedImagePreviewUrl: fallback?.pastedImagePreviewUrl || null,
+    pastedImageName: fallback?.pastedImageName || null,
+    pastedImageSize: fallback?.pastedImageSize || null,
+  });
+
+  const patchCommandSnapshot = (
+    commandId: string,
+    patch: Partial<CommandUiSnapshot>,
+    fallback?: Partial<CommandUiSnapshot>,
+  ) => {
+    setCommandSnapshots((prev) => {
+      const existing = prev[commandId] || snapshotBaseForCommand(commandId, fallback);
+      return {
+        ...prev,
+        [commandId]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const commitCommandRecord = (
+    commandId: string,
+    record: CommandRecord,
+    patch: Partial<CommandUiSnapshot> = {},
+    fallback?: Partial<CommandUiSnapshot>,
+  ) => {
+    if (activeCmdIdRef.current === commandId) {
+      setLastRecord(record);
+    }
+    patchCommandSnapshot(commandId, { ...patch, lastRecord: record }, fallback);
+  };
+
+  const setCommandAlert = (
+    commandId: string,
+    nextAlert: CommandUiSnapshot['alert'],
+    fallback?: Partial<CommandUiSnapshot>,
+  ) => {
+    patchCommandSnapshot(commandId, { alert: nextAlert }, fallback);
+    if (activeCmdIdRef.current === commandId) {
+      setAlert(nextAlert);
+    }
+  };
 
   const handleDeepCollectDataPatch = (
     patch: DeepCollectDataPatch,
@@ -320,8 +456,11 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       [activeCmdId]: currentSnapshot(),
     }));
 
+    activeCmdIdRef.current = id;
     setActiveCmdId(id);
     setRunning(false);
+    setLiveMode(false);
+    setLiveCards([]);
 
     if (targetSnapshot) {
       setArgs(targetSnapshot.args);
@@ -362,7 +501,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const validateBeforeRun = (): boolean => {
     if (!command) return false;
     const errors: Record<string, string> = {};
-    for (const f of command.positional) {
+    for (const f of commandPositionals) {
       if (!f.required) continue;
 
       // clipboard mode: pasted image satisfies the imagePath requirement
@@ -404,6 +543,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
   // Two-stage desktop DEEPPRO: search first, then delegate deep collect to unified queue
   const runDesktopDeepPro = async () => {
+    const runCommandId = activeCmdId;
+    const isRunActive = () => activeCmdIdRef.current === runCommandId;
+    const runArgs = { ...args };
+    const runOptions = { ...options };
     const max = Number(options.max || 20);
     if (!max || max < 1) return;
     setPlaceholderCount(max);
@@ -420,14 +563,19 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     try {
       searchRecord = await api.commands.run(basicSearchPayload);
     } catch (e) {
-      setAlert({
+      const failAlert = {
         text: '基础搜索失败，已保留上一批结果：' + (e as Error).message,
         kind: 'error',
-      });
-      setRunning(false);
-      setLiveMode(false);
-      setPlaceholderCount(0);
-      setLiveCards([]);
+      };
+      setCommandAlert(runCommandId, failAlert, { args: runArgs, options: runOptions });
+      patchCommandSnapshot(runCommandId, { placeholderCount: 0 }, { args: runArgs, options: runOptions });
+      if (isRunActive()) {
+        setRunning(false);
+        setLiveMode(false);
+        setPlaceholderCount(0);
+        setLiveCards([]);
+      }
+      finishCommandRun(runCommandId);
       return;
     }
 
@@ -437,14 +585,19 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
     // Guard: don't overwrite results when search returns nothing
     if (baseOffers.length === 0) {
-      setAlert({
+      const emptyAlert = {
         text: '基础搜索未返回商品，未启动深度采集，已保留上一批结果',
         kind: 'warn',
-      });
-      setLiveMode(false);
-      setRunning(false);
-      setPlaceholderCount(0);
-      setLiveCards([]);
+      };
+      setCommandAlert(runCommandId, emptyAlert, { args: runArgs, options: runOptions });
+      patchCommandSnapshot(runCommandId, { placeholderCount: 0 }, { args: runArgs, options: runOptions });
+      if (isRunActive()) {
+        setLiveMode(false);
+        setRunning(false);
+        setPlaceholderCount(0);
+        setLiveCards([]);
+      }
+      finishCommandRun(runCommandId);
       return;
     }
 
@@ -500,17 +653,38 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       error: null,
       startedAt: new Date().toISOString(),
     };
-    setLastRecord(synthetic);
-    setLiveMode(false);
-    setRunning(false);
-    setPlaceholderCount(0);
-    setAlert({ text: `基础搜索完成，共 ${baseOffers.length} 个商品，已加入深度采集队列`, kind: 'info' });
+    const successAlert = { text: `基础搜索完成，共 ${baseOffers.length} 个商品，已加入深度采集队列`, kind: 'info' };
+    commitCommandRecord(
+      runCommandId,
+      synthetic,
+      {
+        args: runArgs,
+        options: runOptions,
+        alert: successAlert,
+        placeholderCount: 0,
+      },
+      { args: runArgs, options: runOptions },
+    );
+    if (isRunActive()) {
+      setLiveMode(false);
+      setRunning(false);
+      setPlaceholderCount(0);
+      setAlert(successAlert);
+    }
+    setDeepQueueBusyState(true);
+    finishCommandRun(runCommandId);
     onHistoryRefresh();
   };
 
   const runCommand = async (confirmed = false) => {
     if (!validateBeforeRun()) return;
+    const runCommandId = activeCmdId;
+    const isRunActive = () => activeCmdIdRef.current === runCommandId;
+    const runArgs = { ...args };
+    const runOptions = { ...options };
+    if (!beginCommandRun(runCommandId)) return;
     if (command.write && !confirmed) {
+      finishCommandRun(runCommandId);
       setPendingPayload(collectPayload(false));
       setShowConfirm(true);
       return;
@@ -518,7 +692,13 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
     // Desktop DEEPPRO: two-stage orchestration
     if (activeCmdId === 'search' && options.deeppro === true) {
-      await runDesktopDeepPro();
+      try {
+        await runDesktopDeepPro();
+      } catch (e) {
+        const errorAlert = { text: (e as Error).message, kind: 'error' };
+        setCommandAlert(runCommandId, errorAlert, { args: runArgs, options: runOptions, placeholderCount: 0 });
+        finishCommandRun(runCommandId);
+      }
       return;
     }
 
@@ -530,7 +710,9 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     // Clipboard mode: upload pasted image to temp file before running CLI
     if (isImageSearchCommand && pastedImageFile) {
       try {
-        setAlert({ text: '正在上传图片...', kind: 'info' });
+        if (isRunActive()) {
+          setAlert({ text: '正在上传图片...', kind: 'info' });
+        }
         const buf = await pastedImageFile.arrayBuffer();
         const base64 = btoa(
           Array.from(new Uint8Array(buf))
@@ -550,35 +732,63 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         // Sync state for UI preview / subsequent runs
         setArgs((prev) => ({ ...prev, imagePath: tmpPath }));
       } catch (e) {
-        setAlert({ text: '图片上传失败: ' + (e as Error).message, kind: 'error' });
+        const uploadAlert = { text: '图片上传失败: ' + (e as Error).message, kind: 'error' };
+        setCommandAlert(runCommandId, uploadAlert, { args: runArgs, options: runOptions });
+        finishCommandRun(runCommandId);
         return;
       }
     }
 
-    setPlaceholderCount(placeholderCountForCommand());
-    setRunning(true);
-    setAlert({ text: '命令执行中...', kind: 'info' });
+    if (isRunActive()) {
+      setPlaceholderCount(placeholderCountForCommand());
+      setRunning(true);
+      setAlert({ text: '命令执行中...', kind: 'info' });
+    }
     try {
       const record = await api.commands.run(payload);
-      setLastRecord(record);
+      const nextAlert = record.status === 'success'
+        ? { text: '执行成功', kind: 'success' }
+        : { text: record.error?.message || `执行失败: ${record.status}`, kind: 'error' };
+      commitCommandRecord(
+        runCommandId,
+        record,
+        {
+          args: payload.args,
+          options: payload.options,
+          alert: nextAlert,
+          placeholderCount: 0,
+        },
+        { args: runArgs, options: runOptions },
+      );
       // Write offers to product history
-      if (activeCmdId === 'search' && record.stdoutJson) {
+      if (runCommandId === 'search' && record.stdoutJson) {
         const offers = (record.stdoutJson as Record<string, unknown>)?.offers as Array<Record<string, unknown>> | undefined;
         if (offers?.length) {
           api.productHistory.add(offers, { sourceCommand: 'search', profile: activeProfile }).catch(() => {});
         }
       }
-      if (record.status === 'success') {
-        setAlert({ text: '执行成功', kind: 'success' });
-      } else {
-        setAlert({ text: record.error?.message || `执行失败: ${record.status}`, kind: 'error' });
+      if (isRunActive()) {
+        setAlert(nextAlert);
       }
       onHistoryRefresh();
     } catch (e) {
-      setAlert({ text: (e as Error).message, kind: 'error' });
+      const errorAlert = { text: (e as Error).message, kind: 'error' };
+      setCommandAlert(
+        runCommandId,
+        errorAlert,
+        { args: payload.args, options: payload.options, placeholderCount: 0 },
+      );
     } finally {
-      setRunning(false);
-      setPlaceholderCount(0);
+      patchCommandSnapshot(
+        runCommandId,
+        { args: payload.args, options: payload.options, placeholderCount: 0 },
+        { args: runArgs, options: runOptions },
+      );
+      if (isRunActive()) {
+        setRunning(false);
+        setPlaceholderCount(0);
+      }
+      finishCommandRun(runCommandId);
     }
   };
 
@@ -603,6 +813,18 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const fillKeyword = (kw: string) => {
     setArgs({ ...args, keyword: kw });
     if (fieldErrors.keyword) { const e = { ...fieldErrors }; delete e.keyword; setFieldErrors(e); }
+  };
+
+  const fillKeywordFromCategory = (entry: OzonCategoryEntry) => {
+    const keyword = String(entry.keyword || entry.path || '').trim();
+    if (!keyword) return;
+    setArgs({ ...args, keyword });
+    setShowKeywordCategories(false);
+    if (fieldErrors.keyword) {
+      const e = { ...fieldErrors };
+      delete e.keyword;
+      setFieldErrors(e);
+    }
   };
 
   const isDeepProAdvancedOption = (name: string): boolean =>
@@ -658,28 +880,64 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       {command && (
         <form className="command-control-panel" onSubmit={(e) => { e.preventDefault(); runCommand(); }}>
           {/* Row 1: search/command bar with embedded execute button */}
-          {command.positional.length > 0 && (
+          {commandPositionals.length > 0 && (
             <div className="search-command-wrapper">
-              {command.positional.map((f) => {
+              {commandPositionals.map((f) => {
                 const hasErr = isFieldError(f.name);
                 const isKeyword = f.name === 'keyword';
                 return (
                   <div key={f.name} className="search-command-field">
                     <label className="form-label">{f.label}{f.required && <span className="required">*</span>}</label>
                     {isKeyword ? (
-                      /* Keyword: pill search bar with embedded button */
-                      <div className={`search-command-box ${hasErr ? 'has-error' : ''}`}>
-                        <input
-                          className="search-command-input"
-                          value={args[f.name] || ''}
-                          placeholder={hasErr ? '请输入搜索词' : '请输入搜索词，例如：上衣'}
-                          onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
-                        />
-                        <button type="button" className="search-command-button" disabled={running}
-                          onClick={() => runCommand()}>
-                          {running ? '执行中...' : '执行命令'}
-                        </button>
-                      </div>
+                      <>
+                        {/* Keyword: pill search bar with embedded button */}
+                        <div className={`search-command-box ${hasErr ? 'has-error' : ''}`}>
+                          <input
+                            className="search-command-input"
+                            value={args[f.name] || ''}
+                            placeholder={hasErr ? '请输入搜索词' : '请输入搜索词，例如：上衣'}
+                            onFocus={() => setShowKeywordCategories(true)}
+                            onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
+                          />
+                          <button
+                            type="button"
+                            className="search-command-button"
+                            disabled={isAny1688TaskRunning}
+                            title={isAny1688TaskRunning ? `当前已有 1688 任务执行中：${runningCommandLabel}` : undefined}
+                            onClick={() => runCommand()}
+                          >
+                            {isAny1688TaskRunning ? '执行中...' : '执行命令'}
+                          </button>
+                        </div>
+                        {showKeywordCategories && (
+                          <div className="keyword-category-panel">
+                            <div className="keyword-category-head">
+                              <span>{keywordCategoryLoading ? '正在读取 Ozon 类目...' : 'Ozon 类目搜索词'}</span>
+                              <button type="button" onClick={() => setShowKeywordCategories(false)}>收起</button>
+                            </div>
+                            {keywordCategoryOptions.length > 0 ? (
+                              <div className="keyword-category-list">
+                                {keywordCategoryOptions.map((entry) => (
+                                  <button
+                                    key={`${entry.descriptionCategoryId || entry.description_category_id}-${entry.typeId || entry.type_id}-${entry.path}`}
+                                    type="button"
+                                    className="keyword-category-option"
+                                    title={entry.path}
+                                    onClick={() => fillKeywordFromCategory(entry)}
+                                  >
+                                    <strong>{entry.keyword || entry.path}</strong>
+                                    <span>{entry.path}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="keyword-category-empty">
+                                {keywordCategoryMessage || '暂无类目候选。绑定 Ozon 店铺后会同步类目树。'}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     ) : f.multiline || f.array ? (
                       <>
                         <textarea
@@ -749,9 +1007,9 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
           )}
 
           {/* Short fields — compact grid */}
-          {command.options.filter((o) => o.type !== 'boolean' && !isDeepProAdvancedOption(o.name)).length > 0 && (
+          {commandOptions.filter((o) => o.type !== 'boolean' && !isDeepProAdvancedOption(o.name)).length > 0 && (
             <div className="compact-grid">
-              {command.options.filter((o) => o.type !== 'boolean' && !isDeepProAdvancedOption(o.name)).map((o) => {
+              {commandOptions.filter((o) => o.type !== 'boolean' && !isDeepProAdvancedOption(o.name)).map((o) => {
                 if (o.type === 'select') {
                   return (
                     <div key={o.name} className="form-field compact">
@@ -780,19 +1038,24 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
           )}
 
           {/* Option chips + command actions */}
-          {(command.options.filter((o) => o.type === 'boolean').length > 0 || !hasEmbeddedRunButton || command.id === 'search') && (
+          {(commandOptions.filter((o) => o.type === 'boolean').length > 0 || !hasEmbeddedRunButton || command.id === 'search') && (
             <div className="command-action-row">
               {!hasEmbeddedRunButton && (
                 <div className="command-run-actions">
-                  <button className="glass-btn-primary" disabled={running} onClick={() => runCommand()}>
-                    {running ? '执行中...' : '执行命令'}
+                  <button
+                    className="glass-btn-primary"
+                    disabled={isAny1688TaskRunning}
+                    title={isAny1688TaskRunning ? `当前已有 1688 任务执行中：${runningCommandLabel}` : undefined}
+                    onClick={() => runCommand()}
+                  >
+                    {isAny1688TaskRunning ? '执行中...' : '执行命令'}
                   </button>
                   <button type="button" className="glass-btn-ghost" onClick={() => setShowAdvanced(!showAdvanced)}>
                     {showAdvanced ? '隐藏 CLI 预览' : '高级信息'}
                   </button>
                 </div>
               )}
-              {command.options.filter((o) => o.type === 'boolean').map((o) => (
+              {commandOptions.filter((o) => o.type === 'boolean').map((o) => (
                 <button key={o.name} type="button"
                   className={`glass-toggle-chip ${options[o.name] ? 'active' : ''}`}
                   onClick={() => setOptions({ ...options, [o.name]: !options[o.name] })}
@@ -815,12 +1078,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
           )}
 
           {/* Advanced: deeppro extended params, collapsed unless deeppro is on */}
-          {command.id === 'search' && command.options.filter((o) => isDeepProAdvancedOption(o.name)).length > 0 && (
+          {command.id === 'search' && commandOptions.filter((o) => isDeepProAdvancedOption(o.name)).length > 0 && (
             <details className="advanced-section" open={!!options.deeppro}>
               <summary className="advanced-toggle">高级采集参数</summary>
               <p className="advanced-hint">敏感类目或出现 deeppro 全部失败时，尝试切换为 daemon 模式。</p>
               <div className="compact-grid" style={{ marginTop: 10 }}>
-                {command.options.filter((o) => isDeepProAdvancedOption(o.name)).map((o) => {
+                {commandOptions.filter((o) => isDeepProAdvancedOption(o.name)).map((o) => {
                   if (o.type === 'select') {
                     return (
                       <div key={o.name} className="form-field compact">
@@ -882,15 +1145,17 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               activeProfile={activeProfile}
               manualDeepCollectHeaded={!!options.headed}
               captchaRetryHeaded={!!options.captchaRetryHeaded}
-              onDeepTasksChange={onDeepTasksChange}
+              onDeepTasksChange={handleRendererDeepTasksChange}
               onOzonTasksChange={onOzonTasksChange}
               onDeepCollectDataPatch={(patch) => handleDeepCollectDataPatch(patch, activeCmdId)}
+              taskActionsDisabled={isAny1688TaskRunning}
             />
           </>
         ) : visibleRecord ? (
           <>
             <p className="result-count">{resultCount}</p>
             <ResultRenderer
+              key={visibleRecord.runId}
               record={visibleRecord}
               resultType={command.resultType}
               placeholderCards={placeholderCount}
@@ -899,9 +1164,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
               manualDeepCollectHeaded={!!options.headed}
               captchaRetryHeaded={!!options.captchaRetryHeaded}
               autoDeepCollectOnMount={Boolean(visibleRecord && visibleRecord.runId?.startsWith('desktop-deeppro-base-'))}
-              onDeepTasksChange={onDeepTasksChange}
+              onDeepTasksChange={handleRendererDeepTasksChange}
               onOzonTasksChange={onOzonTasksChange}
               onDeepCollectDataPatch={(patch) => handleDeepCollectDataPatch(patch, visibleRecord.commandId, visibleRecord.runId)}
+              taskActionsDisabled={isAny1688TaskRunning}
             />
           </>
         ) : (

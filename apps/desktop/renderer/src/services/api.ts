@@ -102,6 +102,8 @@ export interface OzonSettingsPublic {
     defaultDescriptionCategoryId: string;
     defaultTypeId: string;
     defaultCategoryPath: string;
+    defaultWarehouseId: string;
+    enableRealSubmit?: boolean;
   };
 }
 
@@ -122,6 +124,8 @@ export interface OzonSettingsPatch {
     defaultDescriptionCategoryId?: string;
     defaultTypeId?: string;
     defaultCategoryPath?: string;
+    defaultWarehouseId?: string;
+    enableRealSubmit?: boolean;
   };
 }
 
@@ -168,6 +172,62 @@ export interface OzonStoreStats {
   fetchedAt: string;
 }
 
+export interface OzonCategoryEntry {
+  keyword: string;
+  path: string;
+  typeId: number;
+  type_id: number;
+  descriptionCategoryId: number;
+  description_category_id: number;
+  disabled?: boolean;
+  searchIndex?: string;
+}
+
+export interface OzonCategoryTreeResponse {
+  ok: boolean;
+  source: string;
+  message: string;
+  tree?: unknown;
+  items: OzonCategoryEntry[];
+  total: number;
+  fetchedAt: string;
+}
+
+export interface OzonCategorySearchResponse {
+  ok: boolean;
+  source: string;
+  message: string;
+  items: OzonCategoryEntry[];
+  total: number;
+  fetchedAt: string;
+}
+
+export interface OzonCategoryAttribute {
+  id: number;
+  name: string;
+  description: string;
+  groupId: number | null;
+  groupName: string;
+  dictionaryId: number;
+  isRequired: boolean;
+  isAspect: boolean;
+  isCollection: boolean;
+  maxValueCount: number;
+  categoryDependent: boolean;
+  attributeComplexId: number;
+  complexIsCollection: boolean;
+}
+
+export interface OzonCategoryAttributesResponse {
+  ok: boolean;
+  descriptionCategoryId: number;
+  typeId: number;
+  attributes: OzonCategoryAttribute[];
+  requiredCount: number;
+  raw?: unknown;
+  fetchedAt: string;
+}
+
 // Raw window.desktopApi shape
 const api = (window as unknown as { desktopApi?: DesktopApi }).desktopApi;
 
@@ -209,7 +269,11 @@ interface DesktopApi {
     getSettings: () => Promise<OzonSettingsPublic>;
     saveSettings: (patch: OzonSettingsPatch) => Promise<OzonSettingsPublic>;
     getStoreStats: () => Promise<OzonStoreStats>;
+    getCategoryTree: (options?: { forceRefresh?: boolean; language?: string }) => Promise<OzonCategoryTreeResponse>;
+    searchCategories: (query: string, options?: { limit?: number; forceRefresh?: boolean; language?: string }) => Promise<OzonCategorySearchResponse>;
+    getCategoryAttributes: (params: { descriptionCategoryId: number; typeId: number; language?: string }) => Promise<OzonCategoryAttributesResponse>;
     generateDraft: (rows: Array<Record<string, unknown>>) => Promise<OzonDraft>;
+    submitDraft: (draft: OzonDraft, confirmed: boolean) => Promise<Record<string, unknown>>;
   };
 }
 

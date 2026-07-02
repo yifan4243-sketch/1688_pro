@@ -5,9 +5,9 @@ import ProgressOfferCard, { toProgressCards, ProgressOfferCardItem } from './Pro
 import OfferDetailModal from './OfferDetailModal';
 import ProgressSummary from './ProgressSummary';
 import { mergeDeepCollectData } from './deepCollect/jsonMerge';
-import { useDeepCollectQueue } from './deepCollect/useDeepCollectQueue';
+import { getDeepCollectSessionSnapshot, hasDeepCollectSessionState, useDeepCollectQueue } from './deepCollect/useDeepCollectQueue';
 import type { DeepCollectDataPatch, DeepCollectTask } from './deepCollect/types';
-import { useOzonListingQueue } from './ozonListing/useOzonListingQueue';
+import { hasOzonListingSessionState, useOzonListingQueue } from './ozonListing/useOzonListingQueue';
 import type { OzonListingTask } from './ozonListing/types';
 import CommandErrorView from './CommandErrorView';
 
@@ -28,6 +28,7 @@ interface Props {
   onDeepTasksChange?: (tasks: DeepCollectTask[]) => void;
   onOzonTasksChange?: (tasks: OzonListingTask[]) => void;
   onDeepCollectDataPatch?: (patch: DeepCollectDataPatch) => void;
+  taskActionsDisabled?: boolean;
 }
 
 type ViewMode = 'card' | 'json';
@@ -135,17 +136,21 @@ function cardKey(card: ProgressOfferCardItem): string {
   return card.offerId ? `offer:${card.offerId}` : `slot:${card.slotIndex}`;
 }
 
-export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange, onOzonTasksChange, onDeepCollectDataPatch }: Props) {
+export default function ResultRenderer({ record, resultType, placeholderCards, running, activeProfile, manualDeepCollectHeaded = false, captchaRetryHeaded = false, autoDeepCollectOnMount = false, onDeepTasksChange, onOzonTasksChange, onDeepCollectDataPatch, taskActionsDisabled = false }: Props) {
   const api = getApi();
+  const hasRecordSession = Boolean(record?.runId);
+  const deepSessionKey = record?.runId ? `record:${record.runId}` : `transient:${resultType || 'unknown'}`;
+  const ozonSessionKey = `${deepSessionKey}:ozon`;
+  const initialDeepSession = getDeepCollectSessionSnapshot(deepSessionKey);
   const [viewMode, setViewMode] = useState<ViewMode>(
     shouldDefaultCard(resultType) ? 'card' : 'json',
   );
   const [toast, setToast] = useState('');
   const [detailItem, setDetailItem] = useState<ProgressOfferCardItem | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
-  const [cardOverrides, setCardOverrides] = useState<Record<string, Partial<ProgressOfferCardItem>>>({});
-  const [deepJsonByOfferId, setDeepJsonByOfferId] = useState<Record<string, Record<string, unknown>>>({});
-  const [deepFailuresByOfferId, setDeepFailuresByOfferId] = useState<Record<string, Record<string, unknown>>>({});
+  const [cardOverrides, setCardOverrides] = useState<Record<string, Partial<ProgressOfferCardItem>>>(() => initialDeepSession.cardOverrides);
+  const [deepJsonByOfferId, setDeepJsonByOfferId] = useState<Record<string, Record<string, unknown>>>(() => initialDeepSession.deepJsonByOfferId);
+  const [deepFailuresByOfferId, setDeepFailuresByOfferId] = useState<Record<string, Record<string, unknown>>>(() => initialDeepSession.deepFailuresByOfferId);
   const autoDeepCollectRunRef = useRef<string | null>(null);
 
   const baseData = record?.stdoutJson as Record<string, unknown> | undefined;
@@ -206,11 +211,12 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     enqueueMultipleDeepCollect,
     resetDeepCollectQueue,
   } = useDeepCollectQueue({
+    sessionKey: deepSessionKey,
     api,
     activeProfile,
     manualDeepCollectHeaded,
     captchaRetryHeaded,
-    onDeepTasksChange,
+    onDeepTasksChange: hasRecordSession ? onDeepTasksChange : undefined,
     onDeepCollectDataPatch,
     cardOverrides,
     setCardOverrides,
@@ -224,14 +230,19 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     enqueueMultipleOzonListing,
     resetOzonListingQueue,
   } = useOzonListingQueue({
+    sessionKey: ozonSessionKey,
     api,
     cards: visibleCards,
     enqueueSingleDeepCollect,
-    onOzonTasksChange,
+    onOzonTasksChange: hasRecordSession ? onOzonTasksChange : undefined,
     showToast,
   });
 
   const handleBatchDeepCollect = () => {
+    if (taskActionsDisabled) {
+      showToast('当前已有 1688 任务执行中，请等待完成');
+      return;
+    }
     if (!canBatchOperate) {
       showToast('请至少选择 2 个商品');
       return;
@@ -240,6 +251,10 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
   };
 
   const handleBatchOzonListing = () => {
+    if (taskActionsDisabled) {
+      showToast('当前已有 1688 任务执行中，请等待完成');
+      return;
+    }
     if (!canBatchOperate) {
       showToast('请至少选择 2 个商品');
       return;
@@ -251,11 +266,18 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     if (!record?.runId) return;
 
     setSelectedKeys(new Set());
-    setCardOverrides({});
-    setDeepJsonByOfferId({});
-    setDeepFailuresByOfferId({});
-    resetDeepCollectQueue();
-    resetOzonListingQueue();
+    const deepSnapshot = getDeepCollectSessionSnapshot(deepSessionKey);
+    if (hasDeepCollectSessionState(deepSessionKey)) {
+      setCardOverrides(deepSnapshot.cardOverrides);
+      setDeepJsonByOfferId(deepSnapshot.deepJsonByOfferId);
+      setDeepFailuresByOfferId(deepSnapshot.deepFailuresByOfferId);
+    } else {
+      resetDeepCollectQueue();
+    }
+
+    if (!hasOzonListingSessionState(ozonSessionKey)) {
+      resetOzonListingQueue();
+    }
   }, [record?.runId]);
 
   const shouldAutoDeepCollect =
@@ -269,7 +291,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
     const runId = record.runId;
 
     // Prevent duplicate auto-enqueue across tab switches (module-level guard).
-    if (autoDeepCollectStartedRunIds.has(runId)) return;
+    if (autoDeepCollectStartedRunIds.has(runId) && hasDeepCollectSessionState(deepSessionKey)) return;
     // Prevent duplicate within same component instance.
     if (autoDeepCollectRunRef.current === runId) return;
 
@@ -277,7 +299,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
       const autoCards = visibleCards.filter((card) => Boolean(card.offerId));
 
       if (autoCards.length === 0) return;
-      if (autoDeepCollectStartedRunIds.has(runId)) return;
+      if (autoDeepCollectStartedRunIds.has(runId) && hasDeepCollectSessionState(deepSessionKey)) return;
       if (autoDeepCollectRunRef.current === runId) return;
 
       autoDeepCollectStartedRunIds.add(runId);
@@ -339,20 +361,20 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
                 <button
                   type="button"
                   className="batch-toolbar-btn batch-toolbar-btn--deep"
-                  disabled={!canBatchOperate}
+                  disabled={taskActionsDisabled || !canBatchOperate}
                   onClick={handleBatchDeepCollect}
-                  title={canBatchOperate ? '对已选择商品批量深度采集' : '至少选择 2 个商品后可用'}
+                  title={taskActionsDisabled ? '当前已有 1688 任务执行中，请等待完成' : canBatchOperate ? '对已选择商品批量深度采集' : '至少选择 2 个商品后可用'}
                 >
                   批量深度采集
                 </button>
                 <button
                   type="button"
                   className="batch-toolbar-btn batch-toolbar-btn--ozon"
-                  disabled={!canBatchOperate}
+                  disabled={taskActionsDisabled || !canBatchOperate}
                   onClick={handleBatchOzonListing}
-                  title={canBatchOperate ? '对已选择商品批量上架 OZON' : '至少选择 2 个商品后可用'}
+                  title={taskActionsDisabled ? '当前已有 1688 任务执行中，请等待完成' : canBatchOperate ? '对已选择商品批量生成 Ozon 草稿' : '至少选择 2 个商品后可用'}
                 >
-                  批量上架OZON
+                  批量生成草稿
                 </button>
               </div>
             )}
@@ -382,6 +404,7 @@ export default function ResultRenderer({ record, resultType, placeholderCards, r
               onSelectToggle={toggleSelect}
               onDeepCollect={enqueueSingleDeepCollect}
               onOzonPlaceholder={enqueueSingleOzonListing}
+              actionsDisabled={taskActionsDisabled}
               onOpen={(item) => {
                 if (item.offerId || item.raw || item.title || item.image) {
                   setDetailItem(item);

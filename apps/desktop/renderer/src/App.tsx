@@ -11,7 +11,7 @@ import OzonProductPage from './components/Ozon/OzonProductPage';
 import AccountSettingsModal from './components/Account/AccountSettingsModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import { formatOzonTaskDisplayMessage } from './components/Ozon/ozonError';
-import type { OzonListingTask, OzonListingTaskStatus } from './components/Results/ozonListing/types';
+import type { OzonListingTask, OzonListingTaskPatch, OzonListingTaskStatus } from './components/Results/ozonListing/types';
 import './styles/tokens.css';
 import './styles/controls.css';
 import './styles/panels.css';
@@ -34,26 +34,31 @@ interface DeepCollectSidebarTask {
   finishedAt?: string;
 }
 
-type OzonTaskFilter = 'all' | 'success' | 'queued' | 'manual' | 'failed';
+type OzonTaskFilter = 'all' | 'draft' | 'imported' | 'queued' | 'manual' | 'failed';
 
 function isOzonTaskProcessing(status: OzonListingTaskStatus): boolean {
   return (
     status === 'queued' ||
     status === 'waiting_deep_collect' ||
     status === 'deep_collecting' ||
-    status === 'generating_draft'
+    status === 'generating_draft' ||
+    status === 'import_pending'
   );
 }
 
 function isOzonTaskFailed(status: OzonListingTaskStatus): boolean {
-  return status === 'failed' || status === 'deep_failed';
+  return status === 'failed' || status === 'deep_failed' || status === 'submit_failed';
+}
+
+function isOzonTaskImported(status: OzonListingTaskStatus): boolean {
+  return status === 'imported' || status === 'listing_ready';
 }
 
 function ozonTaskClass(status: OzonListingTaskStatus): string {
-  if (status === 'draft_ready') return 'success';
+  if (isOzonTaskImported(status)) return 'success';
   if (status === 'needs_manual') return 'needs-manual';
   if (isOzonTaskFailed(status)) return 'failed';
-  if (status === 'deep_collecting' || status === 'generating_draft') return 'collecting';
+  if (status === 'deep_collecting' || status === 'generating_draft' || status === 'import_pending' || status === 'draft_ready') return 'collecting';
   return 'queued';
 }
 
@@ -64,12 +69,21 @@ function ozonTaskStatusLabel(status: OzonListingTaskStatus): string {
     deep_collecting: '深采中',
     generating_draft: '生成中',
     draft_ready: '草稿已生成',
+    import_pending: '导入中',
+    imported: '已导入',
+    listing_ready: '链路完成',
     needs_manual: '需人工补充',
     deep_failed: '深采失败',
     failed: '失败',
+    submit_failed: '提交失败',
   };
 
   return map[status];
+}
+
+function taskTimestamp(value?: string): number {
+  const time = new Date(value || '').getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 export default function App() {
@@ -96,7 +110,10 @@ export default function App() {
   }, [deepTasks]);
 
   const handleDeepTasksChange = (tasks: DeepCollectSidebarTask[]) => {
-    if (!tasks.length) return;
+    if (!tasks.length) {
+      setDeepTasks([]);
+      return;
+    }
 
     setDeepTasks((prev) => {
       const map = new Map<string, DeepCollectSidebarTask>();
@@ -124,14 +141,18 @@ export default function App() {
   const [ozonTaskFilter, setOzonTaskFilter] = useState<OzonTaskFilter>('all');
   const ozonTaskCounts = useMemo(() => {
     const queued = ozonTasks.filter((t) => isOzonTaskProcessing(t.status)).length;
-    const success = ozonTasks.filter((t) => t.status === 'draft_ready').length;
+    const draft = ozonTasks.filter((t) => t.status === 'draft_ready').length;
+    const imported = ozonTasks.filter((t) => isOzonTaskImported(t.status)).length;
     const manual = ozonTasks.filter((t) => t.status === 'needs_manual').length;
     const failed = ozonTasks.filter((t) => isOzonTaskFailed(t.status)).length;
-    return { all: ozonTasks.length, queued, success, manual, failed };
+    return { all: ozonTasks.length, queued, draft, imported, manual, failed };
   }, [ozonTasks]);
 
   const handleOzonTasksChange = (tasks: OzonListingTask[]) => {
-    if (!tasks.length) return;
+    if (!tasks.length) {
+      setOzonTasks([]);
+      return;
+    }
 
     setOzonTasks((prev) => {
       const map = new Map<string, OzonListingTask>();
@@ -143,7 +164,10 @@ export default function App() {
 
       for (const task of tasks) {
         const id = task.sidebarKey || `${task.key}::${task.createdAt}`;
-        map.set(id, task);
+        const existing = map.get(id);
+        const existingTime = taskTimestamp(existing?.updatedAt || existing?.finishedAt || existing?.createdAt);
+        const incomingTime = taskTimestamp(task.updatedAt || task.finishedAt || task.createdAt);
+        if (!existing || incomingTime >= existingTime) map.set(id, task);
       }
 
       return Array.from(map.values()).sort((a, b) => {
@@ -152,6 +176,19 @@ export default function App() {
         return bt - at;
       });
     });
+  };
+
+  const handleOzonTaskUpdate = (key: string, patch: OzonListingTaskPatch) => {
+    setOzonTasks((prev) => prev.map((task) => {
+      if (task.key !== key && task.sidebarKey !== key) return task;
+      return {
+        ...task,
+        ...patch,
+        key: task.key,
+        sidebarKey: task.sidebarKey,
+        updatedAt: patch.updatedAt || new Date().toISOString(),
+      };
+    }));
   };
 
   const [productHistoryOpen, setProductHistoryOpen] = useState(false);
@@ -307,14 +344,16 @@ export default function App() {
                           <div className="deep-task-thumb placeholder" />
                         )}
                         <div className="deep-task-info">
-                          <div className="deep-task-title">{task.title || task.offerId || '未命名商品'}</div>
+                          <div className="deep-task-title" title={task.title || task.offerId || '未命名商品'}>
+                            {task.title || task.offerId || '未命名商品'}
+                          </div>
                           <div className="deep-task-meta">
                             <span className={`deep-task-status ${task.status}`}>
                               {task.status === 'collecting' ? '采集中' : task.status === 'queued' ? '排队中' : task.status === 'success' ? '已完成' : '失败'}
                             </span>
                             <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                           </div>
-                          {task.message && <div className="deep-task-message">{task.message}</div>}
+                            {task.message && <div className="deep-task-message" title={task.message}>{task.message}</div>}
                         </div>
                       </div>
                     ))}
@@ -332,7 +371,8 @@ export default function App() {
           </div>
           <div className="deep-task-filters">
             <button className={ozonTaskFilter === 'all' ? 'active' : ''} onClick={() => setOzonTaskFilter('all')}> <span>全部</span> <strong>{ozonTaskCounts.all}</strong> </button>
-            <button className={ozonTaskFilter === 'success' ? 'active' : ''} onClick={() => setOzonTaskFilter('success')}> <span>草稿</span> <strong>{ozonTaskCounts.success}</strong> </button>
+            <button className={ozonTaskFilter === 'draft' ? 'active' : ''} onClick={() => setOzonTaskFilter('draft')}> <span>草稿</span> <strong>{ozonTaskCounts.draft}</strong> </button>
+            <button className={ozonTaskFilter === 'imported' ? 'active' : ''} onClick={() => setOzonTaskFilter('imported')}> <span>已导入</span> <strong>{ozonTaskCounts.imported}</strong> </button>
             <button className={ozonTaskFilter === 'queued' ? 'active' : ''} onClick={() => setOzonTaskFilter('queued')}> <span>处理中</span> <strong>{ozonTaskCounts.queued}</strong> </button>
             <button className={ozonTaskFilter === 'manual' ? 'active' : ''} onClick={() => setOzonTaskFilter('manual')}> <span>需补充</span> <strong>{ozonTaskCounts.manual}</strong> </button>
             <button className={ozonTaskFilter === 'failed' ? 'active' : ''} onClick={() => setOzonTaskFilter('failed')}> <span>失败</span> <strong>{ozonTaskCounts.failed}</strong> </button>
@@ -340,7 +380,8 @@ export default function App() {
           {(() => {
             const filtered = ozonTasks.filter((t) => {
               if (ozonTaskFilter === 'all') return true;
-              if (ozonTaskFilter === 'success') return t.status === 'draft_ready';
+              if (ozonTaskFilter === 'draft') return t.status === 'draft_ready';
+              if (ozonTaskFilter === 'imported') return isOzonTaskImported(t.status);
               if (ozonTaskFilter === 'queued') return isOzonTaskProcessing(t.status);
               if (ozonTaskFilter === 'manual') return t.status === 'needs_manual';
               if (ozonTaskFilter === 'failed') return isOzonTaskFailed(t.status);
@@ -363,14 +404,16 @@ export default function App() {
                             <div className="deep-task-thumb placeholder" />
                           )}
                           <div className="deep-task-info">
-                            <div className="deep-task-title">{task.title || '未命名任务'}</div>
+                            <div className="deep-task-title" title={task.title || task.offerId || '未命名任务'}>
+                              {task.title || '未命名任务'}
+                            </div>
                             <div className="deep-task-meta">
                               <span className={`deep-task-status ${ozonTaskClass(task.status)}`}>
                                 {ozonTaskStatusLabel(task.status)}
                               </span>
                               <span className="deep-task-time">{new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                             </div>
-                            {message && <div className="deep-task-message">{message}</div>}
+                            {message && <div className="deep-task-message" title={message}>{message}</div>}
                           </div>
                         </div>
                       );
@@ -423,6 +466,7 @@ export default function App() {
             <OzonProductPage
               tasks={ozonTasks}
               onBackTo1688={() => setWorkspaceView('1688')}
+              onTaskUpdate={handleOzonTaskUpdate}
             />
           </section>
         </div>

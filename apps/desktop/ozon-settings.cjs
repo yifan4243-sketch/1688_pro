@@ -2,9 +2,14 @@ const fs = require('fs');
 const path = require('path');
 
 const SETTINGS_FILE = 'ozon_settings.json';
+const CATEGORY_TREE_FILE = 'ozon_category_tree.json';
 
 function settingsPath(userDataPath) {
   return path.join(userDataPath, SETTINGS_FILE);
+}
+
+function categoryTreePath(userDataPath) {
+  return path.join(userDataPath, CATEGORY_TREE_FILE);
 }
 
 function defaultSettings() {
@@ -25,6 +30,7 @@ function defaultSettings() {
       defaultDescriptionCategoryId: '',
       defaultTypeId: '',
       defaultCategoryPath: '',
+      defaultWarehouseId: '',
       enableRealSubmit: false,
     },
   };
@@ -48,6 +54,7 @@ function publicSettings(settings) {
       defaultDescriptionCategoryId: settings.ozon.defaultDescriptionCategoryId,
       defaultTypeId: settings.ozon.defaultTypeId,
       defaultCategoryPath: settings.ozon.defaultCategoryPath,
+      defaultWarehouseId: settings.ozon.defaultWarehouseId,
       enableRealSubmit: Boolean(settings.ozon.enableRealSubmit),
     },
   };
@@ -200,6 +207,118 @@ async function callOzonSellerApi(ozon, endpoint, body) {
   return { ok: true, data };
 }
 
+async function getCategoryTree(userDataPath, options = {}) {
+  const forceRefresh = options.forceRefresh === true;
+  const language = clean(options.language, 'ZH_HANS') || 'ZH_HANS';
+  const cached = readCategoryTreeCache(userDataPath);
+
+  if (cached && !forceRefresh) {
+    return categoryTreeResponse(cached, 'cache', '已使用本地 Ozon 类目树缓存。');
+  }
+
+  const settings = loadSettings(userDataPath, { includeSecrets: true });
+  const shop = settings.ozon || {};
+
+  if (!shop.clientId || !shop.apiKey) {
+    const fallback = defaultCategoryTreeFromSettings(settings);
+    if (fallback) {
+      return categoryTreeResponse(fallback, 'settings', 'Ozon 店铺未绑定，已使用设置中的默认类目。');
+    }
+    if (cached) {
+      return categoryTreeResponse(cached, 'cache', 'Ozon 店铺未绑定，已使用本地缓存。');
+    }
+    return categoryTreeResponse({ result: [] }, 'empty', '请先绑定 Ozon Client ID 和 API Key 后同步类目树。', false);
+  }
+
+  const response = await callOzonSellerApi(shop, '/v1/description-category/tree', { language });
+  if (!response.ok) {
+    if (cached) {
+      return categoryTreeResponse(cached, 'cache', `同步类目树失败，已使用本地缓存：HTTP ${response.data?.status || '?'}`);
+    }
+    return categoryTreeResponse(
+      { result: [] },
+      'error',
+      `同步 Ozon 类目树失败：HTTP ${response.data?.status || '?'} ${safeJson(response.data?.response || response.data)}`,
+      false,
+    );
+  }
+
+  fs.mkdirSync(userDataPath, { recursive: true });
+  fs.writeFileSync(categoryTreePath(userDataPath), JSON.stringify(response.data, null, 2), 'utf8');
+  return categoryTreeResponse(response.data, 'api', 'Ozon 类目树已同步。');
+}
+
+async function searchCategories(userDataPath, query = '', options = {}) {
+  const limit = Math.max(1, Math.min(Number(options.limit || 30), 80));
+  const treeResponse = await getCategoryTree(userDataPath, {
+    forceRefresh: options.forceRefresh,
+    language: options.language,
+  });
+  const entries = Array.isArray(treeResponse.items) ? treeResponse.items : [];
+  const q = clean(query, '').toLowerCase();
+  const tokens = q.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+  const scored = [];
+
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    const haystack = String(entry.searchIndex || entry.path || '').toLowerCase();
+    let score = q ? 0 : Math.max(1, 1000 - index);
+    for (const token of tokens) {
+      if (!token) continue;
+      if (String(entry.keyword || '').toLowerCase() === token) score += 24;
+      if (String(entry.path || '').toLowerCase().includes(token)) score += 12;
+      if (haystack.includes(token)) score += 6;
+    }
+    if (!q || score > 0) scored.push({ score, index, entry });
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.index - b.index);
+  return {
+    ok: treeResponse.ok,
+    source: treeResponse.source,
+    message: treeResponse.message,
+    items: scored.slice(0, limit).map((item) => item.entry),
+    total: entries.length,
+    fetchedAt: treeResponse.fetchedAt,
+  };
+}
+
+async function getCategoryAttributes(userDataPath, params = {}) {
+  const descriptionCategoryId = Number(params.descriptionCategoryId || params.description_category_id || 0);
+  const typeId = Number(params.typeId || params.type_id || 0);
+  const language = clean(params.language, 'ZH_HANS') || 'ZH_HANS';
+
+  if (!descriptionCategoryId || !typeId) {
+    throw new Error('请选择带 description_category_id 和 type_id 的 Ozon 类目。');
+  }
+
+  const settings = loadSettings(userDataPath, { includeSecrets: true });
+  const shop = settings.ozon || {};
+  if (!shop.clientId || !shop.apiKey) {
+    throw new Error('加载 Ozon 类目特征需要先绑定 Client ID 和 API Key。');
+  }
+
+  const response = await callOzonSellerApi(shop, '/v1/description-category/attribute', {
+    description_category_id: descriptionCategoryId,
+    type_id: typeId,
+    language,
+  });
+  if (!response.ok) {
+    throw new Error(`加载 Ozon 类目特征失败：HTTP ${response.data?.status || '?'} ${safeJson(response.data?.response || response.data)}`);
+  }
+
+  const attributes = normalizeCategoryAttributes(response.data);
+  return {
+    ok: true,
+    descriptionCategoryId,
+    typeId,
+    attributes,
+    requiredCount: attributes.filter((attr) => attr.isRequired).length,
+    raw: response.data,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 function extractQuota(data) {
   const found = findQuotaObject(data);
   if (!found) return null;
@@ -237,6 +356,126 @@ function findQuotaObject(value, pathName = '') {
   return null;
 }
 
+function readCategoryTreeCache(userDataPath) {
+  const file = categoryTreePath(userDataPath);
+  if (!fs.existsSync(file)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function categoryTreeResponse(tree, source, message, ok = true) {
+  const items = flattenCategoryTree(tree);
+  return {
+    ok,
+    source,
+    message,
+    tree,
+    items,
+    total: items.length,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+function defaultCategoryTreeFromSettings(settings) {
+  const shop = settings.ozon || {};
+  const desc = Number(shop.defaultDescriptionCategoryId || 0);
+  const type = Number(shop.defaultTypeId || 0);
+  if (!desc || !type) return null;
+  const name = shop.defaultCategoryPath || `默认 Ozon 类目 ${desc}/${type}`;
+  return {
+    result: [{
+      description_category_id: desc,
+      category_name: name,
+      disabled: false,
+      children: [{
+        description_category_id: desc,
+        type_id: type,
+        type_name: name,
+        disabled: false,
+        children: [],
+      }],
+    }],
+  };
+}
+
+function flattenCategoryTree(tree) {
+  const entries = [];
+  for (const root of treeRoots(tree)) {
+    walkCategoryNode(root, [], null, entries);
+  }
+  return entries;
+}
+
+function treeRoots(tree) {
+  if (!tree || typeof tree !== 'object') return [];
+  for (const key of ['result', 'items', 'categories']) {
+    const value = tree[key];
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') {
+      const nested = treeRoots(value);
+      if (nested.length) return nested;
+    }
+  }
+  if (tree.data && typeof tree.data === 'object') return treeRoots(tree.data);
+  return [];
+}
+
+function walkCategoryNode(node, parents, inheritedDescriptionCategoryId, entries) {
+  if (!node || typeof node !== 'object' || node.disabled === true) return;
+  const name = clean(node.category_name || node.type_name, '');
+  const descriptionCategoryId = node.description_category_id || inheritedDescriptionCategoryId;
+  const pathParts = name ? [...parents, name] : [...parents];
+  const typeId = Number(node.type_id || 0);
+
+  if (typeId && Number(descriptionCategoryId || 0)) {
+    const pathText = pathParts.join(' / ');
+    entries.push({
+      keyword: name || pathText,
+      path: pathText,
+      typeId,
+      type_id: typeId,
+      descriptionCategoryId: Number(descriptionCategoryId),
+      description_category_id: Number(descriptionCategoryId),
+      disabled: false,
+      searchIndex: `${pathText} ${typeId} ${descriptionCategoryId}`,
+    });
+  }
+
+  const children = Array.isArray(node.children) ? node.children : [];
+  for (const child of children) {
+    walkCategoryNode(child, pathParts, descriptionCategoryId, entries);
+  }
+}
+
+function normalizeCategoryAttributes(data) {
+  const raw = Array.isArray(data?.result) ? data.result
+    : Array.isArray(data?.attributes) ? data.attributes
+      : Array.isArray(data?.result?.attributes) ? data.result.attributes
+        : [];
+  return raw
+    .map((attr) => ({
+      id: Number(attr?.id || attr?.attribute_id || 0),
+      name: clean(attr?.name || attr?.attribute_name || attr?.id, ''),
+      description: clean(attr?.description, ''),
+      groupId: Number(attr?.group_id || 0) || null,
+      groupName: clean(attr?.group_name, ''),
+      dictionaryId: Number(attr?.dictionary_id || 0) || 0,
+      isRequired: attr?.is_required === true || attr?.required === true,
+      isAspect: attr?.is_aspect === true,
+      isCollection: attr?.is_collection === true,
+      maxValueCount: Number(attr?.max_value_count || 1) || 1,
+      categoryDependent: attr?.category_dependent === true,
+      attributeComplexId: Number(attr?.attribute_complex_id || 0) || 0,
+      complexIsCollection: attr?.complex_is_collection === true,
+    }))
+    .filter((attr) => attr.id > 0 && attr.name)
+    .sort((a, b) => Number(b.isRequired) - Number(a.isRequired) || a.id - b.id);
+}
+
 function pickNumber(obj, keys) {
   for (const key of keys) {
     const value = obj?.[key];
@@ -264,6 +503,8 @@ function mergeSettings(base, patch) {
       defaultDescriptionCategoryId: clean(patch?.ozon?.defaultDescriptionCategoryId, base.ozon.defaultDescriptionCategoryId),
       defaultTypeId: clean(patch?.ozon?.defaultTypeId, base.ozon.defaultTypeId),
       defaultCategoryPath: clean(patch?.ozon?.defaultCategoryPath, base.ozon.defaultCategoryPath),
+      defaultWarehouseId: clean(patch?.ozon?.defaultWarehouseId, base.ozon.defaultWarehouseId || ''),
+      enableRealSubmit: patch?.ozon?.enableRealSubmit === undefined ? Boolean(base.ozon.enableRealSubmit) : Boolean(patch.ozon.enableRealSubmit),
     },
   };
 }
@@ -273,4 +514,19 @@ function clean(value, fallback) {
   return String(value).trim();
 }
 
-module.exports = { loadSettings, saveSettings, getStoreStats };
+function safeJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+module.exports = {
+  loadSettings,
+  saveSettings,
+  getStoreStats,
+  getCategoryTree,
+  searchCategories,
+  getCategoryAttributes,
+};

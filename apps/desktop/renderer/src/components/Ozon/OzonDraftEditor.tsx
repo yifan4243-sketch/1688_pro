@@ -1,0 +1,1062 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  getApi,
+  type OzonCategoryAttribute,
+  type OzonCategoryEntry,
+  type OzonDraft,
+} from '../../services/api';
+import type { OzonListingTask, OzonListingTaskPatch } from '../Results/ozonListing/types';
+import { formatMissingFields, unique } from '../Results/ozonListing/precheck';
+
+const ATTR_BRAND = 85;
+const ATTR_MODEL = 9048;
+const ATTR_DESCRIPTION = 4191;
+const ATTR_TAGS = 23171;
+const ATTR_WEIGHT = 4497;
+const ATTR_RICH_CONTENT = 11254;
+const CONTROLLED_ATTR_IDS = new Set([ATTR_BRAND, ATTR_MODEL, ATTR_DESCRIPTION, ATTR_TAGS, ATTR_WEIGHT, ATTR_RICH_CONTENT]);
+
+type DraftForm = {
+  name: string;
+  offerId: string;
+  barcode: string;
+  price: string;
+  oldPrice: string;
+  currencyCode: string;
+  descriptionCategoryId: string;
+  typeId: string;
+  categoryPath: string;
+  brand: string;
+  model: string;
+  description: string;
+  tags: string;
+  images: string;
+  dimensionUnit: string;
+  depth: string;
+  width: string;
+  height: string;
+  weightUnit: string;
+  weight: string;
+  customAttributes: string;
+};
+
+type DraftBuildResult = {
+  draft: OzonDraft;
+  firstItem: Record<string, unknown>;
+  missing: string[];
+};
+
+type Props = {
+  task: OzonListingTask;
+  onTaskUpdate?: (key: string, patch: OzonListingTaskPatch) => void;
+  onBackTo1688: () => void;
+  onToast?: (message: string) => void;
+};
+
+const steps = ['1 商品信息', '2 特征', '3 媒体', '4 预览'];
+
+function objectOf(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function text(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function numberText(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  const number = Number(String(value).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(number) ? String(number) : text(value);
+}
+
+function positiveInteger(value: string): number {
+  const match = String(value || '').match(/\d+(?:\.\d+)?/);
+  if (!match) return 0;
+  const number = Number(match[0]);
+  return Number.isFinite(number) && number > 0 ? Math.max(1, Math.round(number)) : 0;
+}
+
+function priceForPayload(value: string, fallback = '1'): string {
+  const match = String(value || '').match(/\d+(?:\.\d+)?/);
+  if (!match) return fallback;
+  const number = Number(match[0]);
+  if (!Number.isFinite(number)) return fallback;
+  return String(Math.max(number, fallback === '0' ? 0 : 1));
+}
+
+function intForPayload(value: string): number {
+  const number = Number(String(value || '').trim());
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+
+function lengthToMillimeter(value: unknown, sourceUnit: string): string {
+  const number = Number(numberText(value));
+  if (!Number.isFinite(number) || number <= 0) return '';
+  return sourceUnit === 'cm' ? String(Math.round(number * 10)) : String(Math.round(number));
+}
+
+function attributeValue(item: Record<string, unknown>, attrId: number): string {
+  const attrs = Array.isArray(item.attributes) ? item.attributes : [];
+  for (const rawAttr of attrs) {
+    const attr = objectOf(rawAttr);
+    if (Number(attr.id) !== attrId) continue;
+    const values = Array.isArray(attr.values) ? attr.values : [];
+    return values
+      .map((value) => text(objectOf(value).value || objectOf(value).dictionary_value_id || value))
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
+function attributeValuesById(item: Record<string, unknown>): Record<string, string> {
+  const values: Record<string, string> = {};
+  const attrs = Array.isArray(item.attributes) ? item.attributes : [];
+  for (const rawAttr of attrs) {
+    const attr = objectOf(rawAttr);
+    const attrId = Number(attr.id);
+    if (!attrId) continue;
+    const attrValues = Array.isArray(attr.values) ? attr.values : [];
+    const lines = attrValues
+      .map((value) => text(objectOf(value).value || objectOf(value).dictionary_value_id || value))
+      .filter(Boolean);
+    if (lines.length) values[String(attrId)] = lines.join('\n');
+  }
+  return values;
+}
+
+function lineList(value: string): string[] {
+  return unique(
+    String(value || '')
+      .split(/\r?\n|,/)
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+}
+
+function normalizeImageUrl(value: string): string {
+  const url = value.trim();
+  if (!url) return '';
+  if (url.startsWith('//')) return `https:${url}`;
+  return url;
+}
+
+function imageLinesFromItem(item: Record<string, unknown>, task: OzonListingTask): string {
+  const values = Array.isArray(item.images) ? item.images : [];
+  const urls = values.map((value) => normalizeImageUrl(text(value))).filter(Boolean);
+  const primary = normalizeImageUrl(text(item.primary_image || task.image));
+  if (primary && !urls.includes(primary)) urls.unshift(primary);
+  return urls.slice(0, 15).join('\n');
+}
+
+function removeCjk(value: string): string {
+  return value.replace(/[\u3400-\u9fff]+/g, '').trim();
+}
+
+function formatTagsForUi(value: string): string {
+  return unique(
+    String(value || '')
+      .replace(/,/g, '\n')
+      .split(/\r?\n/)
+      .map((line) => removeCjk(line.trim().replace(/^#|^＃/, '').trim()))
+      .filter(Boolean)
+      .map((line) => `#${line}`),
+  ).join('\n');
+}
+
+function normalizeTagsForPayload(value: string): string {
+  return unique(
+    String(value || '')
+      .replace(/,/g, '\n')
+      .split(/\r?\n/)
+      .map((line) => removeCjk(line.trim().replace(/^#|^＃/, '').trim()))
+      .filter(Boolean),
+  ).join('\n');
+}
+
+function buildAttribute(attrId: number, value: string): Record<string, unknown> | null {
+  const lines = String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+  return {
+    id: attrId,
+    complex_id: 0,
+    values: lines.map((line) => ({ value: line })),
+  };
+}
+
+function parseCustomAttributes(value: string): Record<string, unknown>[] {
+  const attrs: Record<string, unknown>[] = [];
+  const seen = new Set<number>();
+
+  for (const line of String(value || '').split(/\r?\n/)) {
+    if (!line.includes('=')) continue;
+    const [rawId, ...valueParts] = line.split('=');
+    const attrId = Number(rawId.trim());
+    if (!Number.isFinite(attrId) || attrId <= 0 || seen.has(attrId)) continue;
+    const attr = buildAttribute(Math.round(attrId), valueParts.join('=').trim());
+    if (!attr) continue;
+    attrs.push(attr);
+    seen.add(Math.round(attrId));
+  }
+
+  return attrs;
+}
+
+function buildDynamicAttributes(
+  dynamicValues: Record<string, string>,
+  categoryAttributes: OzonCategoryAttribute[],
+): Record<string, unknown>[] {
+  const attrs: Record<string, unknown>[] = [];
+  const seen = new Set<number>();
+  const knownIds = new Set(categoryAttributes.map((attr) => attr.id));
+
+  for (const [rawId, value] of Object.entries(dynamicValues)) {
+    const attrId = Number(rawId);
+    if (!attrId || CONTROLLED_ATTR_IDS.has(attrId) || seen.has(attrId)) continue;
+    if (knownIds.size > 0 && !knownIds.has(attrId)) continue;
+    const attr = buildAttribute(attrId, value);
+    if (!attr) continue;
+    attrs.push(attr);
+    seen.add(attrId);
+  }
+
+  return attrs;
+}
+
+function buildAttributes(
+  baseItem: Record<string, unknown>,
+  form: DraftForm,
+  dynamicValues: Record<string, string>,
+  categoryAttributes: OzonCategoryAttribute[],
+): Record<string, unknown>[] {
+  const customAttrs = parseCustomAttributes(form.customAttributes);
+  const dynamicAttrs = buildDynamicAttributes(dynamicValues, categoryAttributes);
+  const customIds = new Set(customAttrs.map((attr) => Number(attr.id)).filter(Boolean));
+  const dynamicIds = new Set(dynamicAttrs.map((attr) => Number(attr.id)).filter(Boolean));
+  const baseAttrs = Array.isArray(baseItem.attributes) ? baseItem.attributes : [];
+  const preserved = baseAttrs
+    .map(objectOf)
+    .filter((attr) => {
+      const attrId = Number(attr.id);
+      return attrId > 0 && !CONTROLLED_ATTR_IDS.has(attrId) && !customIds.has(attrId) && !dynamicIds.has(attrId);
+    });
+
+  const controlled = [
+    buildAttribute(ATTR_BRAND, form.brand),
+    buildAttribute(ATTR_MODEL, form.model),
+    buildAttribute(ATTR_WEIGHT, String(positiveInteger(form.weight))),
+    buildAttribute(ATTR_DESCRIPTION, form.description),
+    buildAttribute(ATTR_TAGS, normalizeTagsForPayload(form.tags)),
+  ].filter(Boolean) as Record<string, unknown>[];
+
+  return [...preserved, ...controlled, ...dynamicAttrs, ...customAttrs];
+}
+
+function firstItemOf(task: OzonListingTask): Record<string, unknown> {
+  return objectOf(task.draft?.items?.[0]);
+}
+
+function firstRowOf(task: OzonListingTask): Record<string, unknown> {
+  return objectOf(task.draft?.sourceRows?.[0]);
+}
+
+function createDraftForm(task: OzonListingTask): DraftForm {
+  const item = firstItemOf(task);
+  const row = firstRowOf(task);
+  const generated = objectOf(task.draft?.generated);
+  const matchedCategory = objectOf(generated.matched_category);
+  const tagsFromGenerated = Array.isArray(generated.tags) ? generated.tags.map(text).filter(Boolean).join('\n') : '';
+  const description = attributeValue(item, ATTR_DESCRIPTION) || text(generated.description_ru);
+  const model = attributeValue(item, ATTR_MODEL) || text(generated.model_name);
+  const tags = attributeValue(item, ATTR_TAGS) || tagsFromGenerated;
+  const sourceUnit = text(item.dimension_unit) || 'cm';
+
+  return {
+    name: text(item.name) || text(generated.title_ru) || text(row.product_title) || task.title || '',
+    offerId: text(item.offer_id) || task.offerId || text(row.offer_id),
+    barcode: text(item.barcode),
+    price: numberText(item.price || task.price || row.sku_price),
+    oldPrice: numberText(item.old_price || '0'),
+    currencyCode: text(item.currency_code) || 'CNY',
+    descriptionCategoryId: numberText(item.description_category_id || matchedCategory.description_category_id),
+    typeId: numberText(item.type_id || matchedCategory.type_id),
+    categoryPath: text(item._category_path) || text(matchedCategory.path),
+    brand: attributeValue(item, ATTR_BRAND) || 'NO NAME',
+    model,
+    description,
+    tags: formatTagsForUi(tags),
+    images: imageLinesFromItem(item, task),
+    dimensionUnit: 'mm',
+    depth: lengthToMillimeter(item.depth, sourceUnit),
+    width: lengthToMillimeter(item.width, sourceUnit),
+    height: lengthToMillimeter(item.height, sourceUnit),
+    weightUnit: text(item.weight_unit) || 'g',
+    weight: numberText(item.weight),
+    customAttributes: '',
+  };
+}
+
+function collectProductPageMissing(form: DraftForm): string[] {
+  const missing: string[] = [];
+  if (!form.categoryPath.trim() || !intForPayload(form.descriptionCategoryId) || !intForPayload(form.typeId)) missing.push('类目和类型');
+  if (!form.offerId.trim()) missing.push('货号');
+  if (Number(priceForPayload(form.price, '0')) <= 0) missing.push('价格');
+  if (!positiveInteger(form.depth)) missing.push('包装长度');
+  if (!positiveInteger(form.width)) missing.push('包装宽度');
+  if (!positiveInteger(form.height)) missing.push('包装高度');
+  if (!positiveInteger(form.weight)) missing.push('含包装重量');
+  return missing;
+}
+
+function visibleCategoryAttributes(attrs: OzonCategoryAttribute[], mode: 'feature' | 'media'): OzonCategoryAttribute[] {
+  return attrs
+    .filter((attr) => !CONTROLLED_ATTR_IDS.has(attr.id))
+    .filter((attr) => {
+      const name = `${attr.name} ${attr.description} ${attr.groupName}`.toLowerCase();
+      const media = /video|rich|pdf|json|image|picture|видео|медиа|изображ|фото|富内容|视频|图片|封面|pdf/i.test(name);
+      return mode === 'media' ? media : !media;
+    })
+    .slice(0, mode === 'feature' ? 80 : 40);
+}
+
+function collectFeatureMissing(
+  form: DraftForm,
+  dynamicValues: Record<string, string>,
+  attrs: OzonCategoryAttribute[],
+): string[] {
+  const missing: string[] = [];
+  if (!form.model.trim()) missing.push('型号名称');
+  for (const attr of visibleCategoryAttributes(attrs, 'feature')) {
+    if (!attr.isRequired) continue;
+    if (!text(dynamicValues[String(attr.id)])) missing.push(attr.name || `属性 ${attr.id}`);
+  }
+  return unique(missing);
+}
+
+function collectPayloadMissing(
+  draft: OzonDraft,
+  items: Record<string, unknown>[],
+  featureMissing: string[],
+): string[] {
+  const missing = new Set<string>(featureMissing);
+  for (const item of items) {
+    if (!text(item.name)) missing.add('俄语标题');
+    if (!text(item.primary_image)) missing.add('主图');
+    if (!Number(item.description_category_id) || !Number(item.type_id)) missing.add('Ozon 类目');
+    if (!Number(item.price)) missing.add('价格');
+    for (const [key, label] of [['depth', '长'], ['width', '宽'], ['height', '高'], ['weight', '重量']] as const) {
+      if (!Number(item[key])) missing.add(label);
+    }
+  }
+  if (hasUnconfirmedVariantMapping(draft)) missing.add('规格属性映射');
+  return Array.from(missing);
+}
+
+function hasUnconfirmedVariantMapping(draft: OzonDraft): boolean {
+  const generated = objectOf(draft.generated);
+  const sourceRows = Array.isArray(draft.sourceRows) ? draft.sourceRows : [];
+  if (sourceRows.length <= 1) return false;
+  return generated.variant_mapping_confirmed !== true && generated.variantMappingConfirmed !== true;
+}
+
+function statusFromSubmitResponse(response: Record<string, unknown>): OzonListingTask['status'] {
+  const status = text(response.importStatus || response.status);
+  if (status === 'listing_ready') return 'listing_ready';
+  if (status === 'imported') return 'imported';
+  if (status === 'pending' || status === 'import_pending') return 'import_pending';
+  return 'imported';
+}
+
+function messageFromSubmitResponse(response: Record<string, unknown>): string {
+  const warnings = Array.isArray(response.warnings) ? response.warnings.map(text).filter(Boolean) : [];
+  const taskId = text(response.taskId);
+  const status = statusFromSubmitResponse(response);
+  const suffix = taskId ? `（Task ID: ${taskId}）` : '';
+
+  if (status === 'listing_ready') return `Ozon 已导入，价格和库存已更新${suffix}。`;
+  if (status === 'imported') {
+    return warnings.length
+      ? `Ozon 已导入，价格已更新；${warnings.join('；')}${suffix}。`
+      : `Ozon 已导入，价格已更新${suffix}。`;
+  }
+  return `Ozon 已接收导入任务，仍在等待导入结果${suffix}。`;
+}
+
+function buildDraft(
+  task: OzonListingTask,
+  form: DraftForm,
+  dynamicValues: Record<string, string>,
+  categoryAttributes: OzonCategoryAttribute[],
+): DraftBuildResult | null {
+  if (!task.draft) return null;
+
+  const draft = task.draft;
+  const sourceItems = draft.items.length ? draft.items : [{}];
+  const baseFirst = objectOf(sourceItems[0]);
+  const images = lineList(form.images).map(normalizeImageUrl).filter(Boolean).slice(0, 15);
+  const descriptionCategoryId = intForPayload(form.descriptionCategoryId);
+  const typeId = intForPayload(form.typeId);
+  const attributes = buildAttributes(baseFirst, form, dynamicValues, categoryAttributes);
+
+  const firstItem: Record<string, unknown> = {
+    ...baseFirst,
+    name: form.name.trim().slice(0, 500),
+    barcode: form.barcode.trim(),
+    offer_id: form.offerId.trim().slice(0, 100),
+    price: priceForPayload(form.price, '1'),
+    old_price: priceForPayload(form.oldPrice, '0'),
+    currency_code: form.currencyCode.trim() || 'CNY',
+    description_category_id: descriptionCategoryId,
+    type_id: typeId,
+    images,
+    primary_image: images[0] || '',
+    dimension_unit: form.dimensionUnit || 'mm',
+    depth: positiveInteger(form.depth),
+    width: positiveInteger(form.width),
+    height: positiveInteger(form.height),
+    weight_unit: form.weightUnit || 'g',
+    weight: positiveInteger(form.weight),
+    attributes,
+    complex_attributes: Array.isArray(baseFirst.complex_attributes) ? baseFirst.complex_attributes : [],
+    _category_path: form.categoryPath.trim(),
+  };
+
+  const nextItems = sourceItems.map((rawItem, index) => {
+    if (index === 0) return firstItem;
+    const item = objectOf(rawItem);
+    return {
+      ...item,
+      currency_code: firstItem.currency_code,
+      description_category_id: firstItem.description_category_id,
+      type_id: firstItem.type_id,
+      attributes,
+      _category_path: firstItem._category_path,
+    };
+  });
+
+  const featureMissing = collectFeatureMissing(form, dynamicValues, categoryAttributes);
+  const missing = collectPayloadMissing({ ...draft, items: nextItems }, nextItems, featureMissing);
+  const tags = normalizeTagsForPayload(form.tags).split(/\r?\n/).filter(Boolean);
+  const estimatedDimensions = objectOf(draft.generated?.estimated_dimensions);
+  const lengthCm = form.dimensionUnit === 'mm' ? Number(firstItem.depth) / 10 : Number(firstItem.depth) || 0;
+  const widthCm = form.dimensionUnit === 'mm' ? Number(firstItem.width) / 10 : Number(firstItem.width) || 0;
+  const heightCm = form.dimensionUnit === 'mm' ? Number(firstItem.height) / 10 : Number(firstItem.height) || 0;
+  const generated = {
+    ...draft.generated,
+    title_ru: firstItem.name,
+    model_name: form.model.trim(),
+    description_ru: form.description.trim(),
+    tags,
+    matched_category: {
+      ...objectOf(draft.generated?.matched_category),
+      description_category_id: descriptionCategoryId,
+      type_id: typeId,
+      path: form.categoryPath.trim(),
+    },
+    estimated_dimensions: {
+      ...estimatedDimensions,
+      length_cm: Number.isFinite(lengthCm) ? lengthCm : 0,
+      width_cm: Number.isFinite(widthCm) ? widthCm : 0,
+      height_cm: Number.isFinite(heightCm) ? heightCm : 0,
+      weight_g: Number(firstItem.weight) || 0,
+    },
+  };
+
+  return {
+    draft: {
+      ...draft,
+      status: missing.length ? 'needs_review' : 'ready',
+      generated,
+      items: nextItems,
+      missing,
+    },
+    firstItem,
+    missing,
+  };
+}
+
+function sourceSummary(task: OzonListingTask): string {
+  const row = firstRowOf(task);
+  return [
+    task.offerId || text(row.offer_id),
+    text(row.sku_name),
+    text(row.detail_url),
+  ].filter(Boolean).join(' / ') || '来自 1688 深采结果';
+}
+
+function categoryId(entry: OzonCategoryEntry): string {
+  return `${entry.descriptionCategoryId || entry.description_category_id}:${entry.typeId || entry.type_id}`;
+}
+
+function categoryDescriptionId(entry: OzonCategoryEntry): number {
+  return Number(entry.descriptionCategoryId || entry.description_category_id || 0);
+}
+
+function categoryTypeId(entry: OzonCategoryEntry): number {
+  return Number(entry.typeId || entry.type_id || 0);
+}
+
+function PreviewImage({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <div className="ozon-draft-image-preview placeholder">暂无图片</div>;
+  }
+  return <img className="ozon-draft-image-preview" src={src} alt="" onError={() => setFailed(true)} />;
+}
+
+function FieldError({ show, text: value }: { show: boolean; text: string }) {
+  if (!show) return null;
+  return <small className="ozon-draft-error-text">{value}</small>;
+}
+
+export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onToast }: Props) {
+  const [form, setForm] = useState(() => createDraftForm(task));
+  const [activeStep, setActiveStep] = useState(0);
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [shopLabel, setShopLabel] = useState('Ozon 店铺：未检查');
+  const [categoryQuery, setCategoryQuery] = useState(() => createDraftForm(task).categoryPath);
+  const [categoryOptions, setCategoryOptions] = useState<OzonCategoryEntry[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [categoryMessage, setCategoryMessage] = useState('');
+  const [categoryAttributes, setCategoryAttributes] = useState<OzonCategoryAttribute[]>([]);
+  const [attributesLoading, setAttributesLoading] = useState(false);
+  const [attributesMessage, setAttributesMessage] = useState('尚未加载类目特征');
+  const [attributeReloadKey, setAttributeReloadKey] = useState(0);
+  const [dynamicValues, setDynamicValues] = useState<Record<string, string>>(() => attributeValuesById(firstItemOf(task)));
+  const [attemptedProduct, setAttemptedProduct] = useState(false);
+  const [attemptedFeatures, setAttemptedFeatures] = useState(false);
+
+  useEffect(() => {
+    const nextForm = createDraftForm(task);
+    setForm(nextForm);
+    setCategoryQuery(nextForm.categoryPath);
+    setDynamicValues(attributeValuesById(firstItemOf(task)));
+    setCategoryAttributes([]);
+    setMessage('');
+    setActiveStep(0);
+    setAttemptedProduct(false);
+    setAttemptedFeatures(false);
+  }, [task.key, task.draftId]);
+
+  useEffect(() => {
+    let alive = true;
+    getApi().ozon.getSettings()
+      .then((settings) => {
+        if (!alive) return;
+        const store = settings.ozon;
+        setShopLabel(store.apiKeySet && store.clientId ? `Ozon 店铺：已绑定 ${store.shopName || store.clientId}` : 'Ozon 店铺：未绑定');
+      })
+      .catch(() => {
+        if (alive) setShopLabel('Ozon 店铺：未检查');
+      });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      setCategoryLoading(true);
+      getApi().ozon.searchCategories(categoryQuery, { limit: 18 })
+        .then((response) => {
+          if (!alive) return;
+          setCategoryOptions(response.items || []);
+          setCategoryMessage(response.message || '');
+        })
+        .catch((error) => {
+          if (!alive) return;
+          setCategoryOptions([]);
+          setCategoryMessage(error instanceof Error ? error.message : String(error));
+        })
+        .finally(() => {
+          if (alive) setCategoryLoading(false);
+        });
+    }, 220);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [categoryQuery]);
+
+  useEffect(() => {
+    const descriptionCategoryId = intForPayload(form.descriptionCategoryId);
+    const typeId = intForPayload(form.typeId);
+    if (!descriptionCategoryId || !typeId) {
+      setCategoryAttributes([]);
+      setAttributesMessage('请选择 Ozon 类目和类型后加载特征。');
+      return;
+    }
+
+    let alive = true;
+    setAttributesLoading(true);
+    setAttributesMessage('正在加载类目特征...');
+    getApi().ozon.getCategoryAttributes({ descriptionCategoryId, typeId, language: 'ZH_HANS' })
+      .then((response) => {
+        if (!alive) return;
+        setCategoryAttributes(response.attributes || []);
+        setAttributesMessage(`已加载 ${response.attributes.length} 项类目特征，其中必填 ${response.requiredCount} 项`);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setCategoryAttributes([]);
+        setAttributesMessage(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (alive) setAttributesLoading(false);
+      });
+
+    return () => { alive = false; };
+  }, [attributeReloadKey, form.descriptionCategoryId, form.typeId]);
+
+  const productMissing = useMemo(() => collectProductPageMissing(form), [form]);
+  const featureMissing = useMemo(
+    () => collectFeatureMissing(form, dynamicValues, categoryAttributes),
+    [categoryAttributes, dynamicValues, form],
+  );
+  const buildResult = useMemo(
+    () => buildDraft(task, form, dynamicValues, categoryAttributes),
+    [categoryAttributes, dynamicValues, form, task],
+  );
+  const missing = buildResult?.missing || task.missingFields || task.draft?.missing || [];
+  const firstItem = buildResult?.firstItem || firstItemOf(task);
+  const images = lineList(form.images).map(normalizeImageUrl).filter(Boolean).slice(0, 15);
+  const primaryImage = images[0] || '';
+  const attrCount = Array.isArray(firstItem.attributes) ? firstItem.attributes.length : 0;
+  const canSubmit = Boolean(buildResult?.draft) && missing.length === 0 && !submitting;
+  const recommendationMissing = [
+    !form.brand.trim() ? '品牌' : '',
+    !form.description.trim() ? '俄语描述' : '',
+    normalizeTagsForPayload(form.tags) ? '' : '搜索词',
+  ].filter(Boolean);
+  const featureAttributes = visibleCategoryAttributes(categoryAttributes, 'feature');
+  const mediaAttributes = visibleCategoryAttributes(categoryAttributes, 'media');
+
+  function updateField<K extends keyof DraftForm>(key: K, value: DraftForm[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateDynamicValue(attrId: number, value: string) {
+    setDynamicValues((prev) => ({ ...prev, [String(attrId)]: value }));
+  }
+
+  function applyCategory(entry: OzonCategoryEntry) {
+    setForm((prev) => ({
+      ...prev,
+      descriptionCategoryId: String(categoryDescriptionId(entry)),
+      typeId: String(categoryTypeId(entry)),
+      categoryPath: entry.path || entry.keyword || '',
+    }));
+    setCategoryQuery(entry.path || entry.keyword || '');
+    setMessage('已选择 Ozon 类目，正在加载该类目的特征。');
+  }
+
+  function goToStep(index: number) {
+    if (index > 0 && productMissing.length) {
+      setAttemptedProduct(true);
+      setMessage(`商品信息页还缺：${productMissing.join('、')}`);
+      return;
+    }
+    if (index > 2 && featureMissing.length) {
+      setAttemptedFeatures(true);
+      setMessage(`特征页还缺：${featureMissing.join('、')}`);
+      return;
+    }
+    setActiveStep(index);
+    if (index === 3) applyDraft(false);
+  }
+
+  function applyDraft(showToast = true): DraftBuildResult | null {
+    const result = buildDraft(task, form, dynamicValues, categoryAttributes);
+    if (!result) {
+      setMessage('当前任务还没有可编辑的 Ozon 草稿。');
+      return null;
+    }
+
+    const patch: OzonListingTaskPatch = {
+      draft: result.draft,
+      title: text(result.firstItem.name) || task.title,
+      price: text(result.firstItem.price) || task.price,
+      image: text(result.firstItem.primary_image) || task.image,
+      status: result.missing.length ? 'needs_manual' : 'draft_ready',
+      missingFields: result.missing,
+      message: result.missing.length
+        ? `需补充：${formatMissingFields(result.missing)}`
+        : 'Ozon 草稿已保存，可进入预览提交。',
+      updatedAt: new Date().toISOString(),
+    };
+
+    onTaskUpdate?.(task.key, patch);
+    if (showToast) onToast?.(result.missing.length ? '已保存，仍有必填项待补充' : '已保存 Ozon 草稿');
+    setMessage(result.missing.length ? `仍需补充：${formatMissingFields(result.missing)}` : '已保存，payload 已同步更新。');
+    return result;
+  }
+
+  async function copyPayload() {
+    const result = applyDraft(false);
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify({ items: result.draft.items }, null, 2));
+      onToast?.('已复制 Ozon 回传 Payload');
+      setMessage('已复制 /v3/product/import 的 items payload。');
+    } catch {
+      setMessage('复制失败，请稍后重试。');
+    }
+  }
+
+  async function submitDraft() {
+    setAttemptedProduct(true);
+    setAttemptedFeatures(true);
+    const result = applyDraft(false);
+    if (!result) return;
+    if (result.missing.length) {
+      setMessage(`提交前还需要补充：${formatMissingFields(result.missing)}`);
+      return;
+    }
+    if (!window.confirm('确认提交当前 Ozon 草稿？提交前请确认店铺设置已开启真实提交。')) return;
+
+    setSubmitting(true);
+    onTaskUpdate?.(task.key, {
+      draft: result.draft,
+      status: 'import_pending',
+      message: '正在提交 Ozon 导入任务，并等待导入结果。',
+      updatedAt: new Date().toISOString(),
+      finishedAt: undefined,
+    });
+    try {
+      const response = await getApi().ozon.submitDraft(result.draft, true);
+      const normalizedResponse = objectOf(response);
+      const nextStatus = statusFromSubmitResponse(normalizedResponse);
+      onTaskUpdate?.(task.key, {
+        draft: result.draft,
+        status: nextStatus,
+        message: messageFromSubmitResponse(normalizedResponse),
+        updatedAt: new Date().toISOString(),
+        finishedAt: nextStatus === 'import_pending' ? undefined : new Date().toISOString(),
+        debug: normalizedResponse,
+      });
+      onToast?.(nextStatus === 'import_pending' ? 'Ozon 导入任务已提交' : 'Ozon 导入链路已更新');
+      setMessage(messageFromSubmitResponse(normalizedResponse));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessage(detail || '提交失败，请检查店铺绑定与真实提交开关。');
+      onTaskUpdate?.(task.key, {
+        draft: result.draft,
+        status: 'submit_failed',
+        message: detail || '提交失败，请检查店铺绑定与真实提交开关。',
+        updatedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        debug: { rawError: detail },
+      });
+      onToast?.('提交失败，请检查店铺设置');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!task.draft) {
+    return (
+      <div className="ozon-draft-empty-state">
+        <h4>还没有生成 Ozon 草稿</h4>
+        <p>当前任务仍在处理中或生成失败。回到 1688 商品卡重新生成草稿后，这里会显示可编辑表单。</p>
+        <button type="button" onClick={onBackTo1688}>返回 1688</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ozon-draft-converter">
+      <div className="ozon-draft-topbar">
+        <div>
+          <h4>Ozon 上架转换</h4>
+          <span>{sourceSummary(task)}</span>
+        </div>
+        <div className="ozon-draft-top-actions">
+          <span className={shopLabel.includes('已绑定') ? 'ready' : ''}>{shopLabel}</span>
+          <button type="button" disabled={!canSubmit} onClick={submitDraft}>
+            {submitting ? '提交中...' : '提交到 Ozon'}
+          </button>
+        </div>
+      </div>
+
+      <div className="ozon-draft-steps">
+        {steps.map((step, index) => (
+          <button
+            key={step}
+            type="button"
+            className={`ozon-draft-step-btn ${activeStep === index ? 'active' : ''}`}
+            onClick={() => goToStep(index)}
+          >
+            {step}
+          </button>
+        ))}
+      </div>
+
+      {message && <div className={`ozon-draft-notice ${missing.length ? 'warn' : 'ready'}`}>{message}</div>}
+
+      <div className="ozon-draft-page-shell">
+        {activeStep === 0 && (
+          <section className="ozon-draft-step-page">
+            <p className="ozon-draft-page-hint">先确认商品基础信息和 Ozon 类目。没有类目和类型时，不能进入特征页。</p>
+
+            <label className="ozon-draft-field wide">
+              <span>名称</span>
+              <input value={form.name} onChange={(event) => updateField('name', event.target.value)} />
+            </label>
+
+            <label className="ozon-draft-field wide ozon-category-field">
+              <span>类目和类型 *</span>
+              <input
+                value={categoryQuery}
+                placeholder="请选择或搜索 Ozon 类目和类型"
+                onChange={(event) => {
+                  setCategoryQuery(event.target.value);
+                  updateField('categoryPath', event.target.value);
+                  updateField('descriptionCategoryId', '');
+                  updateField('typeId', '');
+                }}
+              />
+              <FieldError show={attemptedProduct && productMissing.includes('类目和类型')} text="请选择带 type_id 的 Ozon 末级类目" />
+              <div className="ozon-category-results">
+                <div className="ozon-category-results-head">
+                  <span>{categoryLoading ? '正在搜索类目...' : categoryMessage || 'Ozon 类目候选'}</span>
+                  <button type="button" onClick={() => setCategoryQuery(categoryQuery.trim() || form.name || task.title || '')}>刷新</button>
+                </div>
+                {categoryOptions.length > 0 ? (
+                  categoryOptions.map((entry) => (
+                    <button
+                      type="button"
+                      key={`${categoryId(entry)}-${entry.path}`}
+                      className="ozon-category-option"
+                      onClick={() => applyCategory(entry)}
+                      title={entry.path}
+                    >
+                      <strong>{entry.keyword || entry.path}</strong>
+                      <span>{entry.path}</span>
+                      <small>description_category_id {categoryDescriptionId(entry)} · type_id {categoryTypeId(entry)}</small>
+                    </button>
+                  ))
+                ) : (
+                  <div className="ozon-category-empty">暂无类目候选。绑定 Ozon 店铺后会自动同步类目树。</div>
+                )}
+              </div>
+            </label>
+
+            <label className="ozon-draft-field wide">
+              <span>条形码</span>
+              <input value={form.barcode} onChange={(event) => updateField('barcode', event.target.value)} />
+            </label>
+
+            <label className="ozon-draft-field wide">
+              <span>货号 *</span>
+              <input value={form.offerId} onChange={(event) => updateField('offerId', event.target.value)} />
+              <FieldError show={attemptedProduct && productMissing.includes('货号')} text="货号不能为空" />
+            </label>
+
+            <div className="ozon-draft-form-grid two">
+              <label className="ozon-draft-field">
+                <span>您的价格，¥ *</span>
+                <input value={form.price} onChange={(event) => updateField('price', event.target.value)} inputMode="decimal" />
+                <FieldError show={attemptedProduct && productMissing.includes('价格')} text="价格必须大于 0" />
+              </label>
+              <label className="ozon-draft-field">
+                <span>折扣前价格</span>
+                <input value={form.oldPrice} onChange={(event) => updateField('oldPrice', event.target.value)} inputMode="decimal" />
+              </label>
+            </div>
+
+            <label className="ozon-draft-field wide">
+              <span>包装长度，毫米 *</span>
+              <input value={form.depth} onChange={(event) => updateField('depth', event.target.value)} inputMode="numeric" />
+              <FieldError show={attemptedProduct && productMissing.includes('包装长度')} text="包装长度必须大于 0" />
+            </label>
+            <label className="ozon-draft-field wide">
+              <span>包装宽度，毫米 *</span>
+              <input value={form.width} onChange={(event) => updateField('width', event.target.value)} inputMode="numeric" />
+              <FieldError show={attemptedProduct && productMissing.includes('包装宽度')} text="包装宽度必须大于 0" />
+            </label>
+            <label className="ozon-draft-field wide">
+              <span>包装高度，毫米 *</span>
+              <input value={form.height} onChange={(event) => updateField('height', event.target.value)} inputMode="numeric" />
+              <FieldError show={attemptedProduct && productMissing.includes('包装高度')} text="包装高度必须大于 0" />
+            </label>
+            <label className="ozon-draft-field wide">
+              <span>含包装重量，克 *</span>
+              <input value={form.weight} onChange={(event) => updateField('weight', event.target.value)} inputMode="numeric" />
+              <FieldError show={attemptedProduct && productMissing.includes('含包装重量')} text="重量必须大于 0" />
+            </label>
+
+            <div className="ozon-draft-nav-row">
+              <button type="button" className="primary" onClick={() => goToStep(1)}>下一步</button>
+            </div>
+          </section>
+        )}
+
+        {activeStep === 1 && (
+          <section className="ozon-draft-step-page">
+            <div className="ozon-draft-status-row">
+              <span>{attributesLoading ? '正在加载类目特征...' : attributesMessage}</span>
+              <button
+                type="button"
+                onClick={() => setAttributeReloadKey((value) => value + 1)}
+              >
+                加载类目特征
+              </button>
+            </div>
+
+            <div className="ozon-draft-form-grid two">
+              <label className="ozon-draft-field">
+                <span>品牌 *</span>
+                <input value={form.brand} onChange={(event) => updateField('brand', event.target.value)} />
+              </label>
+              <label className="ozon-draft-field">
+                <span>型号名称 *</span>
+                <input value={form.model} onChange={(event) => updateField('model', event.target.value)} />
+                <FieldError show={attemptedFeatures && featureMissing.includes('型号名称')} text="型号名称不能为空" />
+              </label>
+            </div>
+
+            <label className="ozon-draft-field wide">
+              <span>简介</span>
+              <textarea value={form.description} onChange={(event) => updateField('description', event.target.value)} rows={7} />
+            </label>
+
+            <label className="ozon-draft-field wide">
+              <span>#主题标签</span>
+              <textarea value={form.tags} onChange={(event) => updateField('tags', event.target.value)} rows={5} placeholder="#keyword 每行一个" />
+            </label>
+
+            <div className="ozon-draft-dynamic-list">
+              <div className="ozon-draft-dynamic-head">
+                <strong>类目特征</strong>
+                <span>{featureAttributes.length ? `${featureAttributes.length} 项` : '未返回额外特征，可用自定义属性补充'}</span>
+              </div>
+              {featureAttributes.map((attr) => (
+                <label key={attr.id} className="ozon-draft-field wide">
+                  <span>
+                    {attr.name}{attr.isRequired ? ' *' : ''}{attr.dictionaryId ? '（字典）' : ''}{attr.isAspect ? '（规格/Aspect）' : ''}
+                  </span>
+                  {attr.maxValueCount !== 1 || attr.isCollection ? (
+                    <textarea
+                      value={dynamicValues[String(attr.id)] || ''}
+                      onChange={(event) => updateDynamicValue(attr.id, event.target.value)}
+                      rows={3}
+                      placeholder="多个值可换行填写"
+                    />
+                  ) : (
+                    <input
+                      value={dynamicValues[String(attr.id)] || ''}
+                      onChange={(event) => updateDynamicValue(attr.id, event.target.value)}
+                      placeholder={attr.dictionaryId ? '输入或粘贴 Ozon 字典值' : '填写属性值'}
+                    />
+                  )}
+                  {attr.description && <small className="ozon-draft-field-help">{attr.description}</small>}
+                  <FieldError show={attemptedFeatures && attr.isRequired && !text(dynamicValues[String(attr.id)])} text="该类目必填特征不能为空" />
+                </label>
+              ))}
+            </div>
+
+            <label className="ozon-draft-field wide">
+              <span>其他类目特征</span>
+              <textarea value={form.customAttributes} onChange={(event) => updateField('customAttributes', event.target.value)} rows={4} placeholder="属性ID=属性值，每行一个，例如：85=NO NAME" />
+            </label>
+
+            <div className="ozon-draft-nav-row">
+              <button type="button" onClick={() => goToStep(0)}>返回</button>
+              <button type="button" className="primary" onClick={() => goToStep(2)}>下一步</button>
+            </div>
+          </section>
+        )}
+
+        {activeStep === 2 && (
+          <section className="ozon-draft-step-page">
+            <div className="ozon-draft-media-layout">
+              <PreviewImage src={primaryImage} />
+              <div className="ozon-draft-media-summary">
+                <span>图片数量</span>
+                <strong>{images.length}</strong>
+                <p>{primaryImage || '请至少保留一张可访问图片 URL'}</p>
+              </div>
+            </div>
+            <label className="ozon-draft-field wide">
+              <span>图片 URL</span>
+              <textarea value={form.images} onChange={(event) => updateField('images', event.target.value)} rows={8} placeholder="每行一个图片 URL，第一张会作为主图。" />
+            </label>
+
+            <div className="ozon-draft-dynamic-list">
+              <div className="ozon-draft-dynamic-head">
+                <strong>视频 / 富内容相关字段</strong>
+                <span>{mediaAttributes.length ? `${mediaAttributes.length} 项` : '该类目暂无媒体扩展字段'}</span>
+              </div>
+              {mediaAttributes.map((attr) => (
+                <label key={attr.id} className="ozon-draft-field wide">
+                  <span>{attr.name}{attr.isRequired ? ' *' : ''}</span>
+                  <textarea
+                    value={dynamicValues[String(attr.id)] || ''}
+                    onChange={(event) => updateDynamicValue(attr.id, event.target.value)}
+                    rows={attr.maxValueCount !== 1 || attr.isCollection ? 3 : 2}
+                    placeholder="填写媒体相关属性"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="ozon-draft-nav-row">
+              <button type="button" onClick={() => goToStep(1)}>返回</button>
+              <button type="button" className="primary" onClick={() => goToStep(3)}>下一步</button>
+            </div>
+          </section>
+        )}
+
+        {activeStep === 3 && (
+          <section className="ozon-draft-step-page">
+            <div className="ozon-draft-review-grid">
+              <div>
+                <span>接口</span>
+                <strong>ProductAPI_ImportProductsV3</strong>
+                <small>/v3/product/import</small>
+              </div>
+              <div>
+                <span>首个商品</span>
+                <strong>{text(firstItem.offer_id) || '-'}</strong>
+                <small>{text(firstItem.name) || '未填写标题'}</small>
+              </div>
+              <div>
+                <span>属性数量</span>
+                <strong>{attrCount}</strong>
+                <small>{recommendationMissing.length ? `建议补充：${recommendationMissing.join('、')}` : '核心内容完整'}</small>
+              </div>
+            </div>
+
+            <div className="ozon-draft-checklist">
+              {missing.length ? (
+                missing.map((field) => <span key={field} className="missing">{formatMissingFields([field])}</span>)
+              ) : (
+                <span className="ready">必填项已完整</span>
+              )}
+              {recommendationMissing.map((field) => <span key={field} className="soft">建议补充 {field}</span>)}
+            </div>
+
+            <pre className="ozon-draft-payload-preview">
+              {buildResult ? JSON.stringify({ items: buildResult.draft.items }, null, 2) : '暂无 payload'}
+            </pre>
+
+            <div className="ozon-draft-nav-row">
+              <button type="button" onClick={() => goToStep(2)}>返回</button>
+              <button type="button" className="primary" onClick={() => applyDraft(true)}>保存草稿</button>
+              <button type="button" onClick={copyPayload}>复制 Payload</button>
+              <button type="button" disabled={!canSubmit} onClick={submitDraft}>
+                {submitting ? '提交中...' : '提交到 Ozon'}
+              </button>
+              <button type="button" onClick={onBackTo1688}>返回 1688</button>
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,718 +1,1191 @@
-/* ─────────────────────────────────────────────
-   Silicone Material UI Layer
-   1688 to Ozon Studio
-   Soft matte tactile interface, no glassmorphism
-   ───────────────────────────────────────────── */
+/* Liquid Glass material layer
+   Apple-inspired global theme for the 1688 / Ozon desktop workspace. */
 
 :root {
-  --silicone-bg: #ffffff;
-  --silicone-page: #ffffff;
+  --radius-window: 0;
+  --radius-card: 18px;
+  --radius-panel: 22px;
+  --radius-section: 18px;
+  --radius-image-shell: 18px;
+  --radius-image: 14px;
+  --radius-control: 14px;
+  --radius-input: 14px;
+  --radius-pill: 999px;
 
-  --silicone-surface: #ffffff;
-  --silicone-surface-soft: #f8fafc;
-  --silicone-surface-pressed: #eef3f8;
+  --lg-page: #eef5ff;
+  --lg-page-top: #f8fbff;
+  --lg-page-bottom: #f4f7ff;
+  --lg-surface: rgba(255, 255, 255, 0.58);
+  --lg-surface-strong: rgba(255, 255, 255, 0.78);
+  --lg-surface-soft: rgba(255, 255, 255, 0.42);
+  --lg-control: rgba(255, 255, 255, 0.54);
+  --lg-control-strong: rgba(255, 255, 255, 0.78);
+  --lg-border: rgba(255, 255, 255, 0.74);
+  --lg-border-soft: rgba(139, 154, 184, 0.22);
+  --lg-border-strong: rgba(255, 255, 255, 0.92);
+  --lg-hairline: rgba(15, 23, 42, 0.08);
+  --lg-blur: blur(26px) saturate(1.42);
+  --lg-blur-strong: blur(34px) saturate(1.52);
+  --lg-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -1px 0 rgba(120, 137, 171, 0.10),
+    0 18px 46px rgba(36, 55, 99, 0.12);
+  --lg-shadow-soft:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 8px 22px rgba(36, 55, 99, 0.08);
+  --lg-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    inset 0 -1px 0 rgba(120, 137, 171, 0.12),
+    0 22px 56px rgba(36, 55, 99, 0.16);
+  --lg-shadow-pressed:
+    inset 0 3px 10px rgba(32, 48, 82, 0.12),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.62),
+    0 5px 12px rgba(36, 55, 99, 0.08);
 
-  --silicone-border: rgba(15, 23, 42, 0.08);
-  --silicone-border-strong: rgba(15, 23, 42, 0.14);
+  --glass-bg-strong: var(--lg-surface-strong);
+  --glass-bg-medium: var(--lg-surface);
+  --glass-bg-soft: var(--lg-surface-soft);
+  --glass-border-strong: var(--lg-border);
+  --glass-border-soft: var(--lg-border-soft);
+  --glass-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.18));
 
-  --silicone-text: #111827;
-  --silicone-text-secondary: #4b5563;
-  --silicone-text-muted: #6b7280;
-  --silicone-text-faint: #9ca3af;
+  --text-primary: #101828;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
+  --text-muted: #94a3b8;
 
-  --silicone-blue: #2563eb;
-  --silicone-blue-hover: #1d4ed8;
-  --silicone-blue-soft: #eff6ff;
-  --silicone-blue-border: #bfdbfe;
+  --accent: #0a84ff;
+  --accent-hover: #006edb;
+  --accent-soft: rgba(10, 132, 255, 0.13);
+  --accent-glow: rgba(10, 132, 255, 0.22);
+  --focus-ring: rgba(10, 132, 255, 0.28);
 
-  --silicone-red: #ef4444;
-  --silicone-red-hover: #dc2626;
-  --silicone-red-soft: #fef2f2;
-  --silicone-red-border: #fecaca;
+  --brand-orange: #ff7a1a;
+  --brand-orange-soft: rgba(255, 122, 26, 0.14);
+  --success: #13a463;
+  --success-soft: rgba(52, 211, 153, 0.16);
+  --danger: #ff3b30;
+  --danger-soft: rgba(255, 59, 48, 0.13);
+  --warning: #b7791f;
+  --warning-soft: rgba(245, 158, 11, 0.16);
 
-  --silicone-green: #059669;
-  --silicone-green-hover: #047857;
-  --silicone-green-soft: #ecfdf5;
-  --silicone-green-border: #bbf7d0;
-
-  --silicone-radius-xs: 7px;
-  --silicone-radius-sm: 8px;
-  --silicone-radius-md: 10px;
-  --silicone-radius-lg: 12px;
-  --silicone-radius-xl: 16px;
-  --silicone-radius-pill: 999px;
-
-  --silicone-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.92),
-    inset 0 -1px 2px rgba(15, 23, 42, 0.04),
-    0 2px 6px rgba(15, 23, 42, 0.04);
-
-  --silicone-shadow-hover:
-    inset 0 1px 1px rgba(255, 255, 255, 0.94),
-    inset 0 -1px 2px rgba(15, 23, 42, 0.05),
-    0 4px 10px rgba(15, 23, 42, 0.07);
-
-  --silicone-shadow-pressed:
-    inset 0 3px 7px rgba(15, 23, 42, 0.10),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.76),
-    0 1px 2px rgba(15, 23, 42, 0.04);
-
-  --silicone-focus:
-    0 0 0 3px rgba(37, 99, 235, 0.10),
-    inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-soft: var(--lg-shadow-soft);
+  --shadow-medium: var(--lg-shadow);
+  --shadow-strong: var(--lg-shadow-hover);
 }
 
-/* ─────────────────────────────────────────────
-   Global canvas
-   ───────────────────────────────────────────── */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --lg-surface: rgba(255, 255, 255, 0.92);
+    --lg-surface-strong: rgba(255, 255, 255, 0.96);
+    --lg-surface-soft: rgba(255, 255, 255, 0.86);
+    --lg-control: rgba(255, 255, 255, 0.94);
+    --lg-control-strong: rgba(255, 255, 255, 0.98);
+  }
+}
+
+* {
+  letter-spacing: 0 !important;
+}
 
 html,
 body,
 #root {
-  background: var(--silicone-page) !important;
+  min-height: 100%;
+  background: var(--lg-page) !important;
 }
 
 body {
-  color: var(--silicone-text) !important;
+  color: var(--text-primary) !important;
+  background:
+    linear-gradient(120deg, rgba(255, 122, 26, 0.07) 0%, rgba(255, 255, 255, 0) 32%),
+    linear-gradient(250deg, rgba(10, 132, 255, 0.14) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, var(--lg-page-top) 0%, var(--lg-page) 46%, var(--lg-page-bottom) 100%) !important;
 }
 
-.app-shell,
+button,
+input,
+textarea,
+select {
+  color: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell {
+  position: relative;
+  isolation: isolate;
+  grid-template-columns: 242px minmax(0, 1fr) !important;
+  height: 100vh;
+  overflow: hidden;
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.72) 0%, rgba(230, 241, 255, 0.44) 42%, rgba(255, 255, 255, 0.64) 100%),
+    linear-gradient(58deg, rgba(255, 122, 26, 0.08), rgba(10, 132, 255, 0.12) 46%, rgba(52, 211, 153, 0.08)) !important;
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.46) 64%, rgba(255, 255, 255, 0)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0));
+  opacity: 0.74;
+}
+
 .workspace,
 .workspace-inner,
 .workspace-view-panel {
-  background: var(--silicone-page) !important;
+  background: transparent !important;
 }
 
-/* Remove large glass glow from the main app surfaces */
-.workspace,
 .workspace-inner {
-  box-shadow: none !important;
+  padding: 22px 34px 36px !important;
+  scrollbar-gutter: stable;
 }
 
-/* ─────────────────────────────────────────────
-   App shell / sidebar / topbar
-   ───────────────────────────────────────────── */
-
+/* Shell */
 .side-nav {
-  background: #ffffff !important;
-  border-right: 1px solid #e5e7eb !important;
-  box-shadow: none !important;
+  width: 242px !important;
+  min-width: 242px !important;
+  max-width: 242px !important;
+  padding: 14px 14px 16px !important;
+  gap: 12px !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.58) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.42)) !important;
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.62),
+    18px 0 44px rgba(44, 63, 105, 0.08) !important;
+  backdrop-filter: var(--lg-blur-strong) !important;
+  -webkit-backdrop-filter: var(--lg-blur-strong) !important;
 }
 
 .topbar {
-  background: #ffffff !important;
-  border-bottom: 1px solid #e5e7eb !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-.topbar h2 {
-  color: var(--silicone-text) !important;
+  min-height: 62px;
+  padding: 10px 26px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.58) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.44)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.80),
+    0 12px 34px rgba(44, 63, 105, 0.08) !important;
+  backdrop-filter: var(--lg-blur-strong) !important;
+  -webkit-backdrop-filter: var(--lg-blur-strong) !important;
 }
 
 .topbar .eyebrow,
 .section-head span,
-.result-count {
-  color: var(--silicone-text-muted) !important;
+.result-count,
+.muted-text {
+  color: rgba(71, 85, 105, 0.72) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Brand area
-   ───────────────────────────────────────────── */
+.topbar h2 {
+  color: #111827 !important;
+  font-size: 17px !important;
+  font-weight: 780 !important;
+}
 
+.topbar-actions {
+  gap: 9px !important;
+}
+
+.topbar-actions .glass-btn-secondary {
+  height: 36px !important;
+  min-width: 88px !important;
+  padding: 0 15px !important;
+  justify-content: center;
+}
+
+/* Brand switcher */
 .brand-flow {
-  padding-top: 12px !important;
-  padding-bottom: 14px !important;
+  padding: 2px 0 14px !important;
+  gap: 10px !important;
 }
 
 .brand-logo-card {
+  width: 58px !important;
+  height: 58px !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(255, 255, 255, 0.76) !important;
   background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid var(--silicone-border) !important;
-  box-shadow: var(--silicone-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
+  transform: translateZ(0);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
 }
 
 .brand-logo-card:hover {
-  transform: none !important;
-  border-color: var(--silicone-border-strong) !important;
-  box-shadow: var(--silicone-shadow-hover) !important;
+  transform: translateY(-1px) !important;
+  border-color: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: var(--lg-shadow-hover) !important;
 }
 
 .brand-logo-card.active {
-  border-color: var(--silicone-blue-border) !important;
+  border-color: rgba(10, 132, 255, 0.34) !important;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.92),
-    inset 0 -1px 2px rgba(37, 99, 235, 0.05),
-    0 0 0 2px rgba(37, 99, 235, 0.10) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 0 3px rgba(10, 132, 255, 0.11),
+    0 16px 38px rgba(10, 132, 255, 0.16) !important;
+}
+
+.brand-logo-card img {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 14px !important;
+}
+
+.brand-flow-bridge {
+  width: 50px !important;
 }
 
 .brand-flow-line {
+  height: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.76) !important;
   background:
-    linear-gradient(
-      90deg,
-      rgba(249, 115, 22, 0.58),
-      rgba(37, 99, 235, 0.62)
-    ) !important;
-  box-shadow: none !important;
-}
-
-.brand-flow-line::after {
-  display: none !important;
-  animation: none !important;
+    linear-gradient(90deg, rgba(255, 122, 26, 0.68), rgba(255, 255, 255, 0.74) 48%, rgba(10, 132, 255, 0.70)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 18px rgba(44, 63, 105, 0.10) !important;
 }
 
 .brand-flow-arrow {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid var(--silicone-blue-border) !important;
-  color: var(--silicone-blue) !important;
-  box-shadow: var(--silicone-shadow) !important;
+  width: 24px !important;
+  height: 24px !important;
+  border: 1px solid rgba(255, 255, 255, 0.82) !important;
+  background: rgba(255, 255, 255, 0.68) !important;
+  color: var(--accent) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Generic silicone surfaces
-   ───────────────────────────────────────────── */
+/* Glass materials */
+:is(
+  .command-control-panel,
+  .result-workspace,
+  .glass-panel-card,
+  .glass-section,
+  .result-preview,
+  .history-modal,
+  .product-history-shell,
+  .runtime-status-modal,
+  .account-add-modal,
+  .confirm-modal,
+  .detail-modal,
+  .ozon-modal,
+  .ozon-settings-modal,
+  .ozon-source-card,
+  .ozon-panel,
+  .ozon-products-hero,
+  .ozon-products-toolbar,
+  .ozon-products-list-shell,
+  .ozon-product-detail-panel
+) {
+  border: 1px solid var(--lg-border) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.38)) !important;
+  box-shadow: var(--lg-shadow) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
+}
 
 .command-control-panel,
 .result-workspace,
+.ozon-products-hero,
+.ozon-products-toolbar,
+.ozon-products-list-shell {
+  border-radius: var(--radius-panel) !important;
+}
+
 .glass-panel-card,
 .glass-section,
 .result-preview,
-.history-modal,
-.product-history-shell,
-.runtime-status-modal,
-.account-add-modal,
-.confirm-modal,
-.detail-modal {
+.ozon-panel,
+.ozon-source-card {
+  border-radius: var(--radius-section) !important;
+}
+
+.command-workspace {
+  max-width: 1320px !important;
+  gap: 18px !important;
+}
+
+.section-head {
+  margin-bottom: 14px !important;
+}
+
+.section-head h3 {
+  color: #111827 !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+}
+
+/* Inputs and select controls */
+:is(
+  .glass-input,
+  .glass-textarea,
+  .glass-select,
+  .glass-select-trigger,
+  .search-command-input,
+  .ozon-form-grid input,
+  .ozon-store-form input,
+  .ozon-store-form select,
+  .ozon-store-form textarea,
+  .ozon-store-form .glass-select-trigger,
+  .ozon-products-search,
+  .ozon-products-toolbar select
+) {
+  border-color: rgba(139, 154, 184, 0.24) !important;
   background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-surface-soft) 100%) !important;
-  border: 1px solid #e5e7eb !important;
-  border-radius: var(--silicone-radius-xl) !important;
-  box-shadow: var(--silicone-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-/* Main operation panels need to look flatter and more professional */
-.command-control-panel,
-.result-workspace {
-  border-radius: var(--silicone-radius-xl) !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.44)) !important;
+  color: #111827 !important;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.92),
-    inset 0 -1px 2px rgba(15, 23, 42, 0.035),
-    0 2px 8px rgba(15, 23, 42, 0.035) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.90),
+    inset 0 -1px 0 rgba(120, 137, 171, 0.08) !important;
+  backdrop-filter: blur(18px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.3) !important;
 }
-
-/* ─────────────────────────────────────────────
-   Inputs / textarea / select
-   ───────────────────────────────────────────── */
 
 .glass-input,
 .glass-textarea,
 .glass-select,
 .glass-select-trigger,
-.search-command-input {
+.search-command-box,
+.ozon-products-search,
+.ozon-products-toolbar select {
+  border-radius: var(--radius-control) !important;
+}
+
+.search-command-box {
+  min-height: 54px !important;
+  border: 1px solid rgba(139, 154, 184, 0.24) !important;
   background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: var(--silicone-radius-md) !important;
-  color: var(--silicone-text) !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.40)) !important;
   box-shadow:
-    inset 0 1px 2px rgba(15, 23, 42, 0.04),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.90) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 12px 30px rgba(36, 55, 99, 0.08) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
 }
 
 .glass-input::placeholder,
 .glass-textarea::placeholder,
-.search-command-input::placeholder {
-  color: var(--silicone-text-faint) !important;
+.search-command-input::placeholder,
+.ozon-store-form input::placeholder,
+.ozon-store-form textarea::placeholder {
+  color: rgba(100, 116, 139, 0.52) !important;
 }
 
-.glass-input:focus,
-.glass-textarea:focus,
-.glass-select:focus,
-.glass-select-trigger:focus-visible {
-  border-color: rgba(37, 99, 235, 0.58) !important;
-  box-shadow: var(--silicone-focus) !important;
-  background: #ffffff !important;
-}
-
-/* Custom select dropdown */
-.glass-select-menu {
-  background: #ffffff !important;
-  border: 1px solid #e5e7eb !important;
-  border-radius: var(--silicone-radius-lg) !important;
+:is(
+  .glass-input,
+  .glass-textarea,
+  .glass-select,
+  .glass-select-trigger,
+  .search-command-box,
+  .ozon-form-grid input,
+  .ozon-store-form input,
+  .ozon-store-form select,
+  .ozon-store-form textarea,
+  .ozon-products-search,
+  .ozon-products-toolbar select
+):focus,
+:is(.glass-select-trigger, .search-command-box, .ozon-products-search):focus-within,
+.glass-select-wrap.open .glass-select-trigger {
+  border-color: rgba(10, 132, 255, 0.54) !important;
   box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.10),
-    inset 0 1px 1px rgba(255, 255, 255, 0.92) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+    0 0 0 4px rgba(10, 132, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.90),
+    0 14px 34px rgba(10, 132, 255, 0.10) !important;
+}
+
+.glass-select-menu {
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.78) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.62)) !important;
+  box-shadow: 0 22px 56px rgba(36, 55, 99, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: var(--lg-blur-strong) !important;
+  -webkit-backdrop-filter: var(--lg-blur-strong) !important;
 }
 
 .glass-select-option {
-  border-radius: var(--silicone-radius-sm) !important;
+  border-radius: 11px !important;
 }
 
 .glass-select-option:hover {
-  background: #f8fafc !important;
+  background: rgba(10, 132, 255, 0.08) !important;
 }
 
 .glass-select-option.active {
-  background: var(--silicone-blue-soft) !important;
-  color: var(--silicone-blue-hover) !important;
-  box-shadow: none !important;
+  color: var(--accent-hover) !important;
+  background: rgba(10, 132, 255, 0.14) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Search command input block
-   ───────────────────────────────────────────── */
-
-.search-command-box {
-  border-radius: var(--silicone-radius-lg) !important;
-  border: 1px solid #d1d5db !important;
+/* Buttons */
+:is(
+  .glass-btn-secondary,
+  .glass-btn-ghost,
+  .selection-action-btn,
+  .batch-toolbar-btn,
+  .progress-card-action-btn,
+  .progress-card-ozon-btn,
+  .glass-toggle-chip,
+  .account-action-btn,
+  .clipboard-preview-clear,
+  .ozon-product-actions button,
+  .ozon-products-empty button,
+  .ozon-product-detail-head button,
+  .ozon-product-detail-actions button
+) {
+  border-radius: var(--radius-control) !important;
+  border: 1px solid rgba(139, 154, 184, 0.22) !important;
   background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(15, 23, 42, 0.04),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.90) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42)) !important;
+  color: #1f2937 !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: blur(18px) saturate(1.32) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.32) !important;
+  transform: translateZ(0);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease !important;
 }
 
-.search-command-box:focus-within {
-  border-color: rgba(37, 99, 235, 0.58) !important;
-  box-shadow: var(--silicone-focus) !important;
+:is(
+  .glass-btn-secondary,
+  .glass-btn-ghost,
+  .selection-action-btn,
+  .batch-toolbar-btn,
+  .progress-card-action-btn,
+  .progress-card-ozon-btn,
+  .glass-toggle-chip,
+  .account-action-btn,
+  .clipboard-preview-clear,
+  .ozon-product-actions button,
+  .ozon-products-empty button,
+  .ozon-product-detail-head button,
+  .ozon-product-detail-actions button
+):hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: var(--lg-shadow-hover) !important;
 }
 
-.search-command-box.has-error {
-  border-color: var(--silicone-red) !important;
-  box-shadow:
-    0 0 0 3px rgba(239, 68, 68, 0.10),
-    inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
-  background: #ffffff !important;
+:is(
+  .glass-btn-secondary,
+  .glass-btn-ghost,
+  .selection-action-btn,
+  .batch-toolbar-btn,
+  .progress-card-action-btn,
+  .progress-card-ozon-btn,
+  .glass-toggle-chip,
+  .account-action-btn,
+  .clipboard-preview-clear,
+  .ozon-product-actions button,
+  .ozon-products-empty button,
+  .ozon-product-detail-head button,
+  .ozon-product-detail-actions button
+):active:not(:disabled) {
+  transform: translateY(0) !important;
+  box-shadow: var(--lg-shadow-pressed) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Buttons
-   ───────────────────────────────────────────── */
-
-.glass-btn-secondary,
-.glass-btn-ghost,
-.selection-action-btn,
-.batch-toolbar-btn,
-.progress-card-action-btn,
-.progress-card-ozon-btn,
-.glass-toggle-chip,
-.account-action-btn,
-.clipboard-preview-clear {
-  border-radius: var(--silicone-radius-md) !important;
-  border: 1px solid #d1d5db !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  color: #374151 !important;
-  box-shadow: var(--silicone-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  transform: none !important;
-}
-
-.glass-btn-secondary:hover,
-.glass-btn-ghost:hover,
-.selection-action-btn:hover:not(:disabled),
-.batch-toolbar-btn:hover:not(:disabled),
-.progress-card-action-btn:hover:not(:disabled),
-.progress-card-ozon-btn:hover:not(:disabled),
-.glass-toggle-chip:hover:not(:disabled),
-.account-action-btn:hover:not(:disabled) {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #eef3f8 100%) !important;
-  border-color: var(--silicone-border-strong) !important;
-  box-shadow: var(--silicone-shadow-hover) !important;
-  transform: none !important;
-}
-
-.glass-btn-secondary:active,
-.glass-btn-ghost:active,
-.selection-action-btn:active,
-.batch-toolbar-btn:active,
-.progress-card-action-btn:active,
-.progress-card-ozon-btn:active,
-.glass-toggle-chip:active,
-.account-action-btn:active {
-  box-shadow: var(--silicone-shadow-pressed) !important;
-  transform: translateY(1px) !important;
-}
-
-/* Primary / execute button */
-.glass-btn-primary,
-.search-command-button {
-  border-radius: var(--silicone-radius-md) !important;
-  border: 1px solid var(--silicone-red) !important;
-  background:
-    linear-gradient(180deg, #f87171 0%, #ef4444 58%, #dc2626 100%) !important;
+:is(.glass-btn-primary, .search-command-button) {
+  height: 40px !important;
+  min-width: 108px;
+  border-radius: var(--radius-control) !important;
+  border: 1px solid rgba(10, 132, 255, 0.46) !important;
   color: #ffffff !important;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.30),
-    inset 0 -2px 4px rgba(127, 29, 29, 0.18),
-    0 4px 10px rgba(239, 68, 68, 0.16) !important;
-  text-shadow: 0 1px 0 rgba(127, 29, 29, 0.28) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  transform: none !important;
-}
-
-.glass-btn-primary:hover:not(:disabled),
-.search-command-button:hover:not(:disabled) {
   background:
-    linear-gradient(180deg, #fb6f6f 0%, #ef4444 55%, #dc2626 100%) !important;
+    linear-gradient(180deg, rgba(79, 169, 255, 0.98), rgba(10, 132, 255, 0.96) 54%, rgba(0, 111, 219, 0.96)) !important;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.34),
-    inset 0 -2px 4px rgba(127, 29, 29, 0.20),
-    0 6px 14px rgba(239, 68, 68, 0.20) !important;
-  transform: none !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    inset 0 -2px 4px rgba(0, 52, 128, 0.18),
+    0 14px 30px rgba(10, 132, 255, 0.24) !important;
+  text-shadow: 0 1px 0 rgba(0, 52, 128, 0.18) !important;
 }
 
-.glass-btn-primary:active,
-.search-command-button:active {
+:is(.glass-btn-primary, .search-command-button):hover:not(:disabled) {
+  background:
+    linear-gradient(180deg, rgba(96, 177, 255, 1), rgba(10, 132, 255, 0.98) 52%, rgba(0, 101, 205, 0.98)) !important;
   box-shadow:
-    inset 0 4px 8px rgba(127, 29, 29, 0.22),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.28),
-    0 1px 2px rgba(15, 23, 42, 0.04) !important;
-  transform: translateY(1px) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 18px 40px rgba(10, 132, 255, 0.30) !important;
 }
 
-.glass-btn-primary:disabled,
-.search-command-button:disabled,
-.progress-card-action-btn:disabled,
-.batch-toolbar-btn:disabled,
-.selection-action-btn:disabled {
-  opacity: 0.46 !important;
+:is(.glass-btn-primary, .search-command-button, .progress-card-action-btn, .batch-toolbar-btn, .selection-action-btn):disabled {
+  opacity: 0.48 !important;
   cursor: not-allowed !important;
   transform: none !important;
+}
+
+.topbar-config-btn,
+.progress-card-action-btn--deep,
+.batch-toolbar-btn--deep:not(:disabled),
+.ozon-product-actions button:first-child,
+.ozon-products-empty button,
+.ozon-product-detail-actions button:first-child {
+  color: var(--accent-hover) !important;
+  background:
+    linear-gradient(145deg, rgba(232, 244, 255, 0.84), rgba(255, 255, 255, 0.50)) !important;
+  border-color: rgba(10, 132, 255, 0.22) !important;
+}
+
+.progress-card-action-btn--ozon,
+.batch-toolbar-btn--ozon:not(:disabled) {
+  color: #047857 !important;
+  background:
+    linear-gradient(145deg, rgba(220, 252, 231, 0.74), rgba(255, 255, 255, 0.48)) !important;
+  border-color: rgba(19, 164, 99, 0.22) !important;
+}
+
+.glass-btn-primary.danger,
+.selection-action-btn.danger {
+  color: #ffffff !important;
+  border-color: rgba(255, 59, 48, 0.42) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 112, 102, 0.98), rgba(255, 59, 48, 0.96) 58%, rgba(218, 30, 23, 0.96)) !important;
+}
+
+/* Segments, chips and filters */
+:is(.command-segmented-picker, .segmented-control, .ozon-settings-tabs) {
+  border-radius: 18px !important;
+  border: 1px solid rgba(255, 255, 255, 0.70) !important;
+  background: rgba(255, 255, 255, 0.38) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(18px) saturate(1.28) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.28) !important;
+}
+
+:is(.command-segment, .seg-btn, .glass-toggle-chip, .deep-task-filters button, .ozon-settings-tabs button) {
+  border-radius: var(--radius-pill) !important;
+}
+
+:is(.command-segment.active, .seg-btn.active, .glass-toggle-chip.active, .deep-task-filters button.active, .ozon-settings-tabs button.active) {
+  color: var(--accent-hover) !important;
+  background:
+    linear-gradient(145deg, rgba(232, 244, 255, 0.88), rgba(255, 255, 255, 0.58)) !important;
+  border-color: rgba(10, 132, 255, 0.24) !important;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.72),
-    inset 0 -1px 2px rgba(15, 23, 42, 0.04),
-    0 1px 2px rgba(15, 23, 42, 0.03) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.90),
+    0 8px 22px rgba(10, 132, 255, 0.12) !important;
 }
 
-/* Topbar buttons should be calmer than action buttons */
-.topbar-actions .glass-btn-secondary {
-  height: 34px !important;
-  border-radius: var(--silicone-radius-md) !important;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.92),
-    inset 0 -1px 2px rgba(15, 23, 42, 0.035),
-    0 1px 3px rgba(15, 23, 42, 0.035) !important;
+:is(.glass-chip, .status-badge, .deep-task-status, .running-chip, .ozon-status-strip span, .ozon-chip-row span) {
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid rgba(255, 255, 255, 0.68) !important;
+  background: rgba(255, 255, 255, 0.50) !important;
+  color: rgba(71, 85, 105, 0.86) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(14px) saturate(1.22) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.22) !important;
 }
 
-.topbar-config-btn {
-  color: var(--silicone-blue-hover) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
-  border-color: var(--silicone-blue-border) !important;
+.status-badge:not(.warn),
+.deep-task-status.success,
+.status-badge.success,
+.ozon-status-strip span.ready,
+.ozon-product-status--success {
+  color: #047857 !important;
+  background: rgba(220, 252, 231, 0.70) !important;
+  border-color: rgba(19, 164, 99, 0.20) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Tabs / command segments / chips
-   ───────────────────────────────────────────── */
-
-.command-segment,
-.seg-btn {
-  border-radius: var(--silicone-radius-md) !important;
-  border: 1px solid transparent !important;
-  background: transparent !important;
-  color: var(--silicone-text-secondary) !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+.status-badge.warn,
+.deep-task-status.failed,
+.alert.error,
+.ozon-product-status--failed {
+  color: var(--danger) !important;
+  background: rgba(255, 59, 48, 0.12) !important;
+  border-color: rgba(255, 59, 48, 0.18) !important;
 }
 
-.command-segment:hover,
-.seg-btn:hover {
-  background: #f8fafc !important;
-  border-color: #e5e7eb !important;
+.deep-task-status.collecting,
+.deep-task-status.queued,
+.ozon-product-status--draft,
+.ozon-product-status--processing {
+  color: var(--accent-hover) !important;
+  background: rgba(10, 132, 255, 0.13) !important;
+  border-color: rgba(10, 132, 255, 0.18) !important;
 }
 
-.command-segment.active,
-.seg-btn.active,
-.glass-toggle-chip.active {
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
-  border-color: var(--silicone-blue-border) !important;
-  color: var(--silicone-blue-hover) !important;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.92),
-    inset 0 -1px 2px rgba(37, 99, 235, 0.05),
-    0 2px 6px rgba(37, 99, 235, 0.06) !important;
+.deep-task-status.needs-manual,
+.ozon-product-status--manual {
+  color: #a15c00 !important;
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.22) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Image-search paste zone
-   ───────────────────────────────────────────── */
-
-.image-search-paste-zone {
-  border-radius: var(--silicone-radius-lg) !important;
-  border: 1px dashed #cbd5e1 !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  box-shadow:
-    inset 0 1px 2px rgba(15, 23, 42, 0.035),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.90) !important;
+/* Task sidebar */
+.deep-task-sidebar {
+  margin-top: 6px !important;
+  gap: 11px !important;
 }
 
-.image-search-paste-zone:hover,
-.image-search-paste-zone:focus-within {
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
-  border-color: var(--silicone-blue-border) !important;
+.deep-task-sidebar-head {
+  padding: 0 4px !important;
 }
 
-.clipboard-preview-img {
-  border-radius: var(--silicone-radius-md) !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: var(--silicone-shadow) !important;
+.deep-task-sidebar-title {
+  color: #111827 !important;
+  font-size: 13px !important;
+  font-weight: 860 !important;
 }
 
-/* ─────────────────────────────────────────────
-   Result toolbar
-   ───────────────────────────────────────────── */
-
-.result-unified-toolbar {
-  background: transparent !important;
-}
-
-.result-batch-actions .batch-toolbar-btn--deep {
-  color: var(--silicone-blue-hover) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
-  border-color: var(--silicone-blue-border) !important;
-}
-
-.result-batch-actions .batch-toolbar-btn--ozon {
-  color: var(--silicone-green-hover) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-green-soft) 100%) !important;
-  border-color: var(--silicone-green-border) !important;
-}
-
-/* ─────────────────────────────────────────────
-   Product cards
-   ───────────────────────────────────────────── */
-
-.progress-card-grid {
-  gap: 14px !important;
-}
-
-.progress-offer-card {
-  border-radius: var(--silicone-radius-xl) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: var(--silicone-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  overflow: hidden !important;
-  transform: none !important;
-}
-
-.progress-offer-card:hover {
-  transform: none !important;
-  border-color: #cbd5e1 !important;
-  box-shadow: var(--silicone-shadow-hover) !important;
-}
-
-.progress-offer-card.selected {
-  border-color: var(--silicone-blue) !important;
-  box-shadow:
-    0 0 0 2px rgba(37, 99, 235, 0.12),
-    var(--silicone-shadow) !important;
-}
-
-.progress-card-image-wrap {
-  background: #f8fafc !important;
-  border-bottom: 1px solid #eef2f7 !important;
-}
-
-.progress-card-img {
-  background: #ffffff !important;
-}
-
-.progress-card-body {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-}
-
-.progress-card-title {
-  color: var(--silicone-text) !important;
-}
-
-.progress-card-price {
-  color: #dc2626 !important;
-}
-
-.progress-card-check {
-  border-radius: var(--silicone-radius-xs) !important;
-  border: 1px solid #d1d5db !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  box-shadow: var(--silicone-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-.progress-card-check.checked {
-  background:
-    linear-gradient(180deg, #60a5fa 0%, #2563eb 100%) !important;
-  border-color: var(--silicone-blue) !important;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.34),
-    inset 0 -1px 2px rgba(30, 64, 175, 0.18),
-    0 3px 8px rgba(37, 99, 235, 0.16) !important;
-}
-
-.progress-card-action-btn {
-  height: 30px !important;
-  border-radius: var(--silicone-radius-md) !important;
-}
-
-.progress-card-action-btn--deep {
-  color: var(--silicone-blue-hover) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
-  border-color: var(--silicone-blue-border) !important;
-}
-
-.progress-card-action-btn--ozon {
-  color: var(--silicone-green-hover) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-green-soft) 100%) !important;
-  border-color: var(--silicone-green-border) !important;
-}
-
-/* ─────────────────────────────────────────────
-   Badges / status chips / task sidebar
-   ───────────────────────────────────────────── */
-
-.glass-chip,
-.status-badge,
-.deep-task-status,
-.running-chip {
-  border-radius: var(--silicone-radius-sm) !important;
-  border: 1px solid #e5e7eb !important;
-  background: #f8fafc !important;
-  color: var(--silicone-text-secondary) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+.deep-task-filters {
+  gap: 7px !important;
 }
 
 .deep-task-filters button {
-  border-radius: var(--silicone-radius-md) !important;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid transparent !important;
-  box-shadow: none !important;
+  height: 30px !important;
+  border: 1px solid rgba(255, 255, 255, 0.58) !important;
+  background: rgba(255, 255, 255, 0.34) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70) !important;
+  color: rgba(71, 85, 105, 0.82) !important;
+  backdrop-filter: blur(16px) saturate(1.24) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.24) !important;
 }
 
-.deep-task-filters button.active {
-  background:
-    linear-gradient(180deg, #ffffff 0%, var(--silicone-blue-soft) 100%) !important;
-  border-color: var(--silicone-blue-border) !important;
-  color: var(--silicone-blue-hover) !important;
-  box-shadow: var(--silicone-shadow) !important;
+.deep-task-filters button strong {
+  background: rgba(255, 255, 255, 0.48) !important;
+}
+
+.deep-task-list {
+  gap: 9px !important;
+  padding-right: 2px !important;
 }
 
 .deep-task-empty,
 .deep-task-item {
-  border-radius: var(--silicone-radius-lg) !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
   background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: var(--silicone-shadow) !important;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.34)) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Error / alert / toast
-   ───────────────────────────────────────────── */
+.deep-task-item {
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  min-height: 102px !important;
+  padding: 10px !important;
+}
 
-.alert {
-  border-radius: var(--silicone-radius-md) !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: var(--silicone-shadow) !important;
+.deep-task-item.success {
+  border-color: rgba(19, 164, 99, 0.22) !important;
+  background: linear-gradient(145deg, rgba(236, 253, 245, 0.72), rgba(255, 255, 255, 0.38)) !important;
+}
+
+.deep-task-item.failed {
+  border-color: rgba(255, 59, 48, 0.24) !important;
+  background: linear-gradient(145deg, rgba(255, 241, 242, 0.74), rgba(255, 255, 255, 0.38)) !important;
+}
+
+.deep-task-item.needs-manual {
+  border-color: rgba(245, 158, 11, 0.26) !important;
+  background: linear-gradient(145deg, rgba(255, 251, 235, 0.74), rgba(255, 255, 255, 0.38)) !important;
+}
+
+.deep-task-thumb {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 15px !important;
+  border: 1px solid rgba(255, 255, 255, 0.64) !important;
+  box-shadow: 0 8px 18px rgba(36, 55, 99, 0.12) !important;
+}
+
+.deep-task-title {
+  color: #111827 !important;
+  font-weight: 820 !important;
+  line-height: 1.26 !important;
+}
+
+.deep-task-message,
+.deep-task-time {
+  color: rgba(71, 85, 105, 0.72) !important;
+}
+
+/* Product cards and result surfaces */
+.progress-card-grid {
+  gap: 16px !important;
+}
+
+.liquid-glass-card,
+.progress-offer-card,
+.ozon-product-card,
+.history-row,
+.product-history-tile,
+.ozon-store-card > div,
+.ozon-quota-panel {
+  border: 1px solid rgba(255, 255, 255, 0.66) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.40)) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
+}
+
+.liquid-glass-card,
+.progress-offer-card,
+.ozon-product-card {
+  border-radius: var(--radius-card) !important;
+  overflow: hidden !important;
+}
+
+.progress-offer-card:hover,
+.ozon-product-card:hover,
+.product-history-tile:hover,
+.history-row:hover {
+  border-color: rgba(255, 255, 255, 0.90) !important;
+  box-shadow: var(--lg-shadow-hover) !important;
+}
+
+.progress-offer-card.selected {
+  border-color: rgba(10, 132, 255, 0.40) !important;
+  box-shadow:
+    0 0 0 3px rgba(10, 132, 255, 0.12),
+    var(--lg-shadow) !important;
+}
+
+.progress-card-image-wrap,
+.progress-card-body,
+.offer-main-image-shell,
+.ozon-product-thumb,
+.ozon-products-empty,
+.ozon-product-detail-json {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.64), rgba(244, 248, 255, 0.50)) !important;
+  border-color: rgba(255, 255, 255, 0.58) !important;
+}
+
+.progress-card-title,
+.offer-title,
+.ozon-product-title-row h3 {
+  color: #111827 !important;
+  font-weight: 780 !important;
+}
+
+.offer-price,
+.progress-card-price {
+  color: #0f172a !important;
+}
+
+.progress-card-check {
+  border-radius: 9px !important;
+  border: 1px solid rgba(255, 255, 255, 0.76) !important;
+  background: rgba(255, 255, 255, 0.66) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: blur(14px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.25) !important;
+}
+
+.progress-card-check.checked {
+  border-color: rgba(10, 132, 255, 0.34) !important;
+  background: linear-gradient(180deg, #5ab2ff, #0a84ff) !important;
+  box-shadow: 0 10px 22px rgba(10, 132, 255, 0.25) !important;
+}
+
+.progress-card-overlay {
+  background: rgba(255, 255, 255, 0.48) !important;
+  backdrop-filter: blur(18px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.3) !important;
+}
+
+.progress-card-overlay.failed {
+  background: rgba(255, 241, 242, 0.62) !important;
+}
+
+/* Ozon workspace */
+.ozon-product-page {
+  min-height: calc(100vh - 120px) !important;
+  gap: 18px !important;
+}
+
+.ozon-products-hero {
+  min-height: 108px !important;
+  padding: 22px 24px !important;
+}
+
+.ozon-products-eyebrow {
+  color: var(--accent-hover) !important;
+  font-weight: 860 !important;
+}
+
+.ozon-products-hero h2 {
+  color: #111827 !important;
+  font-size: 25px !important;
+  font-weight: 860 !important;
+}
+
+.ozon-products-hero p,
+.ozon-products-list-head span,
+.ozon-product-meta,
+.ozon-product-source {
+  color: rgba(71, 85, 105, 0.74) !important;
+}
+
+.ozon-products-hero-meta,
+.ozon-products-stat,
+.ozon-product-meta span,
+.ozon-product-source span,
+.ozon-product-source strong,
+.ozon-product-source a {
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(14px) saturate(1.20) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.20) !important;
+}
+
+.ozon-products-stat {
+  border-radius: 18px !important;
+  min-height: 82px !important;
+  padding: 16px 18px !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+}
+
+.ozon-products-stat.active {
+  border-color: rgba(10, 132, 255, 0.30) !important;
+  box-shadow:
+    0 0 0 3px rgba(10, 132, 255, 0.10),
+    var(--lg-shadow-soft) !important;
+}
+
+.ozon-products-search input {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.ozon-products-grid {
+  gap: 16px !important;
+}
+
+.ozon-products-stats {
+  gap: 12px !important;
+}
+
+.ozon-products-toolbar {
+  gap: 12px !important;
+  padding: 13px !important;
+}
+
+.ozon-products-list-shell {
+  padding: 20px !important;
+}
+
+.ozon-product-card {
+  min-height: 218px !important;
+  padding: 16px !important;
+}
+
+.ozon-product-thumb {
+  border-radius: 16px !important;
+}
+
+.ozon-product-missing,
+.ozon-product-message {
+  border: 1px solid rgba(255, 255, 255, 0.58) !important;
+  backdrop-filter: blur(12px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.2) !important;
+}
+
+.ozon-product-message--success {
+  color: #047857 !important;
+  background: rgba(220, 252, 231, 0.62) !important;
+}
+
+.ozon-product-message--draft,
+.ozon-product-message--processing {
+  color: var(--accent-hover) !important;
+  background: rgba(10, 132, 255, 0.12) !important;
+}
+
+.ozon-product-message--manual,
+.ozon-product-missing {
+  color: #854d0e !important;
+  background: rgba(245, 158, 11, 0.22) !important;
+}
+
+.ozon-product-message--failed {
+  color: #b42318 !important;
+  background: rgba(255, 59, 48, 0.18) !important;
+}
+
+.ozon-products-empty {
+  border-style: solid !important;
+}
+
+.ozon-products-empty-sheet {
+  border: 1px solid rgba(255, 255, 255, 0.70) !important;
+  background: rgba(255, 255, 255, 0.64) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: blur(14px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.2) !important;
+}
+
+/* Modals and overlays */
+:is(
+  .modal-backdrop,
+  .history-modal-backdrop,
+  .product-history-backdrop,
+  .detail-backdrop,
+  .runtime-status-modal-backdrop,
+  .account-modal-backdrop,
+  .confirm-backdrop,
+  .ozon-backdrop,
+  .ozon-product-detail-backdrop
+) {
+  background: rgba(32, 43, 66, 0.30) !important;
+  backdrop-filter: blur(20px) saturate(1.24) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.24) !important;
+}
+
+.history-modal,
+.product-history-shell,
+.runtime-status-modal,
+.account-add-modal,
+.confirm-modal,
+.detail-modal,
+.ozon-modal,
+.ozon-settings-modal,
+.ozon-product-detail-panel {
+  border-radius: 28px !important;
+  padding: 24px;
+}
+
+.ozon-modal,
+.ozon-settings-modal,
+.product-history-shell {
+  padding: 0 !important;
+}
+
+.ozon-modal-head,
+.product-history-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.48) !important;
+  background: rgba(255, 255, 255, 0.36) !important;
+  backdrop-filter: blur(18px) saturate(1.22) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.22) !important;
+}
+
+.ozon-layout,
+.ozon-settings-body,
+.product-history-body {
+  background: transparent !important;
+}
+
+.ozon-settings-body {
+  padding: 20px 26px 24px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.14)) !important;
+}
+
+.ozon-form-grid.two {
+  gap: 16px 18px !important;
+}
+
+.ozon-store-form {
+  gap: 20px !important;
+}
+
+.ozon-store-form label {
+  gap: 10px !important;
+}
+
+.ozon-settings-actions {
+  margin-top: 22px !important;
+}
+
+.ozon-modal-head,
+.ozon-settings-modal .ozon-modal-head {
+  padding: 22px 26px 16px !important;
+}
+
+.confirm-command-preview code,
+.command-preview,
+.ozon-json,
+.command-error-tech-row code,
+.command-error-tech-row pre,
+.error-argv code {
+  border: 1px solid rgba(255, 255, 255, 0.56) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70) !important;
+  backdrop-filter: blur(14px) saturate(1.18) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.18) !important;
+}
+
+.account-inline-message,
+.alert,
+.command-error-card,
+.detail-failure {
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.50) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: blur(16px) saturate(1.24) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.24) !important;
 }
 
 .alert.info {
-  background: var(--silicone-blue-soft) !important;
-  color: var(--silicone-blue-hover) !important;
-  border-color: var(--silicone-blue-border) !important;
+  color: var(--accent-hover) !important;
+  background: rgba(10, 132, 255, 0.12) !important;
 }
 
 .alert.success {
-  background: var(--silicone-green-soft) !important;
-  color: var(--silicone-green-hover) !important;
-  border-color: var(--silicone-green-border) !important;
-}
-
-.alert.error,
-.error-detail {
-  background: var(--silicone-red-soft) !important;
-  color: #b91c1c !important;
-  border-color: var(--silicone-red-border) !important;
+  color: #047857 !important;
+  background: rgba(220, 252, 231, 0.62) !important;
 }
 
 .toast {
-  border-radius: var(--silicone-radius-lg) !important;
-  background: rgba(17, 24, 39, 0.88) !important;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18) !important;
+  border: 1px solid rgba(255, 255, 255, 0.36) !important;
+  background: rgba(17, 24, 39, 0.72) !important;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.22) !important;
+  backdrop-filter: blur(22px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.25) !important;
 }
 
-/* ─────────────────────────────────────────────
-   Modal overlays keep overlay, but content is silicone
-   ───────────────────────────────────────────── */
-
-.modal-backdrop,
-.history-modal-backdrop,
-.product-history-backdrop,
-.detail-backdrop,
-.runtime-status-modal-backdrop,
-.account-modal-backdrop,
-.confirm-backdrop {
-  background: rgba(15, 23, 42, 0.28) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+/* Image and history polish */
+.offer-main-image,
+.detail-main-image,
+.clipboard-preview-img,
+.product-history-tile img,
+.ozon-source-card img {
+  border-radius: var(--radius-image) !important;
 }
 
-.history-row,
+.image-search-paste-zone {
+  border-radius: var(--radius-section) !important;
+  border: 1px dashed rgba(10, 132, 255, 0.30) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.34)) !important;
+  box-shadow: var(--lg-shadow-soft) !important;
+  backdrop-filter: var(--lg-blur) !important;
+  -webkit-backdrop-filter: var(--lg-blur) !important;
+}
+
+.image-search-paste-zone:hover,
+.image-search-paste-zone:focus-within {
+  border-color: rgba(10, 132, 255, 0.48) !important;
+  background:
+    linear-gradient(145deg, rgba(232, 244, 255, 0.72), rgba(255, 255, 255, 0.42)) !important;
+}
+
 .product-history-tile {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid #e5e7eb !important;
-  border-radius: var(--silicone-radius-lg) !important;
-  box-shadow: var(--silicone-shadow) !important;
+  border-radius: 20px !important;
 }
 
-/* ─────────────────────────────────────────────
-   Kill obvious glass/neon effects on main UI only
-   ───────────────────────────────────────────── */
-
-.liquid-glass-card,
-.offer-main-image-shell,
-.metric-tile,
-.glass-pill-button {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: var(--silicone-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+/* Scrollbars */
+.custom-scrollbar,
+.workspace-inner,
+.history-modal,
+.product-history-body,
+.ozon-layout,
+.ozon-settings-body,
+.result-preview pre.json-output,
+.ozon-json,
+.ozon-product-detail-json {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.36) transparent;
 }
 
-/* Keep SVG / images crisp */
+.custom-scrollbar::-webkit-scrollbar,
+.workspace-inner::-webkit-scrollbar,
+.history-modal::-webkit-scrollbar,
+.product-history-body::-webkit-scrollbar,
+.ozon-layout::-webkit-scrollbar,
+.ozon-settings-body::-webkit-scrollbar,
+.result-preview pre.json-output::-webkit-scrollbar,
+.ozon-json::-webkit-scrollbar,
+.ozon-product-detail-json::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+.workspace-inner::-webkit-scrollbar-track,
+.history-modal::-webkit-scrollbar-track,
+.product-history-body::-webkit-scrollbar-track,
+.ozon-layout::-webkit-scrollbar-track,
+.ozon-settings-body::-webkit-scrollbar-track,
+.result-preview pre.json-output::-webkit-scrollbar-track,
+.ozon-json::-webkit-scrollbar-track,
+.ozon-product-detail-json::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.workspace-inner::-webkit-scrollbar-thumb,
+.history-modal::-webkit-scrollbar-thumb,
+.product-history-body::-webkit-scrollbar-thumb,
+.ozon-layout::-webkit-scrollbar-thumb,
+.ozon-settings-body::-webkit-scrollbar-thumb,
+.result-preview pre.json-output::-webkit-scrollbar-thumb,
+.ozon-json::-webkit-scrollbar-thumb,
+.ozon-product-detail-json::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: rgba(100, 116, 139, 0.30);
+  background-clip: padding-box;
+}
+
 img,
 svg {
   flex-shrink: 0;
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: 226px minmax(0, 1fr) !important;
+  }
+
+  .side-nav {
+    width: 226px !important;
+    min-width: 226px !important;
+    max-width: 226px !important;
+  }
+
+  .workspace-inner {
+    padding: 18px 22px 30px !important;
+  }
+
+  .topbar-actions {
+    gap: 7px !important;
+  }
+
+  .topbar-actions .glass-btn-secondary {
+    min-width: 78px !important;
+    padding: 0 12px !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .side-nav {
+    display: none !important;
+  }
+
+  .topbar {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .topbar-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+
+  .workspace-inner {
+    padding: 14px !important;
+  }
 }

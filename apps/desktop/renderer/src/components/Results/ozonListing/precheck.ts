@@ -32,6 +32,8 @@ const MISSING_FIELD_LABELS: Record<string, string> = {
   '宽': '宽',
   '高': '高',
   '重量': '重量',
+  variant_mapping: '规格属性映射',
+  '规格属性映射': '规格属性映射',
 };
 
 export type OzonPrecheckResult = {
@@ -70,8 +72,9 @@ export function collectRowMissingFields(rows: Array<Record<string, unknown>>): s
 }
 
 export function formatMissingFields(fields: string[]): string {
-  return unique(fields)
-    .map((field) => MISSING_FIELD_LABELS[field] || field)
+  return unique(
+    fields.map((field) => MISSING_FIELD_LABELS[field] || field),
+  )
     .join('、');
 }
 

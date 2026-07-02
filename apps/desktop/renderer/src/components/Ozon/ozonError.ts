@@ -2,7 +2,7 @@ import type { OzonListingTask } from '../Results/ozonListing/types';
 import { formatMissingFields } from '../Results/ozonListing/precheck';
 
 type OzonErrorContext = {
-  phase?: 'generate' | 'deep_collect' | 'timeout' | 'missing_fields' | 'unknown';
+  phase?: 'generate' | 'deep_collect' | 'timeout' | 'missing_fields' | 'submit' | 'unknown';
   missingFields?: string[];
   fallback?: string;
 };
@@ -35,6 +35,11 @@ export function normalizeOzonTaskError(error: unknown, context: OzonErrorContext
   const raw = rawMessageOf(error).trim();
   const missingFields = context.missingFields || [];
 
+  if (context.phase === 'submit') {
+    if (raw && hasChinese(raw)) return raw;
+    return context.fallback || '提交 Ozon 失败：请检查店铺授权、类目属性、价格或库存配置。';
+  }
+
   if (AI_CONFIG_RE.test(raw)) {
     return '生成 Ozon 草稿失败：未配置可用的 AI 服务，请先到 AI 设置中完成配置。';
   }
@@ -66,7 +71,10 @@ export function normalizeOzonTaskError(error: unknown, context: OzonErrorContext
 }
 
 export function formatOzonTaskDisplayMessage(task: OzonListingTask): string {
-  if (task.status === 'draft_ready') return task.message || '草稿已生成';
+  if (task.status === 'draft_ready') return task.message || '草稿已生成，可编辑后提交到 Ozon。';
+  if (task.status === 'import_pending') return task.message || 'Ozon 已接收导入任务，正在等待导入结果。';
+  if (task.status === 'imported') return task.message || 'Ozon 商品已导入，价格已更新；库存待配置或待确认。';
+  if (task.status === 'listing_ready') return task.message || 'Ozon 商品已导入，价格和库存链路已完成。';
 
   if (task.status === 'needs_manual') {
     return normalizeOzonTaskError(task.message || '', {
@@ -77,6 +85,13 @@ export function formatOzonTaskDisplayMessage(task: OzonListingTask): string {
 
   if (task.status === 'deep_failed') {
     return normalizeOzonTaskError(task.message || '', { phase: 'deep_collect' });
+  }
+
+  if (task.status === 'submit_failed') {
+    return normalizeOzonTaskError(task.message || '', {
+      phase: 'submit',
+      fallback: '提交 Ozon 失败：请检查类目属性、店铺授权、价格或库存配置。',
+    });
   }
 
   if (task.status === 'failed') {

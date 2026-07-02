@@ -30,6 +30,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
     descId: '',
     typeId: '',
     categoryPath: '',
+    warehouseId: '',
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
@@ -57,6 +58,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
           descId: data.ozon.defaultDescriptionCategoryId || '',
           typeId: data.ozon.defaultTypeId || '',
           categoryPath: data.ozon.defaultCategoryPath || '',
+          warehouseId: data.ozon.defaultWarehouseId || '',
         }));
       })
       .catch((error) => setMessage({ kind: 'error', text: error.message || String(error) }));
@@ -121,6 +123,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
               defaultDescriptionCategoryId: form.descId,
               defaultTypeId: form.typeId,
               defaultCategoryPath: form.categoryPath,
+              defaultWarehouseId: form.warehouseId,
               ...(form.ozonApiKey.trim() ? { apiKey: form.ozonApiKey.trim() } : {}),
             },
           };
@@ -198,6 +201,11 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
                 查看店铺货币类型：https://seller.ozon.ru/app/settings/contracts
               </a>
 
+              <label>
+                <span>默认仓库 ID</span>
+                <input value={form.warehouseId} placeholder="用于 /v2/products/stocks，未填则跳过库存更新" onChange={(e) => setForm({ ...form, warehouseId: e.target.value })} />
+              </label>
+
               <fieldset className="ozon-radio-group">
                 <legend>默认店铺(默认上传产品的店铺)</legend>
                 <label><input type="radio" checked={form.isDefaultShop} onChange={() => setForm({ ...form, isDefaultShop: true })} /> 是</label>
@@ -241,6 +249,10 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
                 <div>
                   <span>默认店铺</span>
                   <strong>{settings?.ozon.isDefaultShop ? '是' : '否'}</strong>
+                </div>
+                <div>
+                  <span>默认仓库</span>
+                  <strong>{settings?.ozon.defaultWarehouseId || '未配置'}</strong>
                 </div>
                 <div>
                   <span>今日还能上架</span>
