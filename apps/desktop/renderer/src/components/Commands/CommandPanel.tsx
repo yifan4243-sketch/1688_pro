@@ -122,15 +122,6 @@ function keywordTreeNodeToCategoryEntry(node: KeywordCategoryTreeNode): OzonCate
   };
 }
 
-function countKeywordSelectable(nodes: KeywordCategoryTreeNode[]): number {
-  let count = 0;
-  for (const node of nodes) {
-    if (node.selectable) count += 1;
-    count += countKeywordSelectable(node.children);
-  }
-  return count;
-}
-
 function offerIdOf(raw: Record<string, unknown>): string {
   return String(raw.offerId || raw.offer_id || raw.id || '');
 }
@@ -282,11 +273,6 @@ function KeywordCategoryTreeList({
                 title={node.path}
               >
                 <strong>{node.label}</strong>
-                {node.selectable ? (
-                  <small>description_category_id {node.descriptionCategoryId} · type_id {node.typeId}</small>
-                ) : (
-                  <small>{node.children.length} 个子项</small>
-                )}
               </button>
             </div>
 
@@ -466,10 +452,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
         .then((response) => {
           if (!alive) return;
           setKeywordCategoryOptions(response.items || []);
-          const matched = response.matchedTotal ?? response.items?.length ?? 0;
-          setKeywordCategoryMessage(
-            `${response.message || 'Ozon 类目搜索词'}，命中 ${matched} / 总 ${response.total}，当前显示 ${response.items?.length || 0}`
-          );
+          setKeywordCategoryMessage('');
         })
         .catch((error) => {
           if (!alive) return;
@@ -1009,9 +992,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       const treeNodes = buildKeywordCategoryTree(roots);
 
       setKeywordCategoryTreeNodes(treeNodes);
-      setKeywordCategoryMessage(
-        `${response.message || 'Ozon 类目树已加载'}，可选末级类型 ${countKeywordSelectable(treeNodes)} 个，总扁平类目 ${response.total || 0} 个，来源 ${response.source}`
-      );
+      setKeywordCategoryMessage('');
 
       const firstExpanded: Record<string, boolean> = {};
       for (const node of treeNodes.slice(0, 20)) {
@@ -1128,11 +1109,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                         {showKeywordCategories && (
                           <div className="keyword-category-panel">
                             <div className="keyword-category-head">
-                              <span>
-                                {keywordCategoryLoading || keywordCategoryTreeLoading
-                                  ? '正在读取 Ozon 类目...'
-                                  : keywordCategoryMessage || 'Ozon 类目搜索词'}
-                              </span>
+                              <span>{keywordCategoryLoading || keywordCategoryTreeLoading ? '正在读取 Ozon 类目...' : 'Ozon 类目搜索词'}</span>
                               <div className="keyword-category-head-actions">
                                 <button type="button" onClick={() => setShowKeywordCategoryTree((value) => !value)}>
                                   {showKeywordCategoryTree ? '隐藏类目树' : '浏览全部类目树'}
@@ -1148,9 +1125,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
                             {showKeywordCategoryTree && (
                               <div className="keyword-category-tree-panel">
-                                <div className="keyword-category-hint">
-                                  从 Ozon 类目树选择搜索词；只有带 type_id 的末级类型会填入 1688 搜索框。
-                                </div>
                                 {keywordCategoryTreeNodes.length > 0 ? (
                                   <KeywordCategoryTreeList
                                     nodes={keywordCategoryTreeNodes}
@@ -1167,10 +1141,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                             )}
 
                             <div className="keyword-category-search-panel">
-                              <div className="keyword-category-hint">
-                                搜索结果：不再限制 10 个；支持类目名、路径、description_category_id、type_id。
-                              </div>
-
                               {keywordCategoryOptions.length > 0 ? (
                                 <div className="keyword-category-list">
                                   {keywordCategoryOptions.map((entry) => (
@@ -1183,11 +1153,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                                     >
                                       <strong>{entry.keyword || entry.path}</strong>
                                       <span>{entry.path}</span>
-                                      <small>
-                                        description_category_id {entry.descriptionCategoryId || entry.description_category_id}
-                                        {' · '}
-                                        type_id {entry.typeId || entry.type_id}
-                                      </small>
                                     </button>
                                   ))}
                                 </div>
