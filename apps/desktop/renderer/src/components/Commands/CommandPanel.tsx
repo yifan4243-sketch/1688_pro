@@ -48,6 +48,7 @@ type KeywordCategoryTreeNode = {
   id: string;
   label: string;
   path: string;
+  depth: number;
   descriptionCategoryId: number;
   typeId: number;
   selectable: boolean;
@@ -99,6 +100,7 @@ function buildKeywordCategoryTree(
         : `keyword-category:${descriptionCategoryId || path}:${path}`,
       label: label || path || '未命名类目',
       path,
+      depth: pathParts.length,
       descriptionCategoryId,
       typeId,
       selectable,
@@ -120,6 +122,73 @@ function keywordTreeNodeToCategoryEntry(node: KeywordCategoryTreeNode): OzonCate
     disabled: false,
     searchIndex: `${node.path} ${node.descriptionCategoryId} ${node.typeId}`,
   };
+}
+
+function normalizeKeywordSearchText(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function keywordSearchTokens(query: string): string[] {
+  return normalizeKeywordSearchText(query)
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isThirdLevelKeywordNode(node: KeywordCategoryTreeNode): boolean {
+  return node.selectable && node.depth === 3;
+}
+
+function thirdLevelNodeMatchesKeyword(node: KeywordCategoryTreeNode, tokens: string[]): boolean {
+  if (!isThirdLevelKeywordNode(node)) return false;
+  if (!tokens.length) return true;
+
+  const haystack = normalizeKeywordSearchText([
+    node.label,
+    node.path,
+    node.descriptionCategoryId,
+    node.typeId,
+  ].join(' '));
+
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function filterKeywordCategoryTree(
+  nodes: KeywordCategoryTreeNode[],
+  query: string,
+): KeywordCategoryTreeNode[] {
+  const tokens = keywordSearchTokens(query);
+
+  if (!tokens.length) return nodes;
+
+  const result: KeywordCategoryTreeNode[] = [];
+
+  for (const node of nodes) {
+    const children = filterKeywordCategoryTree(node.children, query);
+    const selfMatched = thirdLevelNodeMatchesKeyword(node, tokens);
+
+    if (selfMatched || children.length > 0) {
+      result.push({
+        ...node,
+        children,
+      });
+    }
+  }
+
+  return result;
+}
+
+function collectExpandedKeywordCategoryIds(
+  nodes: KeywordCategoryTreeNode[],
+  output: Record<string, boolean> = {},
+): Record<string, boolean> {
+  for (const node of nodes) {
+    if (node.children.length > 0) {
+      output[node.id] = true;
+      collectExpandedKeywordCategoryIds(node.children, output);
+    }
+  }
+  return output;
 }
 
 function offerIdOf(raw: Record<string, unknown>): string {
@@ -323,9 +392,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [pastedImagePreviewUrl, setPastedImagePreviewUrl] = useState<string | null>(null);
   const [pastedImageName, setPastedImageName] = useState<string | null>(null);
   const [pastedImageSize, setPastedImageSize] = useState<number | null>(null);
-  const [keywordCategoryOptions, setKeywordCategoryOptions] = useState<OzonCategoryEntry[]>([]);
-  const [keywordCategoryLoading, setKeywordCategoryLoading] = useState(false);
-  const [keywordCategoryMessage, setKeywordCategoryMessage] = useState('');
   const [showKeywordCategories, setShowKeywordCategories] = useState(false);
   const [keywordCategoryTreeNodes, setKeywordCategoryTreeNodes] = useState<KeywordCategoryTreeNode[]>([]);
   const [keywordCategoryTreeLoading, setKeywordCategoryTreeLoading] = useState(false);
@@ -441,34 +507,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     parts.push('--profile', activeProfile, '--json', '--pretty');
     return parts.join(' ');
   }, [command, commandOptions, commandPositionals, args, options, activeProfile]);
-
-  useEffect(() => {
-    if (activeCmdId !== 'search') return;
-    let alive = true;
-    const query = String(args.keyword || '').trim();
-    const timer = window.setTimeout(() => {
-      setKeywordCategoryLoading(true);
-      api.ozon.searchCategories(query, { limit: 5000, language: 'ZH_HANS' })
-        .then((response) => {
-          if (!alive) return;
-          setKeywordCategoryOptions(response.items || []);
-          setKeywordCategoryMessage('');
-        })
-        .catch((error) => {
-          if (!alive) return;
-          setKeywordCategoryOptions([]);
-          setKeywordCategoryMessage(error instanceof Error ? error.message : String(error));
-        })
-        .finally(() => {
-          if (alive) setKeywordCategoryLoading(false);
-        });
-    }, 220);
-
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-  }, [activeCmdId, api.ozon, args.keyword]);
 
   const chineseHint = useMemo(() => {
     if (activeCmdId === 'search') {
@@ -992,7 +1030,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       const treeNodes = buildKeywordCategoryTree(roots);
 
       setKeywordCategoryTreeNodes(treeNodes);
-      setKeywordCategoryMessage('');
 
       const firstExpanded: Record<string, boolean> = {};
       for (const node of treeNodes.slice(0, 20)) {
@@ -1001,7 +1038,6 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
       setExpandedKeywordCategoryIds((prev) => ({ ...firstExpanded, ...prev }));
     } catch (error) {
       setKeywordCategoryTreeNodes([]);
-      setKeywordCategoryMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setKeywordCategoryTreeLoading(false);
     }
@@ -1012,12 +1048,25 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   }
 
   function fillKeywordFromTreeNode(node: KeywordCategoryTreeNode) {
-    if (!node.selectable) {
+    if (!isThirdLevelKeywordNode(node)) {
       toggleKeywordCategoryNode(node.id);
       return;
     }
     fillKeywordFromCategory(keywordTreeNodeToCategoryEntry(node));
   }
+
+  const visibleKeywordCategoryTree = useMemo(
+    () => filterKeywordCategoryTree(keywordCategoryTreeNodes, String(args.keyword || '')),
+    [keywordCategoryTreeNodes, args.keyword],
+  );
+
+  useEffect(() => {
+    const query = String(args.keyword || '').trim();
+    if (!showKeywordCategories || !query) return;
+
+    const nextExpanded = collectExpandedKeywordCategoryIds(visibleKeywordCategoryTree);
+    setExpandedKeywordCategoryIds((prev) => ({ ...prev, ...nextExpanded }));
+  }, [args.keyword, showKeywordCategories, visibleKeywordCategoryTree]);
 
   const isDeepProAdvancedOption = (name: string): boolean =>
     name === 'deepproDelayMin' ||
@@ -1109,7 +1158,7 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                         {showKeywordCategories && (
                           <div className="keyword-category-panel">
                             <div className="keyword-category-head">
-                              <span>{keywordCategoryLoading || keywordCategoryTreeLoading ? '正在读取 Ozon 类目...' : 'Ozon 类目搜索词'}</span>
+                              <span>{keywordCategoryTreeLoading ? '正在读取 Ozon 类目...' : 'Ozon 类目搜索词'}</span>
                               <div className="keyword-category-head-actions">
                                 <button type="button" onClick={() => setShowKeywordCategoryTree((value) => !value)}>
                                   {showKeywordCategoryTree ? '隐藏类目树' : '浏览全部类目树'}
@@ -1125,43 +1174,21 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
 
                             {showKeywordCategoryTree && (
                               <div className="keyword-category-tree-panel">
-                                {keywordCategoryTreeNodes.length > 0 ? (
+                                {visibleKeywordCategoryTree.length > 0 ? (
                                   <KeywordCategoryTreeList
-                                    nodes={keywordCategoryTreeNodes}
+                                    nodes={visibleKeywordCategoryTree}
                                     expanded={expandedKeywordCategoryIds}
                                     onToggle={toggleKeywordCategoryNode}
                                     onSelect={fillKeywordFromTreeNode}
                                   />
                                 ) : (
                                   <div className="keyword-category-empty">
-                                    暂无类目树。请点击"同步 Ozon 最新类目"，或确认本地缓存存在。
+                                    未找到匹配的三级类目。
                                   </div>
                                 )}
                               </div>
                             )}
 
-                            <div className="keyword-category-search-panel">
-                              {keywordCategoryOptions.length > 0 ? (
-                                <div className="keyword-category-list">
-                                  {keywordCategoryOptions.map((entry) => (
-                                    <button
-                                      key={`${entry.descriptionCategoryId || entry.description_category_id}-${entry.typeId || entry.type_id}-${entry.path}`}
-                                      type="button"
-                                      className="keyword-category-option"
-                                      title={entry.path}
-                                      onClick={() => fillKeywordFromCategory(entry)}
-                                    >
-                                      <strong>{entry.keyword || entry.path}</strong>
-                                      <span>{entry.path}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="keyword-category-empty">
-                                  {keywordCategoryMessage || '暂无类目候选。可以从上方类目树展开选择。'}
-                                </div>
-                              )}
-                            </div>
                           </div>
                         )}
                       </>
