@@ -199,7 +199,18 @@ export interface OzonCategorySearchResponse {
   message: string;
   items: OzonCategoryEntry[];
   total: number;
+  matchedTotal?: number;
+  limit?: number;
   fetchedAt: string;
+}
+
+export interface OzonCategoryRawNode {
+  description_category_id?: number;
+  category_name?: string;
+  type_id?: number;
+  type_name?: string;
+  disabled?: boolean;
+  children?: OzonCategoryRawNode[];
 }
 
 export interface OzonCategoryAttribute {

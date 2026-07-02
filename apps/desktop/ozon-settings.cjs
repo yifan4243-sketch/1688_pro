@@ -248,13 +248,21 @@ async function getCategoryTree(userDataPath, options = {}) {
   return categoryTreeResponse(response.data, 'api', 'Ozon 类目树已同步。');
 }
 
+function normalizeCategorySearchLimit(value, fallback = 5000) {
+  if (value === undefined || value === null || value === '' || value === 'all') return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return fallback;
+  return Math.min(Math.round(number), 20000);
+}
+
 async function searchCategories(userDataPath, query = '', options = {}) {
-  const limit = Math.max(1, Math.min(Number(options.limit || 30), 80));
   const treeResponse = await getCategoryTree(userDataPath, {
     forceRefresh: options.forceRefresh,
     language: options.language,
   });
+
   const entries = Array.isArray(treeResponse.items) ? treeResponse.items : [];
+  const limit = normalizeCategorySearchLimit(options.limit, entries.length || 5000);
   const q = clean(query, '').toLowerCase();
   const tokens = q.split(/\s+/).map((item) => item.trim()).filter(Boolean);
   const scored = [];
@@ -262,23 +270,30 @@ async function searchCategories(userDataPath, query = '', options = {}) {
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index];
     const haystack = String(entry.searchIndex || entry.path || '').toLowerCase();
-    let score = q ? 0 : Math.max(1, 1000 - index);
+    let score = q ? 0 : Math.max(1, entries.length - index);
+
     for (const token of tokens) {
       if (!token) continue;
       if (String(entry.keyword || '').toLowerCase() === token) score += 24;
       if (String(entry.path || '').toLowerCase().includes(token)) score += 12;
       if (haystack.includes(token)) score += 6;
+      if (String(entry.type_id || entry.typeId || '').includes(token)) score += 10;
+      if (String(entry.description_category_id || entry.descriptionCategoryId || '').includes(token)) score += 10;
     }
+
     if (!q || score > 0) scored.push({ score, index, entry });
   }
 
   scored.sort((a, b) => b.score - a.score || a.index - b.index);
+
   return {
     ok: treeResponse.ok,
     source: treeResponse.source,
     message: treeResponse.message,
     items: scored.slice(0, limit).map((item) => item.entry),
     total: entries.length,
+    matchedTotal: scored.length,
+    limit,
     fetchedAt: treeResponse.fetchedAt,
   };
 }
