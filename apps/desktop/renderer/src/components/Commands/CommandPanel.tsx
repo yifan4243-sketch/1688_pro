@@ -1,5 +1,14 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { getApi, CommandRegistry, CommandDef, CommandPayload, CommandRecord, AccountData, type OzonCategoryEntry } from '../../services/api';
+import {
+  getApi,
+  CommandRegistry,
+  CommandDef,
+  CommandPayload,
+  CommandRecord,
+  AccountData,
+  type OzonCategoryEntry,
+  type OzonCategoryRawNode,
+} from '../../services/api';
 import ResultRenderer from '../Results/ResultRenderer';
 import LiveCollectionRenderer from '../Results/LiveCollectionRenderer';
 import { ProgressOfferCardItem } from '../Results/ProgressOfferCard';
@@ -33,6 +42,93 @@ interface CommandUiSnapshot {
 
 function objectOf(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+type KeywordCategoryTreeNode = {
+  id: string;
+  label: string;
+  path: string;
+  descriptionCategoryId: number;
+  typeId: number;
+  selectable: boolean;
+  children: KeywordCategoryTreeNode[];
+};
+
+function rawKeywordTreeRoots(tree: unknown): OzonCategoryRawNode[] {
+  if (!tree || typeof tree !== 'object') return [];
+  const obj = tree as Record<string, unknown>;
+
+  for (const key of ['result', 'items', 'categories']) {
+    const value = obj[key];
+    if (Array.isArray(value)) return value as OzonCategoryRawNode[];
+    if (value && typeof value === 'object') {
+      const nested = rawKeywordTreeRoots(value);
+      if (nested.length) return nested;
+    }
+  }
+
+  if (obj.data && typeof obj.data === 'object') return rawKeywordTreeRoots(obj.data);
+  return [];
+}
+
+function buildKeywordCategoryTree(
+  nodes: OzonCategoryRawNode[],
+  parents: string[] = [],
+  inheritedDescriptionCategoryId = 0,
+): KeywordCategoryTreeNode[] {
+  const result: KeywordCategoryTreeNode[] = [];
+
+  for (const node of nodes) {
+    if (!node || node.disabled === true) continue;
+
+    const label = String(node.category_name || node.type_name || '').trim();
+    const descriptionCategoryId = Number(node.description_category_id || inheritedDescriptionCategoryId || 0);
+    const typeId = Number(node.type_id || 0);
+    const pathParts = label ? [...parents, label] : [...parents];
+    const path = pathParts.join(' / ');
+    const rawChildren = Array.isArray(node.children) ? node.children : [];
+
+    const children = buildKeywordCategoryTree(rawChildren, pathParts, descriptionCategoryId);
+    const selectable = Boolean(typeId && descriptionCategoryId);
+
+    if (!label && !children.length) continue;
+
+    result.push({
+      id: selectable
+        ? `keyword-type:${descriptionCategoryId}:${typeId}:${path}`
+        : `keyword-category:${descriptionCategoryId || path}:${path}`,
+      label: label || path || '未命名类目',
+      path,
+      descriptionCategoryId,
+      typeId,
+      selectable,
+      children,
+    });
+  }
+
+  return result;
+}
+
+function keywordTreeNodeToCategoryEntry(node: KeywordCategoryTreeNode): OzonCategoryEntry {
+  return {
+    keyword: node.label,
+    path: node.path,
+    typeId: node.typeId,
+    type_id: node.typeId,
+    descriptionCategoryId: node.descriptionCategoryId,
+    description_category_id: node.descriptionCategoryId,
+    disabled: false,
+    searchIndex: `${node.path} ${node.descriptionCategoryId} ${node.typeId}`,
+  };
+}
+
+function countKeywordSelectable(nodes: KeywordCategoryTreeNode[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    if (node.selectable) count += 1;
+    count += countKeywordSelectable(node.children);
+  }
+  return count;
 }
 
 function offerIdOf(raw: Record<string, unknown>): string {
@@ -143,6 +239,73 @@ function applyDeepCollectDataPatchToRecord(
   };
 }
 
+function KeywordCategoryTreeList({
+  nodes,
+  expanded,
+  onToggle,
+  onSelect,
+  level = 0,
+}: {
+  nodes: KeywordCategoryTreeNode[];
+  expanded: Record<string, boolean>;
+  onToggle: (id: string) => void;
+  onSelect: (node: KeywordCategoryTreeNode) => void;
+  level?: number;
+}) {
+  if (!nodes.length) return null;
+
+  return (
+    <div className="keyword-category-tree-list">
+      {nodes.map((node) => {
+        const isExpanded = expanded[node.id] === true;
+        const hasChildren = node.children.length > 0;
+
+        return (
+          <div key={node.id} className="keyword-category-tree-node">
+            <div
+              className={`keyword-category-tree-row ${node.selectable ? 'selectable' : ''}`}
+              style={{ paddingLeft: `${level * 14 + 8}px` }}
+            >
+              <button
+                type="button"
+                className="keyword-category-tree-toggle"
+                onClick={() => hasChildren ? onToggle(node.id) : onSelect(node)}
+                disabled={!hasChildren && !node.selectable}
+              >
+                {hasChildren ? (isExpanded ? '▾' : '▸') : '•'}
+              </button>
+
+              <button
+                type="button"
+                className="keyword-category-tree-label"
+                onClick={() => onSelect(node)}
+                title={node.path}
+              >
+                <strong>{node.label}</strong>
+                {node.selectable ? (
+                  <small>description_category_id {node.descriptionCategoryId} · type_id {node.typeId}</small>
+                ) : (
+                  <small>{node.children.length} 个子项</small>
+                )}
+              </button>
+            </div>
+
+            {hasChildren && isExpanded && (
+              <KeywordCategoryTreeList
+                nodes={node.children}
+                expanded={expanded}
+                onToggle={onToggle}
+                onSelect={onSelect}
+                level={level + 1}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CommandPanel({ registry, activeProfile, accounts, onHistoryRefresh, onDeepTasksChange, onOzonTasksChange }: Props) {
   const [activeCmdId, setActiveCmdId] = useState('search');
   const activeCmdIdRef = useRef(activeCmdId);
@@ -178,6 +341,10 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
   const [keywordCategoryLoading, setKeywordCategoryLoading] = useState(false);
   const [keywordCategoryMessage, setKeywordCategoryMessage] = useState('');
   const [showKeywordCategories, setShowKeywordCategories] = useState(false);
+  const [keywordCategoryTreeNodes, setKeywordCategoryTreeNodes] = useState<KeywordCategoryTreeNode[]>([]);
+  const [keywordCategoryTreeLoading, setKeywordCategoryTreeLoading] = useState(false);
+  const [showKeywordCategoryTree, setShowKeywordCategoryTree] = useState(true);
+  const [expandedKeywordCategoryIds, setExpandedKeywordCategoryIds] = useState<Record<string, boolean>>({});
 
   const [commandSnapshots, setCommandSnapshots] = useState<Record<string, CommandUiSnapshot>>({});
 
@@ -295,11 +462,14 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     const query = String(args.keyword || '').trim();
     const timer = window.setTimeout(() => {
       setKeywordCategoryLoading(true);
-      api.ozon.searchCategories(query, { limit: 10 })
+      api.ozon.searchCategories(query, { limit: 5000, language: 'ZH_HANS' })
         .then((response) => {
           if (!alive) return;
           setKeywordCategoryOptions(response.items || []);
-          setKeywordCategoryMessage(response.message || '');
+          const matched = response.matchedTotal ?? response.items?.length ?? 0;
+          setKeywordCategoryMessage(
+            `${response.message || 'Ozon 类目搜索词'}，命中 ${matched} / 总 ${response.total}，当前显示 ${response.items?.length || 0}`
+          );
         })
         .catch((error) => {
           if (!alive) return;
@@ -827,6 +997,47 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
     }
   };
 
+  async function loadKeywordCategoryTree(forceRefresh = false) {
+    setKeywordCategoryTreeLoading(true);
+    try {
+      const response = await api.ozon.getCategoryTree({
+        forceRefresh,
+        language: 'ZH_HANS',
+      });
+
+      const roots = rawKeywordTreeRoots(response.tree);
+      const treeNodes = buildKeywordCategoryTree(roots);
+
+      setKeywordCategoryTreeNodes(treeNodes);
+      setKeywordCategoryMessage(
+        `${response.message || 'Ozon 类目树已加载'}，可选末级类型 ${countKeywordSelectable(treeNodes)} 个，总扁平类目 ${response.total || 0} 个，来源 ${response.source}`
+      );
+
+      const firstExpanded: Record<string, boolean> = {};
+      for (const node of treeNodes.slice(0, 20)) {
+        firstExpanded[node.id] = false;
+      }
+      setExpandedKeywordCategoryIds((prev) => ({ ...firstExpanded, ...prev }));
+    } catch (error) {
+      setKeywordCategoryTreeNodes([]);
+      setKeywordCategoryMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setKeywordCategoryTreeLoading(false);
+    }
+  }
+
+  function toggleKeywordCategoryNode(id: string) {
+    setExpandedKeywordCategoryIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function fillKeywordFromTreeNode(node: KeywordCategoryTreeNode) {
+    if (!node.selectable) {
+      toggleKeywordCategoryNode(node.id);
+      return;
+    }
+    fillKeywordFromCategory(keywordTreeNodeToCategoryEntry(node));
+  }
+
   const isDeepProAdvancedOption = (name: string): boolean =>
     name === 'deepproDelayMin' ||
     name === 'deepproDelayMax' ||
@@ -896,7 +1107,12 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                             className="search-command-input"
                             value={args[f.name] || ''}
                             placeholder={hasErr ? '请输入搜索词' : '请输入搜索词，例如：上衣'}
-                            onFocus={() => setShowKeywordCategories(true)}
+                            onFocus={() => {
+                              setShowKeywordCategories(true);
+                              if (!keywordCategoryTreeNodes.length && !keywordCategoryTreeLoading) {
+                                loadKeywordCategoryTree(false);
+                              }
+                            }}
                             onChange={(e) => { setArgs({ ...args, [f.name]: e.target.value }); clearFieldError(f.name); }}
                           />
                           <button
@@ -912,29 +1128,75 @@ export default function CommandPanel({ registry, activeProfile, accounts, onHist
                         {showKeywordCategories && (
                           <div className="keyword-category-panel">
                             <div className="keyword-category-head">
-                              <span>{keywordCategoryLoading ? '正在读取 Ozon 类目...' : 'Ozon 类目搜索词'}</span>
-                              <button type="button" onClick={() => setShowKeywordCategories(false)}>收起</button>
-                            </div>
-                            {keywordCategoryOptions.length > 0 ? (
-                              <div className="keyword-category-list">
-                                {keywordCategoryOptions.map((entry) => (
-                                  <button
-                                    key={`${entry.descriptionCategoryId || entry.description_category_id}-${entry.typeId || entry.type_id}-${entry.path}`}
-                                    type="button"
-                                    className="keyword-category-option"
-                                    title={entry.path}
-                                    onClick={() => fillKeywordFromCategory(entry)}
-                                  >
-                                    <strong>{entry.keyword || entry.path}</strong>
-                                    <span>{entry.path}</span>
-                                  </button>
-                                ))}
+                              <span>
+                                {keywordCategoryLoading || keywordCategoryTreeLoading
+                                  ? '正在读取 Ozon 类目...'
+                                  : keywordCategoryMessage || 'Ozon 类目搜索词'}
+                              </span>
+                              <div className="keyword-category-head-actions">
+                                <button type="button" onClick={() => setShowKeywordCategoryTree((value) => !value)}>
+                                  {showKeywordCategoryTree ? '隐藏类目树' : '浏览全部类目树'}
+                                </button>
+                                <button type="button" onClick={() => loadKeywordCategoryTree(true)}>
+                                  同步 Ozon 最新类目
+                                </button>
+                                <button type="button" onClick={() => setShowKeywordCategories(false)}>
+                                  收起
+                                </button>
                               </div>
-                            ) : (
-                              <div className="keyword-category-empty">
-                                {keywordCategoryMessage || '暂无类目候选。绑定 Ozon 店铺后会同步类目树。'}
+                            </div>
+
+                            {showKeywordCategoryTree && (
+                              <div className="keyword-category-tree-panel">
+                                <div className="keyword-category-hint">
+                                  从 Ozon 类目树选择搜索词；只有带 type_id 的末级类型会填入 1688 搜索框。
+                                </div>
+                                {keywordCategoryTreeNodes.length > 0 ? (
+                                  <KeywordCategoryTreeList
+                                    nodes={keywordCategoryTreeNodes}
+                                    expanded={expandedKeywordCategoryIds}
+                                    onToggle={toggleKeywordCategoryNode}
+                                    onSelect={fillKeywordFromTreeNode}
+                                  />
+                                ) : (
+                                  <div className="keyword-category-empty">
+                                    暂无类目树。请点击"同步 Ozon 最新类目"，或确认本地缓存存在。
+                                  </div>
+                                )}
                               </div>
                             )}
+
+                            <div className="keyword-category-search-panel">
+                              <div className="keyword-category-hint">
+                                搜索结果：不再限制 10 个；支持类目名、路径、description_category_id、type_id。
+                              </div>
+
+                              {keywordCategoryOptions.length > 0 ? (
+                                <div className="keyword-category-list">
+                                  {keywordCategoryOptions.map((entry) => (
+                                    <button
+                                      key={`${entry.descriptionCategoryId || entry.description_category_id}-${entry.typeId || entry.type_id}-${entry.path}`}
+                                      type="button"
+                                      className="keyword-category-option"
+                                      title={entry.path}
+                                      onClick={() => fillKeywordFromCategory(entry)}
+                                    >
+                                      <strong>{entry.keyword || entry.path}</strong>
+                                      <span>{entry.path}</span>
+                                      <small>
+                                        description_category_id {entry.descriptionCategoryId || entry.description_category_id}
+                                        {' · '}
+                                        type_id {entry.typeId || entry.type_id}
+                                      </small>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="keyword-category-empty">
+                                  {keywordCategoryMessage || '暂无类目候选。可以从上方类目树展开选择。'}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </>
