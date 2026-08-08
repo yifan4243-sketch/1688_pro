@@ -721,6 +721,19 @@ export function resolvePrefillableAttributeValues(
   );
 }
 
+export function validPrefilledAttributeIds(
+  values: OzonPrefillValue[],
+  attrs: Array<{ id: number; dictionaryId: number }>,
+): Set<number> {
+  const attrMap = new Map(attrs.map((attr) => [Number(attr.id), attr]));
+  return new Set(values.flatMap((value) => {
+    const attr = attrMap.get(Number(value.attribute_id));
+    if (!attr || !text(value.value_text)) return [];
+    if (attr.dictionaryId > 0 && Number(value.dictionary_value_id || 0) <= 0) return [];
+    return [Number(value.attribute_id)];
+  }));
+}
+
 /**
  * Drop dynamic attribute values that no longer belong to the current
  * category. Controlled attributes (brand/model/description/tags/weight/

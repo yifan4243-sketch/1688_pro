@@ -370,6 +370,12 @@ export function useOzonListingQueue({
         generatedAttributeValuesCount: genAttrValues.length,
         itemAttributeIds: firstItemAttrs.map((a) => Number(a.id || 0)).filter(Boolean),
       };
+      const attributeCompletion = draft.generated?.attribute_completion && typeof draft.generated.attribute_completion === 'object'
+        ? draft.generated.attribute_completion as Record<string, unknown>
+        : null;
+      const completionUnresolved = Array.isArray(attributeCompletion?.unresolved)
+        ? attributeCompletion.unresolved as Array<{ name?: string; reason?: string }>
+        : [];
 
       const missing = Array.isArray(draft.missing) ? draft.missing : [];
       const hasMissing = missing.length > 0;
@@ -380,9 +386,11 @@ export function useOzonListingQueue({
         draft,
         missingFields: missing,
         message: hasMissing
-          ? `自动补全未完成：${missing.join('、')}`
+          ? completionUnresolved.length
+            ? `自动补全未完成：${completionUnresolved.map((item) => `${item.name || '属性'}（${item.reason || '未知原因'}）`).join('；')}`
+            : `自动补全未完成：${missing.join('、')}`
           : '草稿已自动补全，可直接提交 Ozon',
-        debug: { attrStats },
+        debug: { attrStats, attributeCompletion },
         finishedAt: new Date().toISOString(),
       });
 

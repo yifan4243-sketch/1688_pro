@@ -184,7 +184,7 @@ describe('Ozon dictionary candidate selection', () => {
     expect(ranked[0]?.id).toBe(13);
   });
 
-  it('constrains manual AI autofill to real Ozon candidates and repairs an invented ID', async () => {
+  it('rejects an invented ID and retries only the unresolved dictionary attribute', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-dict-ai-'));
     try {
       await fs.writeFile(path.join(tempDir, 'ozon_settings.json'), JSON.stringify({
@@ -203,6 +203,12 @@ describe('Ozon dictionary candidate selection', () => {
           value_text: '黑色',
           dictionary_value_id: 999999,
           confidence: 0.8,
+        }]))
+        .mockResolvedValueOnce(aiSuggestionsResponse([{
+          attribute_id: 200,
+          value_text: '黑色',
+          dictionary_value_id: 102,
+          confidence: 0.95,
         }]));
 
       const result = await generateOzonAttributeSuggestions({
@@ -224,6 +230,8 @@ describe('Ozon dictionary candidate selection', () => {
         value_text: '黑色',
         dictionary_value_id: 102,
       })]);
+      expect(result.attempts).toBe(2);
+      expect(result.unresolved).toEqual([]);
       const aiCall = fetchMock.mock.calls.find((call) => String(call[0]).startsWith('https://api.example.test'));
       const request = JSON.parse(String((aiCall?.[1] as RequestInit)?.body || '{}'));
       const payload = JSON.parse(request.messages[1].content);
@@ -231,6 +239,115 @@ describe('Ozon dictionary candidate selection', () => {
       expect(payload.attributes[0].dictionary_values).toEqual(expect.arrayContaining([
         { dictionary_value_id: 102, value: '黑色' },
       ]));
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fills the required mouse-pad type during automatic draft generation', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-mousepad-ai-'));
+    try {
+      await fs.mkdir(path.join(tempDir, 'categories'), { recursive: true });
+      await fs.writeFile(path.join(tempDir, 'categories', 'ozon_category_tree.zh_hans.json'), JSON.stringify({
+        result: [{
+          description_category_id: 18262715,
+          category_name: '鼠标垫',
+          children: [{ type_id: 96808, type_name: '鼠标垫', children: [] }],
+        }],
+      }), 'utf8');
+      await fs.writeFile(path.join(tempDir, 'ozon_settings.json'), JSON.stringify({
+        ai: { provider: 'deepseek', baseUrl: 'https://api.example.test', model: 'model', apiKey: 'ai-key' },
+        ozon: { clientId: 'client', apiKey: 'key', currencyCode: 'CNY' },
+      }), 'utf8');
+      const fetchMock = vi.mocked(fetch);
+      fetchMock
+        .mockResolvedValueOnce(aiDraftResponse())
+        .mockResolvedValueOnce(categoryMeta([
+          { id: 8229, name: '类型', description: '选择最合适的产品类型', is_required: true, dictionary_id: 1960 },
+        ]))
+        .mockResolvedValueOnce(okJson({ result: [{ id: 96808, value: '鼠标垫' }], has_next: false }) as Response)
+        .mockResolvedValueOnce(aiSuggestionsResponse([{
+          attribute_id: 8229,
+          value_text: '鼠标垫',
+          dictionary_value_id: 96808,
+          confidence: 1,
+          reason: '商品标题和类目均明确为鼠标垫',
+        }]));
+
+      const mousepadRow = {
+        offer_id: '769531859464',
+        sku_id: 'sku-1',
+        search_keyword: '鼠标垫',
+        product_title: 'mousepad鼠标垫子定制来图订做PVC皮革橡胶滑鼠垫',
+        sku_name: '颜色:黑色',
+        sku_price: '13',
+        main_image_url: 'https://example.com/mousepad.jpg',
+        length_cm: '30', width_cm: '25', height_cm: '1', weight_g: '200', sku_stock: 10,
+      };
+      const draft = await generateOzonDraft({
+        ai: { apiKey: 'ai-key', baseUrl: 'https://api.example.test', model: 'model' },
+        ozon: { clientId: 'client', apiKey: 'key', currencyCode: 'CNY' },
+        userDataPath: tempDir,
+      }, [mousepadRow, { ...mousepadRow, sku_id: 'sku-2', sku_name: '颜色:蓝色', sku_price: '14' }]);
+
+      const generated = draft.generated.attribute_values.find((value: Record<string, unknown>) => Number(value.attribute_id) === 8229);
+      expect(generated).toEqual(expect.objectContaining({ value_text: '鼠标垫', dictionary_value_id: 96808 }));
+      expect(draft.items.every((item: Record<string, any>) =>
+        item.attributes.find((attr: Record<string, any>) => Number(attr.id) === 8229)?.values?.[0]?.dictionary_value_id === 96808,
+      )).toBe(true);
+      expect(draft.generated.attribute_completion).toEqual(expect.objectContaining({ status: 'filled', attempts: 1 }));
+      expect(draft.missing).not.toContain('类型');
+      const completionCall = fetchMock.mock.calls.find((call) =>
+        String((call[1] as RequestInit).body || '').includes('suggest_ozon_category_attribute_values_from_1688_product'),
+      );
+      const completionRequest = JSON.parse(String((completionCall?.[1] as RequestInit)?.body || '{}'));
+      const completionPayload = JSON.parse(completionRequest.messages[1].content);
+      expect(completionRequest.temperature).toBe(0);
+      expect(completionPayload.source_rows).toHaveLength(2);
+      expect(completionPayload.attributes[0].dictionary_values).toEqual([
+        { dictionary_value_id: 96808, value: '鼠标垫' },
+      ]);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('retries an omitted required attribute and reports terminal AI failures after three attempts', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-ai-retry-'));
+    try {
+      await fs.writeFile(path.join(tempDir, 'ozon_settings.json'), JSON.stringify({
+        ai: { provider: 'deepseek', baseUrl: 'https://api.example.test', model: 'model', apiKey: 'ai-key' },
+        ozon: { clientId: 'client', apiKey: 'key', currencyCode: 'CNY' },
+      }), 'utf8');
+      const params = {
+        sourceRows: [{ product_title: '鼠标垫' }],
+        categoryAttributes: [{ id: 8229, name: '类型', isRequired: true, dictionaryId: 1960 }],
+        form: { name: '鼠标垫' },
+        category: { descriptionCategoryId: 18262715, typeId: 96808, path: '鼠标垫' },
+      };
+      const completionSettings = {
+        ai: { apiKey: 'ai-key', baseUrl: 'https://api.example.test', model: 'model' },
+        userDataPath: tempDir,
+      };
+      const fetchMock = vi.mocked(fetch);
+      fetchMock
+        .mockResolvedValueOnce(okJson({ result: [{ id: 96808, value: '鼠标垫' }], has_next: false }) as Response)
+        .mockResolvedValueOnce(aiSuggestionsResponse([]))
+        .mockResolvedValueOnce(aiSuggestionsResponse([{ attribute_id: 8229, value_text: '鼠标垫', dictionary_value_id: 96808 }]));
+
+      const recovered = await generateOzonAttributeSuggestions(completionSettings, params);
+      expect(recovered.attempts).toBe(2);
+      expect(recovered.unresolved).toEqual([]);
+
+      fetchMock.mockReset();
+      fetchMock
+        .mockRejectedValueOnce(new Error('AI timeout'))
+        .mockRejectedValueOnce(new Error('AI timeout'))
+        .mockRejectedValueOnce(new Error('AI timeout'));
+      const failed = await generateOzonAttributeSuggestions(completionSettings, params);
+      expect(failed.ok).toBe(false);
+      expect(failed.attempts).toBe(3);
+      expect(failed.unresolved).toEqual([expect.objectContaining({ attribute_id: 8229, reason: expect.stringContaining('AI timeout') })]);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -781,8 +898,11 @@ describe('ozon draft submit helper', () => {
           .mockResolvedValueOnce(aiDraftResponse())
           .mockResolvedValueOnce(meta)
           .mockResolvedValueOnce(dictHit())
-          .mockResolvedValueOnce(dictHit())
-          .mockResolvedValueOnce(meta);
+          .mockResolvedValueOnce(aiSuggestionsResponse([{
+            attribute_id: 100,
+            value_text: '双面德绒打底衫',
+            dictionary_value_id: 123456,
+          }]));
         fetchMock.mockResolvedValue(emptyValues());
 
         const draft = await generateOzonDraft(autofillSettings(tempDir), [autofillSourceRow({ 材质: '长袖打底衫' })]);
@@ -1421,8 +1541,11 @@ describe('ozon draft submit helper', () => {
           .mockResolvedValueOnce(aiDraftResponse())
           .mockResolvedValueOnce(meta)
           .mockResolvedValueOnce(dictHit())
-          .mockResolvedValueOnce(dictHit())
-          .mockResolvedValueOnce(meta);
+          .mockResolvedValueOnce(aiSuggestionsResponse([{
+            attribute_id: 100,
+            value_text: '双面德绒打底衫',
+            dictionary_value_id: 123456,
+          }]));
         fetchMock.mockResolvedValue(emptyValues());
 
         const draft = await generateOzonDraft(autofillSettings(tempDir), [autofillSourceRow({ 材质: '长袖打底衫' })]);

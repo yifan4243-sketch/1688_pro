@@ -45,6 +45,7 @@ import {
   resolvePrefillableAttributeValues,
   sanitizeDictionarySelections,
   validDictionarySelectedLabels,
+  validPrefilledAttributeIds,
   validateDraftForEditor,
   validationSectionLabel,
 } from '../apps/desktop/renderer/src/components/Ozon/ozonEditorUtils';
@@ -1121,6 +1122,16 @@ describe('ozon editor utils', () => {
       ];
       const applied = resolvePrefillableAttributeValues(prefill, new Set([100]), {});
       expect(applied).toEqual([{ attribute_id: 100, value_text: 'required value' }]);
+    });
+
+    it('partial prefill leaves other required attributes for the same completion run', () => {
+      const attrs = [catAttr(100, '材质', 0, true), catAttr(8229, '类型', 1960, true)];
+      const prefilled = validPrefilledAttributeIds([
+        { attribute_id: 100, value_text: '橡胶' },
+        { attribute_id: 8229, value_text: '鼠标垫' },
+      ], attrs);
+      expect([...prefilled]).toEqual([100]);
+      expect(attrs.filter((attr) => !prefilled.has(attr.id)).map((attr) => attr.id)).toEqual([8229]);
     });
 
     it('no missing required means no AI target (TEST-08)', () => {

@@ -250,9 +250,22 @@ export interface OzonAttributeSuggestion {
   reason?: string;
 }
 
+export interface OzonAttributeCompletionDecision {
+  attribute_id: number;
+  status: 'filled' | 'invalid' | 'unresolved';
+  value_text?: string;
+  dictionary_value_id?: number;
+  source: 'existing' | 'system' | 'ai';
+  attempts: number;
+  reason: string;
+}
+
 export interface OzonAttributeSuggestionsResponse {
   ok: boolean;
   attributes: OzonAttributeSuggestion[];
+  decisions: OzonAttributeCompletionDecision[];
+  unresolved: Array<{ attribute_id: number; name: string; reason: string }>;
+  attempts: number;
 }
 
 export interface OzonAttributeValuesResponse {

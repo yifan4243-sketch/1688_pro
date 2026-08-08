@@ -42,6 +42,7 @@ import {
   text,
   validationSectionLabel,
   validDictionarySelectedLabels,
+  validPrefilledAttributeIds,
   type AttributeLoadState,
   type CategoryTreeViewNode,
   type DictionaryValueIds,
@@ -875,33 +876,40 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
     const requiredAiAttributeIds = new Set(requiredAiAttributes.map((attr) => Number(attr.id)));
     const requiredPrefillValues = resolvePrefillableAttributeValues(values, requiredAiAttributeIds, dynamicValues);
 
+    const prefilledIds = new Set<number>();
     if (requiredPrefillValues.length && !forceFresh) {
       setMessage('草稿已附带特征值，正在应用...');
       try {
-        await applyDefaultOriginCountry(attrs);
         applyPrefilledAttributeValues(requiredPrefillValues, requiredAiAttributes);
-        setMessage('AI 已根据 1688 商品数据匹配真实 Ozon 字典值，请复核。');
+        for (const id of validPrefilledAttributeIds(requiredPrefillValues, requiredAiAttributes)) prefilledIds.add(id);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : String(error));
-      } finally {
-        setAttributeAiFilling(false);
       }
-      return;
     }
 
     setMessage('AI 正在根据商品数据填写类目特征...');
     try {
       await applyDefaultOriginCountry(attrs);
 
+      const remainingAttrs = forceFresh ? attrs : attrs.filter((attr) => !prefilledIds.has(Number(attr.id)));
+      if (!remainingAttrs.length) {
+        setMessage('草稿附带的真实 Ozon 属性值已全部应用。');
+        return;
+      }
+
       const response = await getApi().ozon.generateAttributeSuggestions({
         sourceRows: task.draft?.sourceRows || [],
-        categoryAttributes: attrs,
+        categoryAttributes: remainingAttrs,
         form: { name: form.name, brand: form.brand, model: form.model, description: form.description, tags: form.tags, categoryPath: form.categoryPath },
         category: { descriptionCategoryId: intForPayload(form.descriptionCategoryId), typeId: intForPayload(form.typeId), path: form.categoryPath },
       });
 
-      await applyAttributeSuggestions(response.attributes || [], attrs);
-      setMessage('AI 已根据 1688 商品数据匹配真实 Ozon 字典值，请复核。');
+      await applyAttributeSuggestions(response.attributes || [], remainingAttrs);
+      if (response.unresolved?.length) {
+        setMessage(`自动补全仍有 ${response.unresolved.length} 项失败：${response.unresolved.map((item) => `${item.name}（${item.reason}）`).join('；')}`);
+      } else {
+        setMessage('AI 已根据 1688 商品数据匹配全部必填 Ozon 属性，请复核。');
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {

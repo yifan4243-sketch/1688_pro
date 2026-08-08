@@ -64,8 +64,9 @@ const BUILTIN_ATTR_MAP = [
   { cn: '品牌', keys: ['品牌', 'brand', 'бренд', '商标'] },
 ];
 
-const DICTIONARY_CANDIDATE_LIMIT = 48;
 const DICTIONARY_RECOMMENDATION_SCORE = 150;
+const ATTRIBUTE_COMPLETION_MAX_ATTEMPTS = 3;
+const ATTRIBUTE_PROMPT_CANDIDATE_BUDGET = 1000;
 const dictionaryCandidateCache = new Map();
 
 function normalizeDictionaryMatchText(value) {
@@ -126,7 +127,7 @@ function sourceDictionaryEvidence(sourceRows, attr, currentForm = {}) {
     if (normalized && !target.includes(normalized)) target.push(normalized);
   };
 
-  for (const row of (Array.isArray(sourceRows) ? sourceRows : []).slice(0, 8)) {
+  for (const row of (Array.isArray(sourceRows) ? sourceRows : [])) {
     if (!row || typeof row !== 'object') continue;
     const attrs = row.product_attributes_structured || row.attributes || row.product_attributes || {};
     if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
@@ -204,14 +205,33 @@ async function dictionaryOptionsForAttribute(userDataPath, category, attr) {
   const cacheKey = `${userDataPath}|${descId}|${typeId}|${attrId}`;
   const cached = dictionaryCandidateCache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) return cached.values;
-  const response = await getCategoryAttributeValues(userDataPath, {
-    descriptionCategoryId: descId,
-    typeId,
-    attributeId: attrId,
-    language: 'ZH_HANS',
-    limit: 2000,
-  });
-  const values = Array.isArray(response.values) ? response.values : [];
+  const values = [];
+  const seen = new Set();
+  let lastValueId = 0;
+  let hasNext = true;
+  let page = 0;
+  while (hasNext && page < 20) {
+    const response = await getCategoryAttributeValues(userDataPath, {
+      descriptionCategoryId: descId,
+      typeId,
+      attributeId: attrId,
+      language: 'ZH_HANS',
+      limit: 2000,
+      lastValueId,
+    });
+    const pageValues = Array.isArray(response.values) ? response.values : [];
+    for (const option of pageValues) {
+      const id = Number(option?.id || 0);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      values.push(option);
+    }
+    const nextLastValueId = Number(pageValues.at(-1)?.id || 0);
+    hasNext = response.hasNext === true && nextLastValueId > 0 && nextLastValueId !== lastValueId;
+    lastValueId = nextLastValueId;
+    page += 1;
+  }
+  if (hasNext) throw new Error(`Ozon 字典 ${attrId} 超过安全分页上限，未加载完整候选。`);
   dictionaryCandidateCache.set(cacheKey, { fetchedAt: Date.now(), values });
   return values;
 }
@@ -222,19 +242,44 @@ async function buildDictionaryCandidateContexts(userDataPath, category, attrs, s
     try {
       const options = await dictionaryOptionsForAttribute(userDataPath, category, attr);
       const ranked = rankDictionaryCandidates(options, attr, sourceRows, currentForm);
-      const candidates = ranked.slice(0, DICTIONARY_CANDIDATE_LIMIT);
+      const candidates = ranked;
       const best = candidates[0] || null;
       const second = candidates[1] || null;
       const recommended = best && best.score >= DICTIONARY_RECOMMENDATION_SCORE
         && (best.score >= 280 || best.score - Number(second?.score || 0) >= 30)
         ? { id: Number(best.id), value: cleanText(best.value), score: best.score }
         : null;
-      return [String(attr.id), { candidates, recommended }];
-    } catch {
-      return [String(attr.id), { candidates: [], recommended: null }];
+      return [String(attr.id), { candidates, recommended, error: '' }];
+    } catch (error) {
+      return [String(attr.id), { candidates: [], recommended: null, error: error?.message || String(error) }];
     }
   }));
   return Object.fromEntries(entries.filter(Boolean));
+}
+
+function partitionAttributePromptGroups(attrs, dictionaryContexts) {
+  const groups = [];
+  let current = [];
+  let currentCandidates = 0;
+  for (const attr of Array.isArray(attrs) ? attrs : []) {
+    const candidateCount = Array.isArray(dictionaryContexts[String(attr.id)]?.candidates)
+      ? dictionaryContexts[String(attr.id)].candidates.length
+      : 0;
+    if (current.length && currentCandidates + candidateCount > ATTRIBUTE_PROMPT_CANDIDATE_BUDGET) {
+      groups.push(current);
+      current = [];
+      currentCandidates = 0;
+    }
+    current.push(attr);
+    currentCandidates += candidateCount;
+    if (candidateCount > ATTRIBUTE_PROMPT_CANDIDATE_BUDGET) {
+      groups.push(current);
+      current = [];
+      currentCandidates = 0;
+    }
+  }
+  if (current.length) groups.push(current);
+  return groups;
 }
 
 function matchOzonAttrByBuiltinMap(ozonAttrName, source1688Attrs) {
@@ -449,12 +494,12 @@ async function generateOzonDraft(settings, rows = []) {
   await repairOzonTitleIfNeeded(settings, sourceRows, normalized);
 
   // Fill category attributes immediately — part of draft generation
-  await fillCategoryAttributes(settings, sourceRows, normalized);
+  await loadCategoryAttributeMetadata(settings, sourceRows, normalized);
 
   const items = sourceRows.map((row, index) => buildOzonItem(row, normalized, settings, index));
 
   // Complete draft: fill required category attributes, defaults, retry missing
-  const completion = await completeOzonDraftItems(settings, sourceRows, normalized, items);
+  const completion = await completeRequiredCategoryAttributes(settings, sourceRows, normalized, items);
 
   const variant = buildVariantDraft(sourceRows, items, normalized);
   if (variant) {
@@ -1578,7 +1623,7 @@ function buildVariantDraft(sourceRows, items, generated) {
 function mapVariantDimensionsToOzonAttrs(variant, normalized) {
   if (!variant || !Array.isArray(variant.dimensions)) return;
 
-  // Use full category attribute definitions (stored by fillCategoryAttributes)
+  // Use full category attribute definitions (stored by loadCategoryAttributeMetadata)
   const catAttrs = Array.isArray(normalized._category_attributes)
     ? normalized._category_attributes
     : [];
@@ -1660,7 +1705,7 @@ function applyVariantMetadata(items, variant) {
 
 // ── Fill category attributes during draft generation ──
 
-async function fillCategoryAttributes(settings, sourceRows, normalized) {
+async function loadCategoryAttributeMetadata(settings, sourceRows, normalized) {
   const log = (msg) => process.stderr.write(`[ozon-draft:attr] ${msg}\n`);
   try {
     const category = normalized.matched_category;
@@ -1674,129 +1719,45 @@ async function fillCategoryAttributes(settings, sourceRows, normalized) {
     const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || '');
     log(`userDataPath=${userDataPath || '(empty)'}`);
 
-    // 1. Fetch category attributes from Ozon
-    log('step 1: getCategoryAttributes...');
+    // This stage only loads metadata. Required-value completion happens once,
+    // after items and system defaults exist, in completeRequiredCategoryAttributes().
+    log('getCategoryAttributes...');
     const catAttrs = await getCategoryAttributes(userDataPath, {
       descriptionCategoryId: descId,
       typeId,
       language: 'ZH_HANS',
     });
     const visibleAttrs = visibleDraftCategoryAttributes(catAttrs.attributes || []);
-    // System-determined special attributes (merge into a single card) get a
-    // draft-level key here; they never enter builtin/AI/dictionary paths.
     resolveMergeCardKeys(normalized, visibleAttrs, []);
-    const aiFillAttrs = visibleAttrs.filter((attr) => attr.isRequired === true && classifyOzonAttribute(attr) !== 'special');
-    log(`step 1 done: ${visibleAttrs.length} visible attrs, ${aiFillAttrs.length} required autofill targets`);
-    if (!visibleAttrs.length) { log('SKIP: no attributes'); return; }
-    if (!aiFillAttrs.length) {
-      // Metadata must never shrink to required-only: keep the full list even
-      // when there is nothing to autofill. Special-only categories are fully
-      // handled by the system resolver above.
-      normalized.attribute_values = [];
-      normalized._category_attributes = visibleAttrs;
-      log('SKIP: no AI autofill targets; full metadata kept');
-      return;
-    }
+    const requiredAttrs = visibleAttrs.filter((attr) => attr.isRequired === true && classifyOzonAttribute(attr) !== 'special');
 
-    // 2. Pre-match using built-in mapping table (source 1688 attrs → Ozon attrs)
-    log('step 2a: builtin attr mapping...');
+    // Preserve exact non-dictionary source facts. Dictionary attributes are
+    // always selected by the candidate-constrained AI completion engine.
     const source1688Attrs = {};
-    for (const row of sourceRows.slice(0, 3)) {
+    for (const row of sourceRows) {
       if (row && typeof row === 'object') {
         const attrs = row.product_attributes_structured || row.attributes || row.product_attributes || {};
         Object.assign(source1688Attrs, attrs);
       }
     }
-    const builtinHits = [];
-    const builtinMatchedIds = new Set();
-    for (const attr of aiFillAttrs) {
+    const existing = Array.isArray(normalized.attribute_values) ? normalized.attribute_values : [];
+    const builtinValues = [];
+    for (const attr of requiredAttrs) {
+      if (Number(attr.dictionaryId || 0) > 0) continue;
       const val = matchOzonAttrByBuiltinMap(attr.name, source1688Attrs);
-      if (val) {
-        builtinHits.push({ attr, value: val });
-        builtinMatchedIds.add(Number(attr.id));
-      }
-    }
-    log(`step 2a done: ${builtinHits.length} builtin matches (required-only)`);
-
-    // 3. AI suggests for remaining (unmatched) required attributes
-    const remainingAttrs = aiFillAttrs.filter((a) => !builtinMatchedIds.has(Number(a.id)));
-    const optionalRemaining = remainingAttrs.filter((attr) => attr.isRequired !== true);
-    if (optionalRemaining.length > 0) {
-      log(`WARN: ${optionalRemaining.length} optional attrs leaked into AI target — must never happen`);
-    }
-    let aiSuggestions = [];
-    if (remainingAttrs.length > 0) {
-      log(`step 2b: callAi for ${remainingAttrs.length} remaining attrs...`);
-      try {
-        const messages = buildAttributeSuggestionMessages(sourceRows, remainingAttrs, {}, { descriptionCategoryId: descId, typeId, path: category.path || '' });
-        const suggestionData = await callAi(settings.ai, messages);
-        const suggestions = normalizeAttributeSuggestions(suggestionData, remainingAttrs);
-        aiSuggestions = suggestions.attributes || [];
-        log(`step 2b done: ${aiSuggestions.length} AI suggestions`);
-      } catch (e) {
-        log(`step 2b AI failed: ${e?.message || e}`);
-      }
-    }
-
-    // 4. Resolve dictionary values with multi-round retry
-    const resolved = [];
-    const pushResolved = (attr, valueText, dictId, src) => {
-      if (!cleanText(valueText)) return;
-      const isDict = Number(attr.dictionaryId || 0) > 0;
-      const numericId = Number(dictId || 0);
-      // Dictionary attributes only count as filled with a REAL
-      // dictionary_value_id. Text-only fallbacks are dropped here so they
-      // can never reach the draft (second line of defense after the
-      // resolve-failure branch above).
-      if (isDict && numericId <= 0) {
-        log(`[ozon-draft:dict] DROP unresolved dictionary attrId=${attr.id} attrName=${attr.name} source=${src} query=${cleanText(valueText)}`);
-        return;
-      }
-      resolved.push({
-        attribute_id: attr.id,
-        value_text: cleanText(valueText),
-        dictionary_value_id: isDict ? numericId : null,
-        confidence: numericId ? 0.9 : 0.5,
-        _source: src,
+      if (!val) continue;
+      builtinValues.push({
+        attribute_id: Number(attr.id),
+        value_text: cleanText(val),
+        dictionary_value_id: null,
+        confidence: 1,
+        _source: 'existing',
       });
-    };
-
-    // 4a. Resolve builtin hits
-    for (const { attr, value } of builtinHits) {
-      if (attr.dictionaryId) {
-        const result = await resolveDictValueWithFallback(userDataPath, descId, typeId, attr, value, log);
-        if (result) pushResolved(attr, result.label, result.id, 'builtin');
-        // Resolve failure: the attribute stays EMPTY. Raw 1688 text is
-        // never a valid Ozon dictionary value.
-      } else {
-        pushResolved(attr, value, null, 'builtin');
-      }
     }
-
-    // 4b. Resolve AI suggestions — defensive: only required autofill targets
-    // may enter resolved, even if the AI response names an optional ID.
-    for (const s of aiSuggestions) {
-      const attr = aiFillAttrs.find((a) => Number(a.id) === Number(s.attribute_id));
-      if (!attr) continue;
-
-      if (attr.dictionaryId) {
-        const query = cleanText(s.dictionary_query || s.value_text || '');
-        if (query) {
-          const result = await resolveDictValueWithFallback(userDataPath, descId, typeId, attr, query, log);
-          if (result) pushResolved(attr, result.label, result.id, 'ai');
-          // Resolve failure: stay empty. AI text is a search hint, not a
-          // dictionary value.
-        }
-      } else {
-        pushResolved(attr, s.value_text, null, 'ai');
-      }
-    }
-
-    log(`step 4 done: ${resolved.length} resolved values (builtin=${builtinHits.length}, ai=${aiSuggestions.length})`);
-    normalized.attribute_values = resolved;
-    // Store full attribute definitions for variant dimension mapping later.
-    // Metadata is NOT the autofill result: keep required + optional together.
+    normalized.attribute_values = mergeAttributeValues(existing, builtinValues);
     normalized._category_attributes = visibleAttrs;
+    normalized._all_category_attributes = Array.isArray(catAttrs.attributes) ? catAttrs.attributes : [];
+    log(`loaded ${visibleAttrs.length} visible attrs; preserved ${builtinValues.length} exact non-dictionary values`);
   } catch (err) {
     log(`FAILED: ${err?.message || err}\n${err?.stack || ''}`);
   }
@@ -1804,7 +1765,192 @@ async function fillCategoryAttributes(settings, sourceRows, normalized) {
 
 // ── Complete draft: fill all required attributes ──
 
-async function completeOzonDraftItems(settings, sourceRows, normalized, items) {
+async function loadCategoryAttributesWithRetry(userDataPath, params, maxAttempts = ATTRIBUTE_COMPLETION_MAX_ATTEMPTS) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return { response: await getCategoryAttributes(userDataPath, params), attempts: attempt };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(`连续 ${maxAttempts} 次加载 Ozon 类目属性失败：${lastError?.message || String(lastError)}`);
+}
+
+function validateAiAttributeDecision(raw, attr, context, attempt) {
+  const attributeId = Number(attr?.id || 0);
+  if (!raw || typeof raw !== 'object') {
+    return {
+      decision: { attribute_id: attributeId, status: 'unresolved', source: 'ai', attempts: attempt, reason: 'AI 未返回该必填属性。' },
+      value: null,
+    };
+  }
+
+  if (Number(attr?.dictionaryId || 0) > 0) {
+    const candidates = Array.isArray(context?.candidates) ? context.candidates : [];
+    const dictionaryValueId = Number(raw.dictionary_value_id || raw.dictionaryValueId || 0);
+    const selected = candidates.find((candidate) => Number(candidate.id) === dictionaryValueId) || null;
+    if (!selected) {
+      return {
+        decision: {
+          attribute_id: attributeId,
+          status: 'invalid',
+          source: 'ai',
+          attempts: attempt,
+          reason: dictionaryValueId > 0
+            ? `AI 返回的字典值 ID ${dictionaryValueId} 不属于当前 Ozon 候选。`
+            : 'AI 未返回真实 Ozon 字典值 ID。',
+        },
+        value: null,
+      };
+    }
+    const value = {
+      attribute_id: attributeId,
+      value_text: cleanText(selected.value),
+      dictionary_value_id: Number(selected.id),
+      confidence: Number(raw.confidence || 0),
+      reason: cleanText(raw.reason || ''),
+      _source: 'ai',
+    };
+    return {
+      value,
+      decision: {
+        attribute_id: attributeId,
+        status: 'filled',
+        value_text: value.value_text,
+        dictionary_value_id: value.dictionary_value_id,
+        source: 'ai',
+        attempts: attempt,
+        reason: value.reason || 'AI 从当前 Ozon 字典候选中完成选择。',
+      },
+    };
+  }
+
+  const valueText = cleanText(raw.value_text || raw.value || '');
+  if (!valueText) {
+    return {
+      decision: { attribute_id: attributeId, status: 'invalid', source: 'ai', attempts: attempt, reason: 'AI 返回了空属性值。' },
+      value: null,
+    };
+  }
+  const value = {
+    attribute_id: attributeId,
+    value_text: valueText,
+    dictionary_value_id: null,
+    confidence: Number(raw.confidence || 0),
+    reason: cleanText(raw.reason || ''),
+    _source: 'ai',
+  };
+  return {
+    value,
+    decision: {
+      attribute_id: attributeId,
+      status: 'filled',
+      value_text: valueText,
+      source: 'ai',
+      attempts: attempt,
+      reason: value.reason || 'AI 根据 1688 商品信息生成属性值。',
+    },
+  };
+}
+
+async function completeAttributeSuggestions(settings, params = {}) {
+  const sourceRows = Array.isArray(params.sourceRows) ? params.sourceRows : [];
+  const categoryAttributes = Array.isArray(params.categoryAttributes) ? params.categoryAttributes : [];
+  const currentForm = params.form && typeof params.form === 'object' ? params.form : {};
+  const category = params.category && typeof params.category === 'object' ? params.category : {};
+  const maxAttempts = Math.max(1, Math.min(ATTRIBUTE_COMPLETION_MAX_ATTEMPTS, Number(params.maxAttempts || ATTRIBUTE_COMPLETION_MAX_ATTEMPTS)));
+  const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || '');
+  const pending = new Map(categoryAttributes.map((attr) => [Number(attr.id), attr]).filter(([id]) => id > 0));
+  const completed = new Map();
+  const decisions = new Map();
+  let attempts = 0;
+
+  for (let attempt = 1; attempt <= maxAttempts && pending.size > 0; attempt++) {
+    attempts = attempt;
+    const attemptAttrs = Array.from(pending.values());
+    const dictionaryContexts = await buildDictionaryCandidateContexts(
+      userDataPath,
+      category,
+      attemptAttrs,
+      sourceRows,
+      currentForm,
+    );
+    const callableAttrs = [];
+    for (const attr of attemptAttrs) {
+      if (!Number(attr.dictionaryId || 0)) {
+        callableAttrs.push(attr);
+        continue;
+      }
+      const context = dictionaryContexts[String(attr.id)] || {};
+      if (context.error) {
+        decisions.set(Number(attr.id), {
+          attribute_id: Number(attr.id), status: 'unresolved', source: 'ai', attempts: attempt,
+          reason: `Ozon 字典加载失败：${context.error}`,
+        });
+      } else if (!Array.isArray(context.candidates) || context.candidates.length === 0) {
+        decisions.set(Number(attr.id), {
+          attribute_id: Number(attr.id), status: 'unresolved', source: 'ai', attempts: attempt,
+          reason: 'Ozon 未返回该必填属性的字典候选。',
+        });
+      } else {
+        callableAttrs.push(attr);
+      }
+    }
+
+    for (const group of partitionAttributePromptGroups(callableAttrs, dictionaryContexts)) {
+      let generated;
+      try {
+        const messages = buildAttributeSuggestionMessages(sourceRows, group, currentForm, category, dictionaryContexts);
+        generated = await callAi(settings.ai, messages, { temperature: 0 });
+      } catch (error) {
+        for (const attr of group) {
+          decisions.set(Number(attr.id), {
+            attribute_id: Number(attr.id), status: 'unresolved', source: 'ai', attempts: attempt,
+            reason: `AI 补全失败：${error?.message || String(error)}`,
+          });
+        }
+        continue;
+      }
+
+      const rawAttributes = Array.isArray(generated?.attributes) ? generated.attributes : [];
+      for (const attr of group) {
+        const raw = rawAttributes.find((item) => Number(item?.attribute_id || item?.id || 0) === Number(attr.id));
+        const validated = validateAiAttributeDecision(raw, attr, dictionaryContexts[String(attr.id)] || {}, attempt);
+        decisions.set(Number(attr.id), validated.decision);
+        if (!validated.value) continue;
+        completed.set(Number(attr.id), validated.value);
+        pending.delete(Number(attr.id));
+      }
+    }
+  }
+
+  for (const [id, attr] of pending) {
+    if (decisions.has(id)) continue;
+    decisions.set(id, {
+      attribute_id: id,
+      status: 'unresolved',
+      source: 'ai',
+      attempts,
+      reason: `属性 ${cleanText(attr.name) || id} 未能自动补全。`,
+    });
+  }
+
+  const unresolved = Array.from(pending.values()).map((attr) => ({
+    attribute_id: Number(attr.id),
+    name: cleanText(attr.name) || String(attr.id),
+    reason: decisions.get(Number(attr.id))?.reason || '自动补全失败。',
+  }));
+  return {
+    ok: unresolved.length === 0,
+    attributes: Array.from(completed.values()),
+    decisions: Array.from(decisions.values()),
+    unresolved,
+    attempts,
+  };
+}
+
+async function completeRequiredCategoryAttributes(settings, sourceRows, normalized, items) {
   const category = normalized.matched_category || {};
   const descId = Number(category.description_category_id || 0);
   const typeId = Number(category.type_id || 0);
@@ -1812,12 +1958,19 @@ async function completeOzonDraftItems(settings, sourceRows, normalized, items) {
 
   const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || '');
 
-  let catAttrs;
-  try {
-    catAttrs = await getCategoryAttributes(userDataPath, { descriptionCategoryId: descId, typeId, language: 'ZH_HANS' });
-  } catch { return { ok: false, missing: ['类目属性加载失败'] }; }
-
-  const allAttrs = Array.isArray(catAttrs.attributes) ? catAttrs.attributes : [];
+  let allAttrs = Array.isArray(normalized._all_category_attributes) ? normalized._all_category_attributes : [];
+  if (!allAttrs.length) {
+    try {
+      const loaded = await loadCategoryAttributesWithRetry(userDataPath, { descriptionCategoryId: descId, typeId, language: 'ZH_HANS' });
+      allAttrs = Array.isArray(loaded.response.attributes) ? loaded.response.attributes : [];
+      normalized._all_category_attributes = allAttrs;
+      normalized._category_attributes = visibleDraftCategoryAttributes(allAttrs);
+    } catch (error) {
+      const reason = `类目属性加载失败：${error?.message || String(error)}`;
+      normalized.attribute_completion = { status: 'unresolved', attempts: 0, decisions: [], unresolved: [{ name: '类目属性', reason }] };
+      return { ok: false, missing: ['类目属性加载失败'], decisions: [], unresolved: normalized.attribute_completion.unresolved };
+    }
+  }
   const requiredAttrs = allAttrs.filter((a) => a.isRequired);
   const fillableAttrs = visibleDraftCategoryAttributes(allAttrs);
   // Dynamic defaults (origin country / gender) may only autofill REQUIRED
@@ -1843,31 +1996,72 @@ async function completeOzonDraftItems(settings, sourceRows, normalized, items) {
   // Step 2: apply backend defaults (origin country, brand, weight)
   await applyBackendDefaultsToItems(settings, userDataPath, descId, typeId, sourceRows, items, requiredFillableAttrs, allAttrs);
 
-  // Step 3: check what's still missing
+  // Step 3: record existing/system values and complete everything still missing
   let missingRequired = missingRequiredCategoryAttributes(items[0], requiredAttrs).filter((a) => classifyOzonAttribute(a) !== 'special');
   let mergedValues = Array.isArray(normalized.attribute_values) ? [...normalized.attribute_values] : [];
-
-  // Step 4: AI retry for missing required — up to 2 rounds
-  for (let attempt = 1; attempt <= 2 && missingRequired.length > 0; attempt++) {
-    process.stderr.write(`[ozon-draft] retry round ${attempt}: ${missingRequired.length} missing required attrs\n`);
-    try {
-      const suggestions = await generateMissingAttributeSuggestions(settings, sourceRows, normalized, missingRequired, fillableAttrs);
-
-      const resolved = await resolveAttributeSuggestionsToOzonValues(
-        settings, userDataPath, descId, typeId, suggestions, fillableAttrs,
-      );
-
-      applyGeneratedAttributeValuesToItems(items, resolved, allAttrs);
-      mergedValues = mergeAttributeValues(mergedValues, resolved);
-    } catch (err) {
-      process.stderr.write(`[ozon-draft] retry round ${attempt} failed: ${err?.message || err}\n`);
-      break;
-    }
+  const generatedIds = new Set(mergedValues.map((value) => Number(value.attribute_id || 0)));
+  const missingIds = new Set(missingRequired.map((attr) => Number(attr.id)));
+  const decisions = requiredFillableAttrs
+    .filter((attr) => !missingIds.has(Number(attr.id)) && itemHasValidCategoryAttribute(items[0], attr))
+    .map((attr) => {
+      const raw = (items[0].attributes || []).find((item) => Number(item.id) === Number(attr.id)) || {};
+      const firstValue = Array.isArray(raw.values) ? raw.values[0] || {} : {};
+      return {
+        attribute_id: Number(attr.id),
+        status: 'filled',
+        value_text: cleanText(firstValue.value || firstValue.value_text || ''),
+        dictionary_value_id: Number(firstValue.dictionary_value_id || firstValue.dictionaryValueId || 0) || undefined,
+        source: generatedIds.has(Number(attr.id)) ? 'existing' : 'system',
+        attempts: 0,
+        reason: generatedIds.has(Number(attr.id)) ? '保留已有合法属性值。' : '由系统默认规则完成。',
+      };
+    });
+  let completion = { ok: true, attributes: [], decisions: [], unresolved: [], attempts: 0 };
+  if (missingRequired.length > 0) {
+    process.stderr.write(`[ozon-draft] unified completion: ${missingRequired.length} missing required attrs\n`);
+    completion = await completeAttributeSuggestions(settings, {
+      sourceRows,
+      categoryAttributes: missingRequired,
+      form: {
+        name: cleanText(normalized.title_ru || ''),
+        brand: cleanText(normalized.brand || ''),
+        model: cleanText(normalized.model_name || ''),
+        description: cleanText(normalized.description_ru || ''),
+        tags: Array.isArray(normalized.tags) ? normalized.tags : [],
+        categoryPath: cleanText(category.path || ''),
+      },
+      category: { descriptionCategoryId: descId, typeId, path: category.path || '' },
+      maxAttempts: ATTRIBUTE_COMPLETION_MAX_ATTEMPTS,
+    });
+    applyGeneratedAttributeValuesToItems(items, completion.attributes, allAttrs);
+    mergedValues = mergeAttributeValues(mergedValues, completion.attributes);
     missingRequired = missingRequiredCategoryAttributes(items[0], requiredAttrs).filter((a) => classifyOzonAttribute(a) !== 'special');
   }
 
   normalized.attribute_values = mergedValues;
-  return { ok: missingRequired.length === 0, missing: missingRequired.map((a) => a.name || String(a.id)) };
+  const finalMissingIds = new Set(missingRequired.map((attr) => Number(attr.id)));
+  const finalDecisions = [...decisions, ...completion.decisions]
+    .filter((decision, index, list) => list.findIndex((item) => Number(item.attribute_id) === Number(decision.attribute_id)) === index)
+    .map((decision) => finalMissingIds.has(Number(decision.attribute_id)) && decision.status === 'filled'
+      ? { ...decision, status: 'unresolved', reason: '属性值未能写入草稿。' }
+      : decision);
+  const unresolved = missingRequired.map((attr) => ({
+    attribute_id: Number(attr.id),
+    name: cleanText(attr.name) || String(attr.id),
+    reason: finalDecisions.find((decision) => Number(decision.attribute_id) === Number(attr.id))?.reason || '自动补全失败。',
+  }));
+  normalized.attribute_completion = {
+    status: unresolved.length ? 'unresolved' : 'filled',
+    attempts: completion.attempts,
+    decisions: finalDecisions,
+    unresolved,
+  };
+  return {
+    ok: missingRequired.length === 0,
+    missing: missingRequired.map((a) => a.name || String(a.id)),
+    decisions: finalDecisions,
+    unresolved,
+  };
 }
 
 function applyGeneratedAttributeValuesToItems(items, attributeValues, categoryAttributes) {
@@ -2140,36 +2334,6 @@ async function resolveDictValueWithFallback(userDataPath, descId, typeId, attr, 
   return null;
 }
 
-async function generateMissingAttributeSuggestions(settings, sourceRows, normalized, missingAttrs, allAttrs) {
-  const messages = buildAttributeSuggestionMessages(sourceRows, missingAttrs, {}, {
-    descriptionCategoryId: Number(normalized.matched_category?.description_category_id || 0),
-    typeId: Number(normalized.matched_category?.type_id || 0),
-    path: normalized.matched_category?.path || '',
-  });
-  const data = await callAi(settings.ai, messages);
-  const result = normalizeAttributeSuggestions(data, missingAttrs);
-  return result.attributes || [];
-}
-
-async function resolveAttributeSuggestionsToOzonValues(settings, userDataPath, descId, typeId, suggestions, attrs) {
-  const resolved = [];
-  for (const s of suggestions) {
-    const attr = attrs.find((a) => Number(a.id) === Number(s.attribute_id));
-    if (!attr) continue;
-    if (attr.dictionaryId) {
-      const query = cleanText(s.dictionary_query || s.value_text || '');
-      if (query) {
-        const r = await resolveSingleDictionaryValue(settings, userDataPath, descId, typeId, attr, query);
-        if (r) resolved.push(r);
-      }
-    } else {
-      const txt = cleanText(s.value_text);
-      if (txt) resolved.push({ attribute_id: attr.id, value_text: txt });
-    }
-  }
-  return resolved;
-}
-
 function mergeAttributeValues(existing, incoming) {
   const map = new Map();
   for (const v of existing) map.set(Number(v.attribute_id), v);
@@ -2393,23 +2557,15 @@ function categoryTreeRoots(tree) {
 async function generateOzonAttributeSuggestions(settings, params = {}) {
   const sourceRows = Array.isArray(params.sourceRows) ? params.sourceRows : [];
   const categoryAttributes = Array.isArray(params.categoryAttributes) ? params.categoryAttributes : [];
-  const currentForm = params.form && typeof params.form === 'object' ? params.form : {};
-  const category = params.category && typeof params.category === 'object' ? params.category : {};
 
   if (!sourceRows.length) throw new Error('缺少 1688 商品数据，无法生成类目特征建议。');
   if (!categoryAttributes.length) throw new Error('缺少 Ozon 类目特征列表。');
-
-  const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || '');
-  const dictionaryContexts = await buildDictionaryCandidateContexts(
-    userDataPath,
-    category,
-    categoryAttributes,
+  return completeAttributeSuggestions(settings, {
+    ...params,
     sourceRows,
-    currentForm,
-  );
-  const messages = buildAttributeSuggestionMessages(sourceRows, categoryAttributes, currentForm, category, dictionaryContexts);
-  const generated = await callAi(settings.ai, messages, { temperature: 0 });
-  return normalizeAttributeSuggestions(generated, categoryAttributes, dictionaryContexts);
+    categoryAttributes,
+    maxAttempts: ATTRIBUTE_COMPLETION_MAX_ATTEMPTS,
+  });
 }
 
 function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, currentForm, category, dictionaryContexts = {}) {
@@ -2417,7 +2573,7 @@ function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, curren
     task: 'suggest_ozon_category_attribute_values_from_1688_product',
     category,
     current_form: currentForm,
-    source_rows: sourceRows.slice(0, 5),
+    source_rows: sourceRows,
     attributes: categoryAttributes.map((attr) => {
       const context = dictionaryContexts[String(attr.id)] || {};
       return {
@@ -2451,13 +2607,14 @@ function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, curren
     rules: [
       'Return JSON only. No Markdown.',
       'Use only evidence from source_rows and category attribute names.',
+      'Return exactly one attributes[] item for every input attribute id; do not omit required attributes.',
       'Do not invent dictionary_value_id.',
       'For dictionary attributes, choose the best value using all source evidence and return its exact dictionary_value_id and value_text from dictionary_values.',
       'Never return a dictionary_value_id that is not listed for that attribute.',
       'Prefer deterministic_recommendation when it agrees with the product evidence; otherwise choose another listed value only with stronger evidence.',
-      'If the source has no reliable evidence for a dictionary attribute, return dictionary_value_id 0 and empty value_text instead of guessing.',
+      'When several dictionary candidates are plausible, use your best semantic judgment and still choose the single most suitable listed candidate.',
       'If attribute is 原产国 / country of origin / страна-изготовитель, use 中国 as value_text and 中国 as dictionary_query.',
-      'If evidence is insufficient, return empty value_text.',
+      'For non-dictionary required attributes, provide the most accurate non-empty value supported by the product evidence.',
     ],
   };
 
@@ -2465,70 +2622,6 @@ function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, curren
     { role: 'system', content: 'You are an Ozon product attribute assistant. Suggest category attribute values from 1688 product data. Return compliant JSON only.' },
     { role: 'user', content: JSON.stringify(payload) },
   ];
-}
-
-function normalizeAttributeSuggestions(data, categoryAttributes, dictionaryContexts = {}) {
-  const attrsById = new Map(categoryAttributes.map((attr) => [Number(attr.id), attr]).filter(([id]) => id > 0));
-  const raw = Array.isArray(data?.attributes) ? data.attributes : [];
-  const normalized = raw
-    .map((item) => {
-      const attributeId = Number(item.attribute_id || item.id || 0);
-      const attr = attrsById.get(attributeId);
-      if (!attr) return null;
-      const context = dictionaryContexts[String(attributeId)] || {};
-      const candidates = Array.isArray(context.candidates) ? context.candidates : [];
-      let dictionaryValueId = Number(item.dictionary_value_id || item.dictionaryValueId || 0);
-      let valueText = cleanText(item.value_text || item.value || '');
-      if (Number(attr.dictionaryId || 0) > 0) {
-        if (!candidates.length) {
-          // Without the live candidate set no AI-provided ID can be trusted.
-          // Keep only the query so the renderer may retry through Ozon.
-          dictionaryValueId = 0;
-        } else {
-          let selected = candidates.find((candidate) => Number(candidate.id) === dictionaryValueId) || null;
-          if (!selected && valueText) {
-            const exact = normalizeDictionaryMatchText(valueText);
-            selected = candidates.find((candidate) => normalizeDictionaryMatchText(candidate.value) === exact) || null;
-          }
-          if (!selected && context.recommended) selected = context.recommended;
-          if (!selected) {
-            dictionaryValueId = 0;
-            valueText = '';
-          } else {
-            dictionaryValueId = Number(selected.id);
-            valueText = cleanText(selected.value);
-          }
-        }
-      }
-      return {
-        attribute_id: attributeId,
-        value_text: valueText,
-        dictionary_query: cleanText(item.dictionary_query || item.query || valueText || ''),
-        dictionary_value_id: dictionaryValueId > 0 ? dictionaryValueId : undefined,
-        confidence: Number(item.confidence || 0),
-        reason: cleanText(item.reason || ''),
-      };
-    })
-    .filter(Boolean);
-
-  const included = new Set(normalized.map((item) => Number(item.attribute_id)));
-  for (const [id, attr] of attrsById) {
-    if (included.has(id) || !Number(attr.dictionaryId || 0)) continue;
-    const recommended = dictionaryContexts[String(id)]?.recommended;
-    if (!recommended) continue;
-    normalized.push({
-      attribute_id: id,
-      value_text: cleanText(recommended.value),
-      dictionary_query: cleanText(recommended.value),
-      dictionary_value_id: Number(recommended.id),
-      confidence: 0.95,
-      reason: '根据 1688 商品属性与 SKU 信息确定性匹配 Ozon 字典值',
-    });
-  }
-  return {
-    ok: true,
-    attributes: normalized.slice(0, 80),
-  };
 }
 
 module.exports = { generateOzonDraft, submitOzonDraft, collectDraftMissing, generateOzonAttributeSuggestions, sanitizeGeneratedAttributeValues, resolveMergeCardKeys, rankDictionaryCandidates };
