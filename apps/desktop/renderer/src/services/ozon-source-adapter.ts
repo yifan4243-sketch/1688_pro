@@ -10,7 +10,14 @@ export function progressCardToOzonRows(item: ProgressOfferCardItem): Row[] {
   const images = imageList(raw, item.image);
   const attributes = attributesObject(raw.attributes);
   const packages = packageMap(raw.packageInfo);
-  let skus = Array.isArray(raw.skus) ? raw.skus.map(objectOf).filter(Boolean) : [];
+  const rawSkus = Array.isArray(raw.skus) ? raw.skus : [];
+  let skus: Row[] = rawSkus.length > 0
+    ? rawSkus.map((value, index): Row => ({
+        ...objectOf(value),
+        _sourceSkuOrdinal: index + 1,
+        _sourceSkuCount: rawSkus.length,
+      }))
+    : [];
   // Filter to only selected SKUs (set by SkuSelectModal, never mutates raw data)
   if (item._selectedSkuIds && item._selectedSkuIds.size > 0) {
     skus = skus.filter((s) => item._selectedSkuIds!.has(String(s.skuId ?? '')));
@@ -39,6 +46,8 @@ export function progressCardToOzonRows(item: ProgressOfferCardItem): Row[] {
       raw,
       offerId,
       skuId,
+      sourceSkuOrdinal: Number(sku._sourceSkuOrdinal || index + 1),
+      sourceSkuCount: Number(sku._sourceSkuCount || skus.length),
       detailUrl,
       title: baseTitle,
       skuName: text(sku.specs) || `${baseTitle} SKU ${index + 1}`,
@@ -56,6 +65,8 @@ function baseRow(input: {
   raw: Row;
   offerId: string;
   skuId?: string;
+  sourceSkuOrdinal?: number;
+  sourceSkuCount?: number;
   detailUrl: string;
   title: string;
   skuName: string;
@@ -71,6 +82,8 @@ function baseRow(input: {
     offer_id: input.offerId,
     source_offer_id: input.offerId,
     sku_id: input.skuId || '',
+    source_sku_ordinal: input.sourceSkuOrdinal || 1,
+    source_sku_count: input.sourceSkuCount || 1,
     sku_specs_text: input.skuName,
     detail_url: input.detailUrl,
     product_title: input.title,

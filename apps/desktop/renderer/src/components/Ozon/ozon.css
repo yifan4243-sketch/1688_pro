@@ -301,6 +301,35 @@
   font-weight: 700;
 }
 
+.ozon-pricing-settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ozon-pricing-fixed-note,
+.ozon-pricing-version-note {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 13px 15px;
+  border: 1px solid rgba(59,130,246,0.16);
+  border-radius: 14px;
+  background: rgba(239,246,255,0.66);
+  color: rgba(30,64,175,0.78);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ozon-pricing-fixed-note strong {
+  color: #1d4ed8;
+}
+
+.ozon-pricing-version-note {
+  color: rgba(71,85,105,0.72);
+  background: rgba(248,250,252,0.72);
+}
+
 .ozon-store-help {
   margin-top: -8px;
   color: #2563eb;
@@ -1733,6 +1762,122 @@
   font-size: 16px;
   font-weight: 700;
   color: #0f172a;
+}
+
+.ozon-pricing-card.ready {
+  border-color: #c9ead9;
+}
+
+.ozon-pricing-card.warn {
+  border-color: #ffd6a1;
+}
+
+.ozon-pricing-status {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ozon-pricing-status.ready {
+  color: #087647;
+  background: #eaf8f1;
+}
+
+.ozon-pricing-status.warn {
+  color: #a04b00;
+  background: #fff3e3;
+}
+
+.ozon-pricing-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin-bottom: 18px;
+}
+
+.ozon-pricing-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ozon-pricing-meta span {
+  color: #7b879b;
+  font-size: 12px;
+}
+
+.ozon-pricing-meta strong {
+  color: #20293a;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.ozon-pricing-errors {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ozon-pricing-errors > div {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #9a3c00;
+  background: #fff4e7;
+  font-size: 13px;
+}
+
+.ozon-pricing-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e8edf5;
+  border-radius: 12px;
+}
+
+.ozon-pricing-table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ozon-pricing-table th,
+.ozon-pricing-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #eef1f6;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ozon-pricing-table th {
+  color: #68758a;
+  background: #f8faff;
+  font-weight: 700;
+}
+
+.ozon-pricing-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ozon-pricing-table small {
+  color: #8591a4;
+}
+
+.ozon-pricing-override-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #7a4b00;
+  background: #fff7dc;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .ozon-pricing-meta {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 属性栅格（2 列，ERP 18px 行距 / 20px 列距） */

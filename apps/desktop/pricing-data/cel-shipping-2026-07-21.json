@@ -1,0 +1,382 @@
+{
+  "schema_version": 1,
+  "version": "cel-2026-07-21",
+  "source": {
+    "file_name": "CEL_Ozon_最新运费表_2026-07-21.xlsx",
+    "sha256": "ad73ba7cdcfd912e18575b224d731ea4a100e78e8f26f824eb620687f85db4aa",
+    "rate_sheet": "CEL最新运费表!A1:K19",
+    "group_sheet": "货件分组规则!A1:I7",
+    "source_sheet": "来源说明!A1:B8",
+    "rate_page_updated_at": "2026-07-21",
+    "currency": "CNY",
+    "notes": {
+      "整理日期": "2026-08-08",
+      "费率页面更新时间": "2026-07-21",
+      "来源": "https://www.amz123.com/guide/ozon/UiOyadL3",
+      "数据范围": "CEL Express / Standard / Economy × Extra Small / Budget / Small / Big / Premium Small / Premium Big",
+      "币种": "人民币 CNY",
+      "计费公式": "运费 = 固定费 + 每克费 × 计费重量(g)；上门配送仅部分货件分组有独立费率",
+      "注意": "本表按公开的 Ozon 合作伙伴物流费率整理；实际结算以 Ozon/CEL 当日后台和账单为准。"
+    }
+  },
+  "cny_price_bands": {
+    "low": {
+      "min_inclusive": 0.01,
+      "max_inclusive": 135
+    },
+    "middle": {
+      "min_exclusive": 135,
+      "max_inclusive": 635
+    },
+    "high": {
+      "min_exclusive": 635,
+      "max_inclusive": 22525
+    }
+  },
+  "groups": [
+    {
+      "source_row": 2,
+      "group": "Extra Small",
+      "min_weight_g": 1,
+      "max_weight_g": 500,
+      "min_value_rub": 1,
+      "max_value_rub": 1500,
+      "max_side_sum_cm": 90,
+      "max_longest_side_cm": 60,
+      "charge_method": "物理重量",
+      "increment": "1克"
+    },
+    {
+      "source_row": 3,
+      "group": "Budget",
+      "min_weight_g": 501,
+      "max_weight_g": 25000,
+      "min_value_rub": 1,
+      "max_value_rub": 1500,
+      "max_side_sum_cm": 150,
+      "max_longest_side_cm": 60,
+      "charge_method": "物理重量",
+      "increment": "1克"
+    },
+    {
+      "source_row": 4,
+      "group": "Small",
+      "min_weight_g": 1,
+      "max_weight_g": 2000,
+      "min_value_rub": 1501,
+      "max_value_rub": 7000,
+      "max_side_sum_cm": 150,
+      "max_longest_side_cm": 60,
+      "charge_method": "物理重量",
+      "increment": "1克"
+    },
+    {
+      "source_row": 5,
+      "group": "Big",
+      "min_weight_g": 2001,
+      "max_weight_g": 25000,
+      "min_value_rub": 1501,
+      "max_value_rub": 7000,
+      "max_side_sum_cm": 250,
+      "max_longest_side_cm": 150,
+      "charge_method": "物理重量",
+      "increment": "1克"
+    },
+    {
+      "source_row": 6,
+      "group": "Premium Small",
+      "min_weight_g": 1,
+      "max_weight_g": 5000,
+      "min_value_rub": 7001,
+      "max_value_rub": 250000,
+      "max_side_sum_cm": 250,
+      "max_longest_side_cm": 150,
+      "charge_method": "物理重量",
+      "increment": "1克"
+    },
+    {
+      "source_row": 7,
+      "group": "Premium Big",
+      "min_weight_g": 5001,
+      "max_weight_g": 25000,
+      "min_value_rub": 7001,
+      "max_value_rub": 250000,
+      "max_side_sum_cm": 310,
+      "max_longest_side_cm": 150,
+      "charge_method": "物理重量",
+      "increment": "1克"
+    }
+  ],
+  "rates": [
+    {
+      "source_row": 2,
+      "group": "Extra Small",
+      "speed": "express",
+      "ozon_rating": 6,
+      "transit_days": "5-10",
+      "pickup": {
+        "fixed_cny": 2.8,
+        "per_gram_cny": 0.04
+      },
+      "door": null,
+      "battery_allowed": false
+    },
+    {
+      "source_row": 3,
+      "group": "Extra Small",
+      "speed": "standard",
+      "ozon_rating": 6,
+      "transit_days": "10-15",
+      "pickup": {
+        "fixed_cny": 2.8,
+        "per_gram_cny": 0.0295
+      },
+      "door": null,
+      "battery_allowed": true
+    },
+    {
+      "source_row": 4,
+      "group": "Extra Small",
+      "speed": "economy",
+      "ozon_rating": 5,
+      "transit_days": "20-25",
+      "pickup": {
+        "fixed_cny": 2.8,
+        "per_gram_cny": 0.023
+      },
+      "door": null,
+      "battery_allowed": true
+    },
+    {
+      "source_row": 5,
+      "group": "Budget",
+      "speed": "express",
+      "ozon_rating": 3,
+      "transit_days": "5-10",
+      "pickup": {
+        "fixed_cny": 18,
+        "per_gram_cny": 0.03295
+      },
+      "door": null,
+      "battery_allowed": false
+    },
+    {
+      "source_row": 6,
+      "group": "Budget",
+      "speed": "standard",
+      "ozon_rating": 7,
+      "transit_days": "10-15",
+      "pickup": {
+        "fixed_cny": 18,
+        "per_gram_cny": 0.02495
+      },
+      "door": null,
+      "battery_allowed": true
+    },
+    {
+      "source_row": 7,
+      "group": "Budget",
+      "speed": "economy",
+      "ozon_rating": 5,
+      "transit_days": "20-25",
+      "pickup": {
+        "fixed_cny": 23,
+        "per_gram_cny": 0.0165
+      },
+      "door": null,
+      "battery_allowed": true
+    },
+    {
+      "source_row": 8,
+      "group": "Small",
+      "speed": "express",
+      "ozon_rating": 3,
+      "transit_days": "5-10",
+      "pickup": {
+        "fixed_cny": 14.9,
+        "per_gram_cny": 0.04
+      },
+      "door": {
+        "fixed_cny": 18.4,
+        "per_gram_cny": 0.04
+      },
+      "battery_allowed": false
+    },
+    {
+      "source_row": 9,
+      "group": "Small",
+      "speed": "standard",
+      "ozon_rating": 6,
+      "transit_days": "10-15",
+      "pickup": {
+        "fixed_cny": 14.9,
+        "per_gram_cny": 0.0286
+      },
+      "door": {
+        "fixed_cny": 18.4,
+        "per_gram_cny": 0.0286
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 10,
+      "group": "Small",
+      "speed": "economy",
+      "ozon_rating": 5,
+      "transit_days": "15-20",
+      "pickup": {
+        "fixed_cny": 14,
+        "per_gram_cny": 0.023
+      },
+      "door": {
+        "fixed_cny": 17.5,
+        "per_gram_cny": 0.023
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 11,
+      "group": "Big",
+      "speed": "express",
+      "ozon_rating": 3,
+      "transit_days": "5-10",
+      "pickup": {
+        "fixed_cny": 35.9,
+        "per_gram_cny": 0.033
+      },
+      "door": {
+        "fixed_cny": 39.4,
+        "per_gram_cny": 0.033
+      },
+      "battery_allowed": false
+    },
+    {
+      "source_row": 12,
+      "group": "Big",
+      "speed": "standard",
+      "ozon_rating": 6,
+      "transit_days": "10-15",
+      "pickup": {
+        "fixed_cny": 35.9,
+        "per_gram_cny": 0.024
+      },
+      "door": {
+        "fixed_cny": 39.4,
+        "per_gram_cny": 0.024
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 13,
+      "group": "Big",
+      "speed": "economy",
+      "ozon_rating": 4,
+      "transit_days": "20-25",
+      "pickup": {
+        "fixed_cny": 35.9,
+        "per_gram_cny": 0.017
+      },
+      "door": {
+        "fixed_cny": 39.4,
+        "per_gram_cny": 0.017
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 14,
+      "group": "Premium Small",
+      "speed": "express",
+      "ozon_rating": 2,
+      "transit_days": "5-10",
+      "pickup": {
+        "fixed_cny": 20,
+        "per_gram_cny": 0.04
+      },
+      "door": {
+        "fixed_cny": 23.5,
+        "per_gram_cny": 0.04
+      },
+      "battery_allowed": false
+    },
+    {
+      "source_row": 15,
+      "group": "Premium Small",
+      "speed": "standard",
+      "ozon_rating": 6,
+      "transit_days": "10-15",
+      "pickup": {
+        "fixed_cny": 20,
+        "per_gram_cny": 0.0269
+      },
+      "door": {
+        "fixed_cny": 23.5,
+        "per_gram_cny": 0.0269
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 16,
+      "group": "Premium Small",
+      "speed": "economy",
+      "ozon_rating": 6,
+      "transit_days": "15-20",
+      "pickup": {
+        "fixed_cny": 20,
+        "per_gram_cny": 0.0239
+      },
+      "door": {
+        "fixed_cny": 23.5,
+        "per_gram_cny": 0.0239
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 17,
+      "group": "Premium Big",
+      "speed": "express",
+      "ozon_rating": 3,
+      "transit_days": "5-10",
+      "pickup": {
+        "fixed_cny": 61.9,
+        "per_gram_cny": 0.032
+      },
+      "door": {
+        "fixed_cny": 65.4,
+        "per_gram_cny": 0.032
+      },
+      "battery_allowed": false
+    },
+    {
+      "source_row": 18,
+      "group": "Premium Big",
+      "speed": "standard",
+      "ozon_rating": 7,
+      "transit_days": "10-15",
+      "pickup": {
+        "fixed_cny": 61.9,
+        "per_gram_cny": 0.025
+      },
+      "door": {
+        "fixed_cny": 65.4,
+        "per_gram_cny": 0.025
+      },
+      "battery_allowed": true
+    },
+    {
+      "source_row": 19,
+      "group": "Premium Big",
+      "speed": "economy",
+      "ozon_rating": 3,
+      "transit_days": "20-25",
+      "pickup": {
+        "fixed_cny": 61.9,
+        "per_gram_cny": 0.017
+      },
+      "door": {
+        "fixed_cny": 65.4,
+        "per_gram_cny": 0.017
+      },
+      "battery_allowed": true
+    }
+  ]
+}

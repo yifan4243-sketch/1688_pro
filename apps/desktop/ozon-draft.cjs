@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { getCategoryAttributes, getCategoryAttributeValues } = require('./ozon-settings.cjs');
+const { getCategoryTree, getCategoryAttributes, getCategoryAttributeValues } = require('./ozon-settings.cjs');
+const { buildPricingSummary, resolveRfbsCommission } = require('./ozon-pricing.cjs');
 const {
   classifyOzonAttribute,
   resolveDraftMergeCardKey,
@@ -496,10 +497,24 @@ async function generateOzonDraft(settings, rows = []) {
   // Fill category attributes immediately — part of draft generation
   await loadCategoryAttributeMetadata(settings, sourceRows, normalized);
 
-  const items = sourceRows.map((row, index) => buildOzonItem(row, normalized, settings, index));
+  const items = sourceRows.map((row, index) => buildOzonItem(row, normalized, settings, index, sourceRows));
 
   // Complete draft: fill required category attributes, defaults, retry missing
   const completion = await completeRequiredCategoryAttributes(settings, sourceRows, normalized, items);
+
+  // Pricing is a required draft stage. It runs after category resolution and
+  // attribute completion, before the draft can become ready, and never falls
+  // back to the source purchase price.
+  const russianCategory = await resolveRussianCategoryPathForPricing(settings, normalized.matched_category);
+  const pricing = buildPricingSummary({
+    settings: settings.pricing,
+    currencyCode: settings.ozon.currencyCode,
+    category: normalized.matched_category,
+    russianCategoryPath: russianCategory.path,
+    categoryPathError: russianCategory.error,
+    rows: sourceRows,
+    items,
+  });
 
   const variant = buildVariantDraft(sourceRows, items, normalized);
   if (variant) {
@@ -509,7 +524,7 @@ async function generateOzonDraft(settings, rows = []) {
     normalized.variant_mapping_confirmed = variant.confirmed === true;
     applyVariantMetadata(items, variant);
   }
-  const baseMissing = collectDraftMissing(items, { sourceRows, generated: normalized, variant });
+  const baseMissing = collectDraftMissing(items, { sourceRows, generated: normalized, variant, pricing });
   const finalMissing = uniqueStrings([...baseMissing, ...(completion.missing || [])]);
 
   const firstItemAttrs = Array.isArray(items[0]?.attributes) ? items[0].attributes : [];
@@ -521,6 +536,7 @@ async function generateOzonDraft(settings, rows = []) {
     sourceRows,
     generated: normalized,
     variant,
+    pricing,
     items,
     missing: finalMissing,
     createdAt: new Date().toISOString(),
@@ -557,7 +573,11 @@ async function prepareOzonImportItems(settings, items) {
       throw new Error(`提交前校验失败：商品名称可能存在无意义文本或语法问题，请重新生成或手动修改。offer_id=${importItem.offer_id}`);
     }
     importItem.offer_id = cleanText(importItem.offer_id);
-    importItem.price = String(Math.max(positiveNumber(importItem.price), 1));
+    const submitPrice = positiveNumber(importItem.price);
+    if (!submitPrice) {
+      throw new Error(`提交前校验失败：商品价格必须大于 0。offer_id=${importItem.offer_id}`);
+    }
+    importItem.price = String(submitPrice);
     importItem.old_price = String(importItem.old_price || '0');
     importItem.vat = String(importItem.vat || '0');
     importItem.images = uniqueStrings(Array.isArray(importItem.images) ? importItem.images : []);
@@ -1519,7 +1539,7 @@ function addGeneratedCategoryAttributes(attrs, generated) {
   }
 }
 
-function buildOzonItem(row, generated, settings, index) {
+function buildOzonItem(row, generated, settings, index, allRows = []) {
   const images = imageUrls(row);
   const category = generated.matched_category || {};
   const dims = generated.estimated_dimensions || {};
@@ -1541,8 +1561,8 @@ function buildOzonItem(row, generated, settings, index) {
     name: (generated.title_ru && /[а-яё]/i.test(generated.title_ru)
       ? generated.title_ru
       : `Товар из 1688 ${String(cleanText(row.product_title) || cleanText(row.sku_name) || '').replace(/[^a-zA-Z0-9\s]/g, '').trim().slice(0, 80)}`).slice(0, 500),
-    offer_id: stableOfferId(row, index),
-    price: String(Math.max(positiveNumber(row.sku_price) || 0, 1)),
+    offer_id: stableOfferId(row, index, allRows),
+    price: '0',
     old_price: '0',
     vat: '0',
     currency_code: settings.ozon.currencyCode || 'CNY',
@@ -1852,6 +1872,49 @@ function validateAiAttributeDecision(raw, attr, context, attempt) {
       reason: value.reason || 'AI 根据 1688 商品信息生成属性值。',
     },
   };
+}
+
+async function resolveRussianCategoryPathForPricing(settings, category) {
+  const descriptionCategoryId = Number(category?.description_category_id || category?.descriptionCategoryId || 0);
+  const typeId = Number(category?.type_id || category?.typeId || 0);
+  const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || settings?.appDataPath);
+  if (!descriptionCategoryId || !typeId || !userDataPath) {
+    return {
+      path: '',
+      error: { code: 'category_tree_context_missing', reason: '缺少 Ozon 类目 ID 或应用数据目录，无法加载俄文类目路径。' },
+    };
+  }
+
+  let lastPath = '';
+  let lastError = null;
+  for (const forceRefresh of [false, true]) {
+    try {
+      const response = await getCategoryTree(userDataPath, { language: 'RU', forceRefresh });
+      const matches = (Array.isArray(response?.items) ? response.items : []).filter((item) => (
+        Number(item?.description_category_id || item?.descriptionCategoryId || 0) === descriptionCategoryId
+        && Number(item?.type_id || item?.typeId || 0) === typeId
+      ));
+      const paths = uniqueStrings(matches.map((item) => cleanText(item?.path)).filter(Boolean));
+      if (paths.length > 1) {
+        return {
+          path: '',
+          error: {
+            code: 'commission_category_ambiguous',
+            reason: `同一 Ozon 类目 ID 对应多个俄文完整路径，无法唯一匹配 RFBS 佣金：${paths.join('；')}`,
+          },
+        };
+      }
+      lastPath = paths[0] || '';
+      if (lastPath && resolveRfbsCommission(lastPath).ok) return { path: lastPath, error: null };
+    } catch (error) {
+      lastError = {
+        code: 'category_tree_request_failed',
+        reason: `Ozon 俄文类目树${forceRefresh ? '强制刷新' : '加载'}失败：${error?.message || error}`,
+      };
+      process.stderr.write(`[ozon-pricing] RU category tree ${forceRefresh ? 'refresh' : 'load'} failed: ${error?.message || error}\n`);
+    }
+  }
+  return { path: lastPath, error: lastPath ? null : lastError };
 }
 
 async function completeAttributeSuggestions(settings, params = {}) {
@@ -2359,6 +2422,7 @@ function collectDraftMissing(items, draft) {
     if (!weightVal || weightVal < MIN_VALID_WEIGHT_G) missing.add('含包装重量');
   }
   if (hasUnconfirmedVariantMapping(draft)) missing.add('规格属性映射');
+  if (draft && Object.prototype.hasOwnProperty.call(draft, 'pricing') && draft?.pricing?.status !== 'priced') missing.add('自动定价');
   return Array.from(missing);
 }
 
@@ -2481,9 +2545,16 @@ function addAttribute(attrs, id, value) {
   });
 }
 
-function stableOfferId(row, index) {
-  const raw = [row.detail_url, row.product_title, row.sku_name, index].map((item) => String(item || '')).join('|');
-  return `1688-${crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16)}`;
+function stableOfferId(row, index, allRows = []) {
+  const rows = Array.isArray(allRows) ? allRows : [];
+  const baseOfferId = sourceOfferId(row) || sourceOfferId(rows[0]);
+  if (!baseOfferId) return '';
+  const raw1688 = row?.raw_1688 && typeof row.raw_1688 === 'object' ? row.raw_1688 : {};
+  const sourceSkuCount = Number(row?.source_sku_count || (Array.isArray(raw1688.skus) ? raw1688.skus.length : 0));
+  const isMultiSku = sourceSkuCount > 1 || rows.length > 1;
+  if (!isMultiSku) return baseOfferId;
+  const ordinal = Math.max(1, Math.round(Number(row?.source_sku_ordinal || index + 1) || index + 1));
+  return `${baseOfferId}-${ordinal}`;
 }
 
 function positiveNumber(value) {
@@ -2624,4 +2695,4 @@ function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, curren
   ];
 }
 
-module.exports = { generateOzonDraft, submitOzonDraft, collectDraftMissing, generateOzonAttributeSuggestions, sanitizeGeneratedAttributeValues, resolveMergeCardKeys, rankDictionaryCandidates };
+module.exports = { generateOzonDraft, submitOzonDraft, collectDraftMissing, generateOzonAttributeSuggestions, sanitizeGeneratedAttributeValues, resolveMergeCardKeys, rankDictionaryCandidates, stableOfferId, resolveRussianCategoryPathForPricing };

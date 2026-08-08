@@ -102,6 +102,18 @@ export interface OzonSettingsPublic {
     defaultWarehouseId: string;
     enableRealSubmit?: boolean;
   };
+  pricing: {
+    otherFeeRate: number;
+    targetProfitRate: number;
+    labelFeeCny: number;
+    shippingSpeed: 'express' | 'standard' | 'economy';
+    handoffMode: 'pickup' | 'door';
+    platformServiceRate: number;
+    currencyCode: 'CNY';
+    commissionMode: 'RFBS';
+    commissionDataVersion: string;
+    shippingDataVersion: string;
+  };
 }
 
 export interface OzonSettingsPatch {
@@ -121,6 +133,13 @@ export interface OzonSettingsPatch {
     defaultWarehouseId?: string;
     enableRealSubmit?: boolean;
   };
+  pricing?: {
+    otherFeeRate?: number;
+    targetProfitRate?: number;
+    labelFeeCny?: number;
+    shippingSpeed?: 'express' | 'standard' | 'economy';
+    handoffMode?: 'pickup' | 'door';
+  };
 }
 
 export interface OzonDraft {
@@ -129,6 +148,7 @@ export interface OzonDraft {
   sourceRows: Array<Record<string, unknown>>;
   generated: Record<string, unknown>;
   variant?: Record<string, unknown> | null;
+  pricing?: Record<string, unknown> | null;
   items: Array<Record<string, unknown>>;
   missing: string[];
   createdAt: string;

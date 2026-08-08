@@ -5,8 +5,10 @@ import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { getCategoryTree, searchCategories } = require('../apps/desktop/ozon-settings.cjs') as {
+const { getCategoryTree, loadSettings, saveSettings, searchCategories } = require('../apps/desktop/ozon-settings.cjs') as {
   getCategoryTree: (userDataPath: string, options?: Record<string, unknown>) => Promise<Record<string, any>>;
+  loadSettings: (userDataPath: string, options?: Record<string, unknown>) => Record<string, any>;
+  saveSettings: (userDataPath: string, patch?: Record<string, unknown>) => Record<string, any>;
   searchCategories: (userDataPath: string, query?: string, options?: Record<string, unknown>) => Promise<Record<string, any>>;
 };
 
@@ -66,5 +68,47 @@ describe('Ozon category tree cache compatibility', () => {
     const tree = await getCategoryTree(devUserData, { language: 'ZH_HANS' });
 
     expect(tree).toMatchObject({ ok: true, source: 'cache', total: 1 });
+  });
+});
+
+describe('Ozon pricing settings', () => {
+  it('loads defaults for an old settings file and exposes read-only pricing metadata', async () => {
+    const userData = await makeTempDir('ozon-pricing-settings-');
+    await fs.writeFile(path.join(userData, 'ozon_settings.json'), JSON.stringify({
+      ozon: { currencyCode: 'CNY' },
+    }), 'utf8');
+
+    expect(loadSettings(userData).pricing).toMatchObject({
+      otherFeeRate: 0.1,
+      targetProfitRate: 0.2,
+      labelFeeCny: 2,
+      shippingSpeed: 'economy',
+      handoffMode: 'pickup',
+      platformServiceRate: 0.01,
+      currencyCode: 'CNY',
+      commissionMode: 'RFBS',
+    });
+  });
+
+  it('persists valid pricing values and rejects invalid rates', async () => {
+    const userData = await makeTempDir('ozon-pricing-settings-');
+    const saved = saveSettings(userData, {
+      pricing: {
+        otherFeeRate: 0.08,
+        targetProfitRate: 0.3,
+        labelFeeCny: 3.5,
+        shippingSpeed: 'standard',
+        handoffMode: 'door',
+      },
+    });
+    expect(saved.pricing).toMatchObject({
+      otherFeeRate: 0.08,
+      targetProfitRate: 0.3,
+      labelFeeCny: 3.5,
+      shippingSpeed: 'standard',
+      handoffMode: 'door',
+    });
+    expect(loadSettings(userData).pricing).toMatchObject(saved.pricing);
+    expect(() => saveSettings(userData, { pricing: { otherFeeRate: 1 } })).toThrow('其他费用率');
   });
 });

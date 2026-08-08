@@ -1,5 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const {
+  DEFAULT_PRICING_SETTINGS,
+  normalizePricingSettings,
+  validatePricingSettings,
+  publicPricingSettings,
+} = require('./ozon-pricing.cjs');
 
 const SETTINGS_FILE = 'ozon_settings.json';
 const CATEGORY_TREE_FILE = 'ozon_category_tree.json';
@@ -66,6 +72,7 @@ function defaultSettings() {
       defaultWarehouseId: '',
       enableRealSubmit: false,
     },
+    pricing: { ...DEFAULT_PRICING_SETTINGS },
   };
 }
 
@@ -87,6 +94,7 @@ function publicSettings(settings) {
       defaultWarehouseId: settings.ozon.defaultWarehouseId,
       enableRealSubmit: Boolean(settings.ozon.enableRealSubmit),
     },
+    pricing: publicPricingSettings(settings.pricing),
   };
 }
 
@@ -106,6 +114,8 @@ function loadSettings(userDataPath, { includeSecrets = false } = {}) {
 function saveSettings(userDataPath, patch = {}) {
   const current = loadSettings(userDataPath, { includeSecrets: true });
   const next = mergeSettings(current, patch);
+  const pricingErrors = validatePricingSettings(next.pricing);
+  if (pricingErrors.length) throw new Error(pricingErrors.join(' '));
   fs.mkdirSync(userDataPath, { recursive: true });
   fs.writeFileSync(settingsPath(userDataPath), JSON.stringify(next, null, 2), 'utf8');
   return publicSettings(next);
@@ -754,6 +764,10 @@ function mergeSettings(base, patch) {
       defaultWarehouseId: clean(patch?.ozon?.defaultWarehouseId, base.ozon.defaultWarehouseId || ''),
       enableRealSubmit: patch?.ozon?.enableRealSubmit === undefined ? Boolean(base.ozon.enableRealSubmit) : Boolean(patch.ozon.enableRealSubmit),
     },
+    pricing: normalizePricingSettings({
+      ...(base.pricing || DEFAULT_PRICING_SETTINGS),
+      ...(patch?.pricing && typeof patch.pricing === 'object' ? patch.pricing : {}),
+    }),
   };
 }
 

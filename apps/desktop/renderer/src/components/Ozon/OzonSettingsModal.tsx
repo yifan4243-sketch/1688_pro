@@ -15,7 +15,7 @@ interface Props {
 export default function OzonSettingsModal({ mode, open, onClose }: Props) {
   const api = getApi();
   const [settings, setSettings] = useState<OzonSettingsPublic | null>(null);
-  const [storeTab, setStoreTab] = useState<'add' | 'manage'>('add');
+  const [storeTab, setStoreTab] = useState<'add' | 'manage' | 'pricing'>('add');
   const [storeStats, setStoreStats] = useState<OzonStoreStats | null>(null);
   const [form, setForm] = useState({
     aiBaseUrl: 'https://api.deepseek.com',
@@ -28,6 +28,11 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
     isDefaultShop: false,
     note: '',
     warehouseId: '',
+    otherFeePercent: '10',
+    targetProfitPercent: '20',
+    labelFeeCny: '2',
+    shippingSpeed: 'economy',
+    handoffMode: 'pickup',
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
@@ -53,6 +58,11 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
           isDefaultShop: Boolean(data.ozon.isDefaultShop),
           note: data.ozon.note || '',
           warehouseId: data.ozon.defaultWarehouseId || '',
+          otherFeePercent: String((data.pricing.otherFeeRate ?? 0.1) * 100),
+          targetProfitPercent: String((data.pricing.targetProfitRate ?? 0.2) * 100),
+          labelFeeCny: String(data.pricing.labelFeeCny ?? 2),
+          shippingSpeed: data.pricing.shippingSpeed || 'economy',
+          handoffMode: data.pricing.handoffMode || 'pickup',
         }));
       })
       .catch((error) => setMessage({ kind: 'error', text: error.message || String(error) }));
@@ -61,12 +71,14 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
   if (!open) return null;
 
   const isAi = mode === 'ai';
-  const title = isAi ? 'AI 设置' : storeTab === 'add' ? '添加店铺授权' : '店铺管理';
+  const title = isAi ? 'AI 设置' : storeTab === 'add' ? '添加店铺授权' : storeTab === 'manage' ? '店铺管理' : '自动定价设置';
   const subtitle = isAi
     ? '配置 DeepSeek 后，所有商品草稿都会复用这组 AI 参数。'
     : storeTab === 'add'
       ? '绑定一次 Ozon 店铺，之后提交上架会自动复用。'
-      : '查看已绑定店铺和今日可上架额度。';
+      : storeTab === 'manage'
+        ? '查看已绑定店铺和今日可上架额度。'
+        : '设置草稿生成时自动使用的利润、杂费和 CEL 运输方式。';
   const noteLength = form.note.length;
 
   const refreshStoreStats = async () => {
@@ -83,7 +95,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
     }
   };
 
-  const switchStoreTab = (tab: 'add' | 'manage') => {
+  const switchStoreTab = (tab: 'add' | 'manage' | 'pricing') => {
     setStoreTab(tab);
     setMessage(null);
     if (tab === 'manage' && !storeStats) refreshStoreStats();
@@ -93,7 +105,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
     setBusy(true);
     setMessage(null);
     try {
-      if (!isAi) {
+      if (!isAi && storeTab === 'add') {
         if (!form.shopName.trim()) throw new Error('请填写店铺名称。');
         if (!form.ozonClientId.trim()) throw new Error('请填写 Client ID。');
         if (!settings?.ozon.apiKeySet && !form.ozonApiKey.trim()) throw new Error('请填写 API 密钥。');
@@ -107,7 +119,17 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
               ...(form.aiApiKey.trim() ? { apiKey: form.aiApiKey.trim() } : {}),
             },
           }
-        : {
+        : storeTab === 'pricing'
+          ? {
+              pricing: {
+                otherFeeRate: Number(form.otherFeePercent) / 100,
+                targetProfitRate: Number(form.targetProfitPercent) / 100,
+                labelFeeCny: Number(form.labelFeeCny),
+                shippingSpeed: form.shippingSpeed as 'express' | 'standard' | 'economy',
+                handoffMode: form.handoffMode as 'pickup' | 'door',
+              },
+            }
+          : {
             ozon: {
               clientId: form.ozonClientId,
               shopName: form.shopName,
@@ -148,6 +170,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
             <div className="ozon-settings-tabs">
               <button className={storeTab === 'add' ? 'active' : ''} onClick={() => switchStoreTab('add')}>添加店铺</button>
               <button className={storeTab === 'manage' ? 'active' : ''} onClick={() => switchStoreTab('manage')}>店铺管理</button>
+              <button className={storeTab === 'pricing' ? 'active' : ''} onClick={() => switchStoreTab('pricing')}>定价设置</button>
             </div>
           )}
 
@@ -213,7 +236,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
                 <small>{noteLength} / 200</small>
               </label>
             </div>
-          ) : (
+          ) : storeTab === 'manage' ? (
             <div className="ozon-store-manage">
               <div className="ozon-manage-toolbar">
                 <div>
@@ -276,13 +299,66 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
                 {storeStats?.fetchedAt && <small>刷新时间：{new Date(storeStats.fetchedAt).toLocaleString()}</small>}
               </div>
             </div>
+          ) : (
+            <div className="ozon-store-form ozon-pricing-settings-form">
+              <div className="ozon-pricing-fixed-note">
+                <strong>固定规则</strong>
+                <span>平台服务费 1% · 佣金按 Ozon 完整类目自动匹配最新 RFBS 表 · 币种 CNY</span>
+              </div>
+
+              <label>
+                <span>其他费用率(%)</span>
+                <input type="number" min="0" max="99.99" step="0.01" value={form.otherFeePercent} onChange={(e) => setForm({ ...form, otherFeePercent: e.target.value })} />
+              </label>
+
+              <label>
+                <span>期望利润率(%)</span>
+                <input type="number" min="0" step="0.01" value={form.targetProfitPercent} onChange={(e) => setForm({ ...form, targetProfitPercent: e.target.value })} />
+              </label>
+
+              <label>
+                <span>贴单费(CNY)</span>
+                <input type="number" min="0" step="0.01" value={form.labelFeeCny} onChange={(e) => setForm({ ...form, labelFeeCny: e.target.value })} />
+              </label>
+
+              <label>
+                <span>CEL 运输速度</span>
+                <GlassSelect
+                  value={form.shippingSpeed}
+                  options={[
+                    { value: 'express', label: 'Express（约 5–10 天）' },
+                    { value: 'standard', label: 'Standard（约 10–15 天）' },
+                    { value: 'economy', label: 'Economy（约 15–25 天）' },
+                  ]}
+                  onChange={(value) => setForm({ ...form, shippingSpeed: value })}
+                />
+              </label>
+
+              <label>
+                <span>CEL 交接方式</span>
+                <GlassSelect
+                  value={form.handoffMode}
+                  options={[
+                    { value: 'pickup', label: '揽收点' },
+                    { value: 'door', label: '上门' },
+                  ]}
+                  onChange={(value) => setForm({ ...form, handoffMode: value })}
+                />
+              </label>
+
+              <div className="ozon-pricing-version-note">
+                佣金数据：{settings?.pricing.commissionDataVersion || '-'} · CEL 数据：{settings?.pricing.shippingDataVersion || '-'}
+              </div>
+            </div>
           )}
 
-          {(isAi || storeTab === 'add') && <div className="ozon-settings-actions">
+          {(isAi || storeTab === 'add' || storeTab === 'pricing') && <div className="ozon-settings-actions">
             <span className="ozon-settings-status">
               {isAi
                 ? (settings?.ai.apiKeySet ? 'DeepSeek Key 已保存' : 'DeepSeek Key 未保存')
-                : (settings?.ozon.apiKeySet ? 'Ozon API Key 已保存' : 'Ozon API Key 未保存')}
+                : storeTab === 'pricing'
+                  ? '设置将用于后续自动生成的草稿'
+                  : (settings?.ozon.apiKeySet ? 'Ozon API Key 已保存' : 'Ozon API Key 未保存')}
             </span>
             <button className="glass-btn-primary" disabled={busy} onClick={save}>
               {busy ? '保存中...' : '保存'}

@@ -4,6 +4,20 @@ The CLI auto-switches to JSON when stdout is piped. Stable JSON output is part
 of the agent contract. Prefer additive changes; do not rename or remove fields
 without an explicit breaking-change decision.
 
+## Desktop Ozon Pricing Additions
+
+Existing desktop IPC method names and existing fields remain unchanged. Ozon
+settings responses add a `pricing` object containing editable
+`otherFeeRate`, `targetProfitRate`, `labelFeeCny`, `shippingSpeed`, and
+`handoffMode`, plus read-only platform fee, currency, RFBS mode, and data
+versions.
+
+Generated Ozon drafts add a top-level `pricing` summary. Existing
+`items[].price` remains a decimal string, but now contains the calculated Ozon
+listing price and is `"0"` whenever automatic pricing is unresolved. See
+[`specs/ozon-rfbs-pricing.md`](specs/ozon-rfbs-pricing.md) for the detailed
+additive shape and failure contract.
+
 ## Output Rules
 
 - `--json` forces JSON in a TTY.

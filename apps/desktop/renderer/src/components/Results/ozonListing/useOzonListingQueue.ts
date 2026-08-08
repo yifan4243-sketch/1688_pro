@@ -376,21 +376,31 @@ export function useOzonListingQueue({
       const completionUnresolved = Array.isArray(attributeCompletion?.unresolved)
         ? attributeCompletion.unresolved as Array<{ name?: string; reason?: string }>
         : [];
+      const pricing = draft.pricing && typeof draft.pricing === 'object'
+        ? draft.pricing as Record<string, unknown>
+        : null;
+      const pricingErrors = Array.isArray(pricing?.errors)
+        ? pricing.errors as Array<{ reason?: string }>
+        : [];
 
       const missing = Array.isArray(draft.missing) ? draft.missing : [];
       const hasMissing = missing.length > 0;
+      const finalListingPrice = String(items[0]?.price || '');
 
       upsertOzonTask(entry.key, {
         status: hasMissing ? 'needs_manual' : 'draft_ready',
         draftId: draft.draftId,
         draft,
+        price: finalListingPrice || deepItem.price,
         missingFields: missing,
         message: hasMissing
-          ? completionUnresolved.length
+          ? pricingErrors.length
+            ? `自动定价未完成：${pricingErrors.map((item) => item.reason || '未知原因').join('；')}`
+            : completionUnresolved.length
             ? `自动补全未完成：${completionUnresolved.map((item) => `${item.name || '属性'}（${item.reason || '未知原因'}）`).join('；')}`
             : `自动补全未完成：${missing.join('、')}`
           : '草稿已自动补全，可直接提交 Ozon',
-        debug: { attrStats, attributeCompletion },
+        debug: { attrStats, attributeCompletion, pricing },
         finishedAt: new Date().toISOString(),
       });
 
@@ -399,7 +409,7 @@ export function useOzonListingQueue({
         offerId: deepItem.offerId,
         title: deepItem.title,
         image: deepItem.image,
-        price: deepItem.price,
+        price: finalListingPrice || deepItem.price,
         url: sourceUrlOf(deepItem),
         ozonDraftGenerated: true,
         draftGenerated: true,

@@ -74,6 +74,16 @@ function FieldError({ show, text: value }: { show: boolean; text: string }) {
   return <small className="ozon-attr-error-text">{value}</small>;
 }
 
+function pricingMoney(value: unknown): string {
+  const number = Number(value);
+  return Number.isFinite(number) ? `¥${number.toFixed(2)}` : '-';
+}
+
+function pricingPercent(value: unknown): string {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(2).replace(/\.00$/, '')}%` : '-';
+}
+
 function sourceSummary(task: OzonListingTask): string {
   const row = objectOf(task.draft?.sourceRows?.[0]);
   return [
@@ -1125,6 +1135,11 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
   const validation = buildResult?.validation;
   const missing = validation?.all || buildResult?.missing || task.missingFields || task.draft?.missing || [];
   const firstItem = buildResult?.firstItem || firstItemOf(task);
+  const pricing = objectOf(task.draft?.pricing);
+  const pricingCategory = objectOf(pricing.category);
+  const pricingSettings = objectOf(pricing.settings);
+  const pricingItems = Array.isArray(pricing.items) ? pricing.items.map(objectOf) : [];
+  const pricingErrors = Array.isArray(pricing.errors) ? pricing.errors.map(objectOf) : [];
 
   const missingCounts = {
     main: validation?.main.length || 0,
@@ -1158,6 +1173,13 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
     () => buildVariantTableView(task, buildResult?.draft || task.draft, firstItem, variantImageEdits),
     [buildResult?.draft, firstItem, task, variantImageEdits],
   );
+  const priceOverridden = pricingItems.some((snapshot, index) => {
+    const automaticPrice = Number(snapshot.finalPriceCny || 0);
+    const offerId = text(snapshot.offerId);
+    const currentRow = variantTable.rows.find((row) => offerId && row.offerId === offerId) || variantTable.rows[index];
+    const currentPrice = Number(currentRow?.price || 0);
+    return automaticPrice > 0 && Number.isFinite(currentPrice) && Math.abs(currentPrice - automaticPrice) > 0.0001;
+  });
   const visibleVariantDims = variantTable.dims.filter((dim) => dim.distinguishes_variants === true);
 
   function markEdited() {
@@ -1577,6 +1599,76 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
                   <FieldError show={attemptedProduct && (validation?.main || []).includes('货号')} text="货号不能为空" />
                 </div>
               </div>
+            </section>
+
+            <section className={`ozon-form-card ozon-pricing-card ${text(pricing.status) === 'priced' ? 'ready' : 'warn'}`}>
+              <div className="ozon-form-card-header ozon-pricing-header">
+                <span>自动定价明细</span>
+                <span className={`ozon-pricing-status ${text(pricing.status) === 'priced' ? 'ready' : 'warn'}`}>
+                  {text(pricing.status) === 'priced' ? '已自动定价' : '自动定价未完成'}
+                </span>
+              </div>
+
+              <div className="ozon-pricing-meta">
+                <div><span>中文类目</span><strong>{text(pricingCategory.pathZh) || '-'}</strong></div>
+                <div><span>俄文佣金路径</span><strong>{text(pricingCategory.pathRu) || '-'}</strong></div>
+                <div><span>RFBS 佣金</span><strong>{pricingPercent(pricingCategory.commissionRate)}{pricingCategory.commissionSourceRow ? `（源表第 ${text(pricingCategory.commissionSourceRow)} 行）` : ''}</strong></div>
+                <div><span>平台服务费</span><strong>{pricingPercent(pricingSettings.platformServiceRate)}（固定）</strong></div>
+                <div><span>其他费用 / 期望利润</span><strong>{pricingPercent(pricingSettings.otherFeeRate)} / {pricingPercent(pricingSettings.targetProfitRate)}</strong></div>
+                <div><span>CEL / 交接 / 贴单</span><strong>{text(pricingSettings.shippingSpeed) || '-'} / {text(pricingSettings.handoffMode) || '-'} / {pricingMoney(pricingSettings.labelFeeCny)}</strong></div>
+              </div>
+
+              {pricingErrors.length > 0 && (
+                <div className="ozon-pricing-errors">
+                  {pricingErrors.map((error, index) => (
+                    <div key={`${text(error.code)}-${index}`}>
+                      <strong>{text(error.code) || 'pricing_error'}</strong>
+                      <span>{text(error.reason) || '自动定价失败'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pricingItems.length > 0 && (
+                <div className="ozon-pricing-table-wrap">
+                  <table className="ozon-pricing-table">
+                    <thead>
+                      <tr>
+                        <th>SKU 货号</th>
+                        <th>采购价</th>
+                        <th>CEL 分组</th>
+                        <th>运费</th>
+                        <th>RFBS 佣金</th>
+                        <th>平台费</th>
+                        <th>其他费用</th>
+                        <th>贴单费</th>
+                        <th>目标利润</th>
+                        <th>Ozon 售价</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pricingItems.map((item, index) => (
+                        <tr key={`${text(item.offerId)}-${index}`}>
+                          <td>{text(item.offerId) || `SKU ${index + 1}`}</td>
+                          <td>{pricingMoney(item.purchaseCostCny)}</td>
+                          <td>{text(item.group) || '-'}</td>
+                          <td>{pricingMoney(item.shippingCny)}</td>
+                          <td>{pricingMoney(item.commissionCny)} <small>{pricingPercent(item.commissionRate)}</small></td>
+                          <td>{pricingMoney(item.platformServiceFeeCny)}</td>
+                          <td>{pricingMoney(item.otherFeesCny)}</td>
+                          <td>{pricingMoney(item.labelFeeCny)}</td>
+                          <td>{pricingMoney(item.targetProfitCny)} <small>{pricingPercent(item.targetProfitRate)}</small></td>
+                          <td><strong>{pricingMoney(item.finalPriceCny)}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {priceOverridden && (
+                <div className="ozon-pricing-override-note">当前售价已手动修改；上方费用明细仍保留生成草稿时的自动定价快照。</div>
+              )}
             </section>
 
             <section id="ozon-section-attributes" className="ozon-form-card" data-validation-target="section:attributes">

@@ -140,6 +140,27 @@ function aiSuggestionsResponse(attributes: Array<Record<string, unknown>>) {
   }) as Response;
 }
 
+async function writeRussianPricingTree(userDataPath: string, descriptionCategoryId = 1700, typeId = 9300) {
+  const categoryDir = path.join(userDataPath, 'categories');
+  await fs.mkdir(categoryDir, { recursive: true });
+  await fs.writeFile(path.join(categoryDir, 'ozon_category_tree.ru.json'), JSON.stringify({
+    result: [{
+      description_category_id: descriptionCategoryId,
+      category_name: 'Электроника',
+      children: [{
+        description_category_id: descriptionCategoryId,
+        category_name: 'Устройства ручного ввода',
+        children: [{
+          description_category_id: descriptionCategoryId,
+          type_id: typeId,
+          type_name: 'Аксессуары для клавиатуры, мыши',
+          children: [],
+        }],
+      }],
+    }],
+  }), 'utf8');
+}
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
 });
@@ -248,6 +269,7 @@ describe('Ozon dictionary candidate selection', () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-mousepad-ai-'));
     try {
       await fs.mkdir(path.join(tempDir, 'categories'), { recursive: true });
+      await writeRussianPricingTree(tempDir, 18262715, 96808);
       await fs.writeFile(path.join(tempDir, 'categories', 'ozon_category_tree.zh_hans.json'), JSON.stringify({
         result: [{
           description_category_id: 18262715,
@@ -297,6 +319,13 @@ describe('Ozon dictionary candidate selection', () => {
       )).toBe(true);
       expect(draft.generated.attribute_completion).toEqual(expect.objectContaining({ status: 'filled', attempts: 1 }));
       expect(draft.missing).not.toContain('类型');
+      expect(draft.pricing).toMatchObject({
+        status: 'priced',
+        category: { commissionRate: 0.5, commissionSourceRow: 8184 },
+      });
+      expect(draft.items.map((item: Record<string, any>) => item.offer_id)).toEqual(['769531859464-1', '769531859464-2']);
+      expect(draft.items.every((item: Record<string, any>) => Number(item.price) > 14)).toBe(true);
+      expect(draft.missing).not.toContain('自动定价');
       const completionCall = fetchMock.mock.calls.find((call) =>
         String((call[1] as RequestInit).body || '').includes('suggest_ozon_category_attribute_values_from_1688_product'),
       );
@@ -420,6 +449,7 @@ describe('ozon draft submit helper', () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-flow-'));
     try {
       await fs.mkdir(path.join(tempDir, 'categories'), { recursive: true });
+      await writeRussianPricingTree(tempDir);
       await fs.writeFile(path.join(tempDir, 'categories', 'ozon_category_tree.zh_hans.json'), JSON.stringify({
         result: [{
           description_category_id: 1700,
@@ -596,6 +626,7 @@ describe('ozon draft submit helper', () => {
     async function categoryTreeDir(): Promise<string> {
       const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-autofill-'));
       await fs.mkdir(path.join(tempDir, 'categories'), { recursive: true });
+      await writeRussianPricingTree(tempDir);
       await fs.writeFile(path.join(tempDir, 'categories', 'ozon_category_tree.zh_hans.json'), JSON.stringify({
         result: [{
           description_category_id: 1700,
@@ -734,6 +765,7 @@ describe('ozon draft submit helper', () => {
     async function categoryTreeDir(): Promise<string> {
       const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-dict-'));
       await fs.mkdir(path.join(tempDir, 'categories'), { recursive: true });
+      await writeRussianPricingTree(tempDir);
       await fs.writeFile(path.join(tempDir, 'categories', 'ozon_category_tree.zh_hans.json'), JSON.stringify({
         result: [{
           description_category_id: 1700,
@@ -1204,6 +1236,7 @@ describe('ozon draft submit helper', () => {
     async function mergeCardTreeDir(): Promise<string> {
       const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-mergecard-'));
       await fs.mkdir(path.join(tempDir, 'categories'), { recursive: true });
+      await writeRussianPricingTree(tempDir);
       await fs.writeFile(path.join(tempDir, 'categories', 'ozon_category_tree.zh_hans.json'), JSON.stringify({
         result: [{
           description_category_id: 1700,

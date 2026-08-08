@@ -3,6 +3,7 @@
 - [Checkout And Orders](checkout-and-orders.md)
 - [Profile Daemon](profile-daemon.md)
 - [Ozon Required Attribute Autofill](ozon-required-attribute-autofill.md)
+- [Ozon RFBS Automatic Pricing](ozon-rfbs-pricing.md)
 - [Seller IM](seller-im.md)
 - [Sourcing Research](sourcing-research.md)
 - [Supplier Inspect](supplier-inspect.md)
