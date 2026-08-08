@@ -8,6 +8,8 @@ const require = createRequire(import.meta.url);
 const {
   collectDraftMissing,
   generateOzonDraft,
+  generateOzonAttributeSuggestions,
+  rankDictionaryCandidates,
   submitOzonDraft,
   sanitizeGeneratedAttributeValues,
   resolveMergeCardKeys,
@@ -17,6 +19,17 @@ const {
     settings: Record<string, any>,
     rows?: Array<Record<string, unknown>>,
   ) => Promise<Record<string, any>>;
+  generateOzonAttributeSuggestions: (
+    settings: Record<string, any>,
+    params: Record<string, any>,
+  ) => Promise<Record<string, any>>;
+  rankDictionaryCandidates: (
+    options: Array<Record<string, unknown>>,
+    attr: Record<string, unknown>,
+    sourceRows: Array<Record<string, unknown>>,
+    currentForm?: Record<string, unknown>,
+    query?: string,
+  ) => Array<Record<string, any>>;
   submitOzonDraft: (
     settings: Record<string, any>,
     draft: Record<string, any>,
@@ -135,6 +148,95 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('Ozon dictionary candidate selection', () => {
+  it('ranks an exact 1688 color value deterministically regardless of API order', () => {
+    const attr = { id: 200, name: '商品颜色', dictionaryId: 9000 };
+    const sourceRows = [{
+      product_title: '纯棉工作服 T 恤',
+      sku_name: '颜色:黑色',
+      product_attributes_structured: { '商品颜色': '黑色' },
+    }];
+    const first = rankDictionaryCandidates([
+      { id: 3, value: '红色' },
+      { id: 1, value: '白色' },
+      { id: 2, value: '黑色' },
+    ], attr, sourceRows);
+    const second = rankDictionaryCandidates([
+      { id: 1, value: '白色' },
+      { id: 2, value: '黑色' },
+      { id: 3, value: '红色' },
+    ], attr, sourceRows);
+
+    expect(first[0]?.id).toBe(2);
+    expect(second[0]?.id).toBe(2);
+    expect(first[0]?.score).toBeGreaterThan(first[1]?.score || 0);
+  });
+
+  it('recognizes group/workwear evidence as unisex instead of guessing male or female', () => {
+    const ranked = rankDictionaryCandidates([
+      { id: 11, value: '女性' },
+      { id: 12, value: '男性' },
+      { id: 13, value: '中性（男女通用）' },
+    ], { id: 300, name: '性别', dictionaryId: 9001 }, [{
+      product_title: '纯棉圆领工作服 广告衫 团体服 文化衫',
+    }]);
+
+    expect(ranked[0]?.id).toBe(13);
+  });
+
+  it('constrains manual AI autofill to real Ozon candidates and repairs an invented ID', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'desktop-dict-ai-'));
+    try {
+      await fs.writeFile(path.join(tempDir, 'ozon_settings.json'), JSON.stringify({
+        ai: { provider: 'deepseek', baseUrl: 'https://api.example.test', model: 'model', apiKey: 'ai-key' },
+        ozon: { clientId: 'client', apiKey: 'key', currencyCode: 'CNY' },
+      }), 'utf8');
+      const fetchMock = vi.mocked(fetch);
+      fetchMock
+        .mockResolvedValueOnce(okJson({ result: [
+          { id: 101, value: '白色' },
+          { id: 102, value: '黑色' },
+          { id: 103, value: '红色' },
+        ] }) as Response)
+        .mockResolvedValueOnce(aiSuggestionsResponse([{
+          attribute_id: 200,
+          value_text: '黑色',
+          dictionary_value_id: 999999,
+          confidence: 0.8,
+        }]));
+
+      const result = await generateOzonAttributeSuggestions({
+        ai: { apiKey: 'ai-key', baseUrl: 'https://api.example.test', model: 'model' },
+        userDataPath: tempDir,
+      }, {
+        sourceRows: [{
+          product_title: '纯棉黑色 T 恤',
+          sku_name: '颜色:黑色',
+          product_attributes_structured: { '商品颜色': '黑色' },
+        }],
+        categoryAttributes: [{ id: 200, name: '商品颜色', isRequired: true, dictionaryId: 9000 }],
+        form: { name: '黑色 T 恤' },
+        category: { descriptionCategoryId: 1700, typeId: 9300, path: '服装 / T 恤' },
+      });
+
+      expect(result.attributes).toEqual([expect.objectContaining({
+        attribute_id: 200,
+        value_text: '黑色',
+        dictionary_value_id: 102,
+      })]);
+      const aiCall = fetchMock.mock.calls.find((call) => String(call[0]).startsWith('https://api.example.test'));
+      const request = JSON.parse(String((aiCall?.[1] as RequestInit)?.body || '{}'));
+      const payload = JSON.parse(request.messages[1].content);
+      expect(request.temperature).toBe(0);
+      expect(payload.attributes[0].dictionary_values).toEqual(expect.arrayContaining([
+        { dictionary_value_id: 102, value: '黑色' },
+      ]));
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('ozon draft submit helper', () => {
   it('adds an explicit variant plan to multi-sku drafts', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(aiDraftResponse());
@@ -178,7 +280,7 @@ describe('ozon draft submit helper', () => {
 
     expect(draft.variant).toMatchObject({
       type: 'ozon_model_variants',
-      status: 'needs_attribute_id_confirmation',
+      status: 'needs_attribute_mapping',
       confirmed: false,
       group_attribute_id: 9048,
       group_value: 'Model Group',
@@ -192,7 +294,7 @@ describe('ozon draft submit helper', () => {
     expect(draft.items[0]._variant).toMatchObject({
       source_sku_id: 'sku-red',
       values: { '颜色': '红色', '尺码': 'M' },
-      mapping_status: 'needs_attribute_id_confirmation',
+      mapping_status: 'needs_attribute_mapping',
     });
     expect(draft.missing).toContain('规格属性映射');
   });
@@ -225,7 +327,6 @@ describe('ozon draft submit helper', () => {
       const fetchMock = vi.mocked(fetch);
       fetchMock
         .mockResolvedValueOnce(aiDraftResponse())
-        .mockResolvedValueOnce(categoryAttributeMeta())
         .mockResolvedValueOnce(categoryAttributeMeta())
         .mockResolvedValueOnce(categoryAttributeMeta())
         .mockResolvedValueOnce(ok({ result: { task_id: 8844 } }) as Response)
@@ -262,7 +363,6 @@ describe('ozon draft submit helper', () => {
       expect(result.importStatus).toBe('imported');
       expect(fetchMock.mock.calls.map(endpointOf)).toEqual([
         'https://api.example.test/chat/completions',
-        '/v1/description-category/attribute',
         '/v1/description-category/attribute',
         '/v1/description-category/attribute',
         '/v3/product/import',

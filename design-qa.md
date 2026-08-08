@@ -1,57 +1,61 @@
 # Design QA
 
-## Result
-
-Passed for the requested annotated UI changes. No remaining actionable visual mismatch was found in the marked regions.
-
 ## Visual source of truth
 
-- `C:\Users\yifan\AppData\Local\Temp\codex-clipboard-b770fe78-59e4-4390-8f54-2317c2597a2c.png` — 1688 main panel annotations.
-- `C:\Users\yifan\AppData\Local\Temp\codex-clipboard-01b56438-6118-4632-8065-77bb7e94cb44.png` — empty-state suggested keyword annotations.
-- `C:\Users\yifan\AppData\Local\Temp\codex-clipboard-fa1d6b0a-8d69-4325-a3fa-18f5749eba6e.png` — Ozon task panel annotations.
+- `C:\Users\yifan\AppData\Local\Temp\codex-clipboard-9bfc220d-83af-4f6b-96a7-4a100d98974f.png`
+- User instruction represented by the annotations and follow-up: replace the horizontal 1688 → Ozon switcher with two vertical rows; each row has the existing logo on the left and its text flush to the right.
 
 ## Implementation evidence
 
-- `C:\Users\yifan\Documents\Codex\2026-08-03\https-github-com-yifan4243-sketch-1688\work\desktop-dev\implementation-1688-max.png`
-- `C:\Users\yifan\Documents\Codex\2026-08-03\https-github-com-yifan4243-sketch-1688\work\desktop-dev\implementation-1688-bottom.png`
-- `C:\Users\yifan\Documents\Codex\2026-08-03\https-github-com-yifan4243-sketch-1688\work\desktop-dev\implementation-ozon.png`
-- Combined comparison inputs inspected:
-  - `C:\Users\yifan\Documents\Codex\2026-08-03\https-github-com-yifan4243-sketch-1688\work\desktop-dev\qa-1688-comparison.png`
-  - `C:\Users\yifan\Documents\Codex\2026-08-03\https-github-com-yifan4243-sketch-1688\work\desktop-dev\qa-ozon-comparison.png`
+- Full renderer capture: `D:\OpenAI\CodexHome\visualizations\2026\08\08\019fe148-67f9-71b2-9fc0-f96aba04f647\implementation-full.png`
+- Focused sidebar capture: `D:\OpenAI\CodexHome\visualizations\2026\08\08\019fe148-67f9-71b2-9fc0-f96aba04f647\implementation-sidebar.png`
+- Combined comparison input: `D:\OpenAI\CodexHome\visualizations\2026\08\08\019fe148-67f9-71b2-9fc0-f96aba04f647\qa-sidebar-comparison.png`
+- Capture metrics and console output: `D:\OpenAI\CodexHome\visualizations\2026\08\08\019fe148-67f9-71b2-9fc0-f96aba04f647\capture-metrics.json`
 
-## Viewport and state
+## Viewport, size, density, and state
 
-- Electron desktop window maximized on a 1536 × 830 Windows desktop capture at 125% display scaling.
-- Reference screenshots are approximately 1781 × 941, so comparison boards normalize both captures to the same rendered frame size.
-- 1688 was checked in the search-collection state and with the history area scrolled into view.
-- Ozon was checked in the empty task state.
+- Source screenshot: 1783 × 941 physical pixels.
+- Electron renderer capture: 1903 × 942 physical pixels at Windows 125% display scaling.
+- Focused implementation region: 242 × 230 CSS px, captured as 303 × 288 physical pixels (`deviceScaleFactor` 1.25).
+- The comparison board scales the source sidebar crop to the implementation's 242 CSS px width before comparison.
+- State: Ozon workspace selected; active and hover-capable navigation states preserved.
+- Primary interaction checked: clicking the Ozon row changes the selected workspace and active row.
+- Console checked: no application errors. Electron emitted only its development-mode Content Security Policy warning.
 
 ## Full-view comparison
 
-- The left-side 1688 and Ozon task lists are removed while the brand switcher remains.
-- The 1688 command heading is removed.
-- The 1688 task picker now exposes only search collection, product details, and image search.
-- The province, city, supplier verification, minimum turnover, and deep-collection controls are absent.
-- Suggested keyword chips are absent; the current history state contains real stored records instead of the original empty-state illustration.
-- Ozon counters use a compact single-row grid with reduced card height and spacing. The physical 1536 px capture clips the far-right edge of the wide desktop canvas, while the implementation grid is explicitly six equal columns.
+- The desktop shell and existing glass design language remain unchanged outside the requested navigation region.
+- The switcher now occupies two rows instead of one horizontal 1688 → Ozon flow, with labels pushed to the far edge of each row.
+- Removing the bridge reduces visual noise without changing workspace behavior.
 
 ## Focused-region comparison
 
-- Search execution always normalizes search options with deep product collection enabled.
-- Hidden sourcing filters are removed from both the visible form and the submitted search payload.
-- The original CLI command registry remains intact; only desktop task-picker exposure was simplified.
-- Existing advertising, visual-browser, CAPTCHA-browser, and advanced-search controls remain available because they were not marked for removal.
+- Layout: passed. Both entries are vertical, full-width rows; logos are left aligned and `margin-left: auto` keeps labels flush right.
+- Fonts and typography: passed. Labels use the existing UI font stack, 17 px optical size, strong navigation weight, and existing brand colors.
+- Spacing and layout rhythm: passed. Both rows are 68 px high with equal 10 px vertical spacing, 14 px internal padding, and aligned 48 px logos.
+- Colors and visual tokens: passed. 1688 uses the existing orange token, Ozon uses the existing accent blue, and the selected state keeps the established blue focus ring.
+- Image quality and asset fidelity: passed. The existing raster brand assets are reused directly at 48 px with no placeholder, redraw, or generated replacement.
+- Copy and content: passed. The visible labels and accessible names are `1688采集` and `OZON上架`.
+- Responsiveness: passed for the existing desktop breakpoint. The sidebar continues to hide under the project's existing 860 px responsive rule.
+
+## Findings
+
+- No actionable P0, P1, or P2 visual differences remain in the requested region.
+- P3: the two labels intentionally use their brand colors rather than the red annotation color, because red in the source is markup rather than product UI.
 
 ## Comparison history
 
-1. Baseline: annotated screenshots showed redundant sidebars, extra sourcing modes and filters, an optional deep-collection switch, suggested keywords, and oversized Ozon status cards.
-2. Implementation: removed the annotated blocks and their desktop UI-specific logic, forced deep search collection, and compacted Ozon status cards into six columns.
-3. Post-fix check: inspected normalized source/implementation boards; no requested marked element remains.
+1. Baseline: two logo-only buttons were arranged horizontally with a decorative bridge.
+2. First implementation capture: the requested layout was correct, but public logo URLs did not resolve in the standalone QA `file://` harness.
+3. QA harness correction: injected the repository's real PNG assets as data URLs for capture only; production source remains `/nav/1688.png` and `/nav/ozon.png`.
+4. Post-fix comparison: both real assets render sharply, row geometry matches the requested structure, and no P0/P1/P2 mismatch remains.
 
-## Automated verification
+## Implementation checklist
 
-- `pnpm typecheck` — passed.
-- `pnpm --dir apps/desktop/renderer build` — passed.
-- Focused Vitest run (`desktop-cli-bridge`, `renderer-session`, `ozon-precheck`) — 24 tests passed.
-- `git diff --check` — passed; only Git line-ending notices were emitted.
-- Full `pnpm agent-verify` — 212 tests passed and 8 existing `tests/ozon-draft.test.ts` cases failed in Ozon category metadata/variant mapping. Those failures are outside the files and behavior changed in this UI task.
+- [x] Stack the two workspace entries vertically.
+- [x] Put each existing logo on the left and the requested text flush right.
+- [x] Use `1688采集` and `OZON上架` as the visible and accessible labels.
+- [x] Preserve active, hover, click, and responsive behavior.
+- [x] Verify the real renderer build and compare the focused region against the annotated source.
+
+final result: passed

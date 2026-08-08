@@ -245,6 +245,7 @@ export interface OzonAttributeSuggestion {
   attribute_id: number;
   value_text: string;
   dictionary_query?: string;
+  dictionary_value_id?: number;
   confidence?: number;
   reason?: string;
 }

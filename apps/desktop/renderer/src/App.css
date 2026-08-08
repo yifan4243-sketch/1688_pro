@@ -53,6 +53,7 @@ select {
 /* ── Brand flow: 1688 → Ozon ── */
 .brand-flow {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
@@ -60,13 +61,15 @@ select {
 }
 
 .brand-logo-card {
-  width: 58px;
-  height: 58px;
-  padding: 0;
+  width: 100%;
+  height: 68px;
+  padding: 8px 14px;
   border: none;
   border-radius: 14px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
   cursor: pointer;
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -75,6 +78,16 @@ select {
   -webkit-backdrop-filter: none;
   overflow: hidden;
   transition: border-color 0.16s, box-shadow 0.16s;
+}
+
+.brand-logo-label {
+  margin-left: auto;
+  text-align: right;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.01em;
 }
 
 .brand-logo-card img {

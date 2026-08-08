@@ -207,11 +207,17 @@ button {
 .brand-flow {
   padding: 2px 0 14px !important;
   gap: 10px !important;
+  flex-direction: column !important;
 }
 
 .brand-logo-card {
-  width: 58px !important;
-  height: 58px !important;
+  width: 100% !important;
+  height: 68px !important;
+  padding: 8px 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 14px !important;
   border-radius: 18px !important;
   border: 1px solid rgba(255, 255, 255, 0.76) !important;
   background:
@@ -869,6 +875,23 @@ button {
 
 .ozon-products-stats {
   gap: 8px !important;
+}
+
+.brand-logo-label {
+  margin-left: auto !important;
+  text-align: right !important;
+  color: #111827 !important;
+  font-size: 17px !important;
+  font-weight: 780 !important;
+  line-height: 1 !important;
+}
+
+.brand-logo-card:first-child .brand-logo-label {
+  color: var(--brand-orange) !important;
+}
+
+.brand-logo-card:last-child .brand-logo-label {
+  color: var(--accent) !important;
 }
 
 .ozon-products-toolbar {

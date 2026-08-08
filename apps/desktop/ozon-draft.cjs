@@ -64,6 +64,179 @@ const BUILTIN_ATTR_MAP = [
   { cn: '品牌', keys: ['品牌', 'brand', 'бренд', '商标'] },
 ];
 
+const DICTIONARY_CANDIDATE_LIMIT = 48;
+const DICTIONARY_RECOMMENDATION_SCORE = 150;
+const dictionaryCandidateCache = new Map();
+
+function normalizeDictionaryMatchText(value) {
+  return cleanText(value)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}_]+/gu, '');
+}
+
+function semanticDictionaryTags(value, attrName) {
+  const raw = cleanText(value).toLowerCase();
+  const name = cleanText(attrName).toLowerCase();
+  const tags = new Set();
+
+  if (/性别|пол|gender/.test(name)) {
+    if (/男女|中性|通用|团体服|工作服|班服|文化衫|广告衫|unisex|унисекс/.test(raw)) {
+      tags.add('gender:unisex');
+    } else {
+      if (/女|女士|女孩|女童|women|woman|female|girl|женск|девоч/.test(raw)) tags.add('gender:female');
+      if (/男|男士|男孩|男童|men|man|male|boy|мужск|мальч/.test(raw)) tags.add('gender:male');
+    }
+  }
+
+  if (/颜色|色彩|color|цвет/.test(name)) {
+    const groups = [
+      ['color:black', /黑|black|черн/],
+      ['color:white', /白|white|бел/],
+      ['color:gray', /灰|gray|grey|сер/],
+      ['color:red', /红|red|красн/],
+      ['color:pink', /粉|pink|розов/],
+      ['color:orange', /橙|桔|orange|оранж/],
+      ['color:yellow', /黄|yellow|желт/],
+      ['color:green', /绿|green|зел/],
+      ['color:blue', /蓝|藏青|blue|син|голуб/],
+      ['color:purple', /紫|purple|фиолет/],
+      ['color:brown', /棕|褐|brown|корич/],
+      ['color:beige', /米|beige|беж/],
+      ['color:gold', /金|gold|золот/],
+      ['color:silver', /银|silver|сереб/],
+      ['color:transparent', /透明|transparent|прозрач/],
+      ['color:multicolor', /多色|彩色|混色|multicolor|мульти/],
+    ];
+    for (const [tag, pattern] of groups) if (pattern.test(raw)) tags.add(tag);
+  }
+
+  return tags;
+}
+
+function sourceDictionaryEvidence(sourceRows, attr, currentForm = {}) {
+  const attrName = cleanText(attr?.name).toLowerCase();
+  const mapEntry = BUILTIN_ATTR_MAP.find((entry) => entry.keys.some((key) => attrName.includes(key.toLowerCase())));
+  const relatedKeys = mapEntry ? mapEntry.keys.map((key) => key.toLowerCase()) : [attrName].filter(Boolean);
+  const direct = [];
+  const context = [];
+
+  const push = (target, value) => {
+    const normalized = cleanText(value);
+    if (normalized && !target.includes(normalized)) target.push(normalized);
+  };
+
+  for (const row of (Array.isArray(sourceRows) ? sourceRows : []).slice(0, 8)) {
+    if (!row || typeof row !== 'object') continue;
+    const attrs = row.product_attributes_structured || row.attributes || row.product_attributes || {};
+    if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+      for (const [key, value] of Object.entries(attrs)) {
+        const normalizedKey = cleanText(key).toLowerCase();
+        if (relatedKeys.some((related) => normalizedKey.includes(related) || related.includes(normalizedKey))) {
+          push(direct, value);
+        }
+      }
+    }
+
+    const skuText = cleanText(row.sku_name || row.skuName || row.sku_specs_text || row.specs || '');
+    for (const chunk of skuText.split(/[;；|>/]+/)) {
+      const match = chunk.match(/^([^:=：]+)\s*[:：=]\s*(.+)$/);
+      if (!match) continue;
+      const key = cleanText(match[1]).toLowerCase();
+      if (relatedKeys.some((related) => key.includes(related) || related.includes(key))) push(direct, match[2]);
+    }
+
+    push(context, row.product_title || row.title || '');
+    push(context, skuText);
+    push(context, row.search_keyword || row.keyword || row.searchKeyword || '');
+  }
+
+  for (const value of Object.values(currentForm || {})) {
+    if (typeof value === 'string') push(context, value);
+  }
+  return { direct, context };
+}
+
+function scoreDictionaryCandidate(option, attr, evidence, query = '') {
+  const label = normalizeDictionaryMatchText(option?.value);
+  if (!label) return 0;
+  let score = 0;
+  const queryText = normalizeDictionaryMatchText(query);
+  if (queryText) {
+    if (label === queryText) score += 320;
+    else if (label.startsWith(queryText) || queryText.startsWith(label)) score += 190;
+    else if (label.includes(queryText) || queryText.includes(label)) score += 120;
+  }
+
+  for (const raw of evidence.direct || []) {
+    const value = normalizeDictionaryMatchText(raw);
+    if (!value) continue;
+    if (label === value) score += 300;
+    else if (Math.min(label.length, value.length) >= 2 && (label.includes(value) || value.includes(label))) score += 150;
+    const sourceTags = semanticDictionaryTags(raw, attr?.name);
+    const candidateTags = semanticDictionaryTags(option.value, attr?.name);
+    if ([...sourceTags].some((tag) => candidateTags.has(tag))) score += 220;
+  }
+
+  for (const raw of evidence.context || []) {
+    const value = normalizeDictionaryMatchText(raw);
+    if (!value) continue;
+    if (Math.min(label.length, value.length) >= 2 && value.includes(label)) score += 70;
+    const sourceTags = semanticDictionaryTags(raw, attr?.name);
+    const candidateTags = semanticDictionaryTags(option.value, attr?.name);
+    if ([...sourceTags].some((tag) => candidateTags.has(tag))) score += 150;
+  }
+  return score;
+}
+
+function rankDictionaryCandidates(options, attr, sourceRows, currentForm = {}, query = '') {
+  const evidence = sourceDictionaryEvidence(sourceRows, attr, currentForm);
+  return (Array.isArray(options) ? options : [])
+    .map((option) => ({ ...option, score: scoreDictionaryCandidate(option, attr, evidence, query) }))
+    .sort((a, b) => b.score - a.score || cleanText(a.value).localeCompare(cleanText(b.value), 'zh-CN') || Number(a.id) - Number(b.id));
+}
+
+async function dictionaryOptionsForAttribute(userDataPath, category, attr) {
+  const descId = Number(category?.descriptionCategoryId || category?.description_category_id || 0);
+  const typeId = Number(category?.typeId || category?.type_id || 0);
+  const attrId = Number(attr?.id || 0);
+  if (!descId || !typeId || !attrId || !Number(attr?.dictionaryId || 0)) return [];
+  const cacheKey = `${userDataPath}|${descId}|${typeId}|${attrId}`;
+  const cached = dictionaryCandidateCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) return cached.values;
+  const response = await getCategoryAttributeValues(userDataPath, {
+    descriptionCategoryId: descId,
+    typeId,
+    attributeId: attrId,
+    language: 'ZH_HANS',
+    limit: 2000,
+  });
+  const values = Array.isArray(response.values) ? response.values : [];
+  dictionaryCandidateCache.set(cacheKey, { fetchedAt: Date.now(), values });
+  return values;
+}
+
+async function buildDictionaryCandidateContexts(userDataPath, category, attrs, sourceRows, currentForm = {}) {
+  const entries = await Promise.all((Array.isArray(attrs) ? attrs : []).map(async (attr) => {
+    if (!Number(attr?.dictionaryId || 0)) return null;
+    try {
+      const options = await dictionaryOptionsForAttribute(userDataPath, category, attr);
+      const ranked = rankDictionaryCandidates(options, attr, sourceRows, currentForm);
+      const candidates = ranked.slice(0, DICTIONARY_CANDIDATE_LIMIT);
+      const best = candidates[0] || null;
+      const second = candidates[1] || null;
+      const recommended = best && best.score >= DICTIONARY_RECOMMENDATION_SCORE
+        && (best.score >= 280 || best.score - Number(second?.score || 0) >= 30)
+        ? { id: Number(best.id), value: cleanText(best.value), score: best.score }
+        : null;
+      return [String(attr.id), { candidates, recommended }];
+    } catch {
+      return [String(attr.id), { candidates: [], recommended: null }];
+    }
+  }));
+  return Object.fromEntries(entries.filter(Boolean));
+}
+
 function matchOzonAttrByBuiltinMap(ozonAttrName, source1688Attrs) {
   const name = (ozonAttrName || '').toLowerCase();
   const srcKeys = Object.keys(source1688Attrs || {}).map((k) => k.toLowerCase());
@@ -1192,7 +1365,7 @@ function buildMessages(rows, candidates) {
   ];
 }
 
-async function callAi(ai, messages) {
+async function callAi(ai, messages, options = {}) {
   const endpoint = chatEndpoint(ai.baseUrl);
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -1203,7 +1376,7 @@ async function callAi(ai, messages) {
     body: JSON.stringify({
       model: ai.model || 'deepseek-chat',
       messages,
-      temperature: 0.35,
+      temperature: Number.isFinite(Number(options.temperature)) ? Number(options.temperature) : 0.35,
       response_format: { type: 'json_object' },
     }),
   });
@@ -2226,32 +2399,51 @@ async function generateOzonAttributeSuggestions(settings, params = {}) {
   if (!sourceRows.length) throw new Error('缺少 1688 商品数据，无法生成类目特征建议。');
   if (!categoryAttributes.length) throw new Error('缺少 Ozon 类目特征列表。');
 
-  const messages = buildAttributeSuggestionMessages(sourceRows, categoryAttributes, currentForm, category);
-  const generated = await callAi(settings.ai, messages);
-  return normalizeAttributeSuggestions(generated, categoryAttributes);
+  const userDataPath = cleanText(settings?.userDataPath || settings?.paths?.userDataPath || '');
+  const dictionaryContexts = await buildDictionaryCandidateContexts(
+    userDataPath,
+    category,
+    categoryAttributes,
+    sourceRows,
+    currentForm,
+  );
+  const messages = buildAttributeSuggestionMessages(sourceRows, categoryAttributes, currentForm, category, dictionaryContexts);
+  const generated = await callAi(settings.ai, messages, { temperature: 0 });
+  return normalizeAttributeSuggestions(generated, categoryAttributes, dictionaryContexts);
 }
 
-function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, currentForm, category) {
+function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, currentForm, category, dictionaryContexts = {}) {
   const payload = {
     task: 'suggest_ozon_category_attribute_values_from_1688_product',
     category,
     current_form: currentForm,
     source_rows: sourceRows.slice(0, 5),
-    attributes: categoryAttributes.map((attr) => ({
-      id: attr.id,
-      name: attr.name,
-      description: attr.description || '',
-      is_required: attr.isRequired,
-      is_dictionary: Boolean(attr.dictionaryId),
-      dictionary_id: attr.dictionaryId || 0,
-      is_aspect: Boolean(attr.isAspect),
-      max_value_count: attr.maxValueCount || 1,
-    })),
+    attributes: categoryAttributes.map((attr) => {
+      const context = dictionaryContexts[String(attr.id)] || {};
+      return {
+        id: attr.id,
+        name: attr.name,
+        description: attr.description || '',
+        is_required: attr.isRequired,
+        is_dictionary: Boolean(attr.dictionaryId),
+        dictionary_id: attr.dictionaryId || 0,
+        dictionary_values: (context.candidates || []).map((candidate) => ({
+          dictionary_value_id: Number(candidate.id),
+          value: cleanText(candidate.value),
+        })),
+        deterministic_recommendation: context.recommended
+          ? { dictionary_value_id: context.recommended.id, value: context.recommended.value }
+          : null,
+        is_aspect: Boolean(attr.isAspect),
+        max_value_count: attr.maxValueCount || 1,
+      };
+    }),
     required_schema: {
       attributes: [{
         attribute_id: 'number',
         value_text: 'string, suggested visible value, empty if unknown',
         dictionary_query: 'string, for dictionary search, empty if not dictionary',
+        dictionary_value_id: 'number, for dictionary attributes choose only from attributes[].dictionary_values; 0 if unknown',
         confidence: 'number 0-1',
         reason: 'short Chinese reason',
       }],
@@ -2260,7 +2452,10 @@ function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, curren
       'Return JSON only. No Markdown.',
       'Use only evidence from source_rows and category attribute names.',
       'Do not invent dictionary_value_id.',
-      'For dictionary attributes, return value_text and dictionary_query only.',
+      'For dictionary attributes, choose the best value using all source evidence and return its exact dictionary_value_id and value_text from dictionary_values.',
+      'Never return a dictionary_value_id that is not listed for that attribute.',
+      'Prefer deterministic_recommendation when it agrees with the product evidence; otherwise choose another listed value only with stronger evidence.',
+      'If the source has no reliable evidence for a dictionary attribute, return dictionary_value_id 0 and empty value_text instead of guessing.',
       'If attribute is 原产国 / country of origin / страна-изготовитель, use 中国 as value_text and 中国 as dictionary_query.',
       'If evidence is insufficient, return empty value_text.',
     ],
@@ -2272,22 +2467,68 @@ function buildAttributeSuggestionMessages(sourceRows, categoryAttributes, curren
   ];
 }
 
-function normalizeAttributeSuggestions(data, categoryAttributes) {
-  const attrIds = new Set(categoryAttributes.map((attr) => Number(attr.id)).filter(Boolean));
+function normalizeAttributeSuggestions(data, categoryAttributes, dictionaryContexts = {}) {
+  const attrsById = new Map(categoryAttributes.map((attr) => [Number(attr.id), attr]).filter(([id]) => id > 0));
   const raw = Array.isArray(data?.attributes) ? data.attributes : [];
-  return {
-    ok: true,
-    attributes: raw
-      .map((item) => ({
-        attribute_id: Number(item.attribute_id || item.id || 0),
-        value_text: cleanText(item.value_text || item.value || ''),
-        dictionary_query: cleanText(item.dictionary_query || item.query || item.value_text || ''),
+  const normalized = raw
+    .map((item) => {
+      const attributeId = Number(item.attribute_id || item.id || 0);
+      const attr = attrsById.get(attributeId);
+      if (!attr) return null;
+      const context = dictionaryContexts[String(attributeId)] || {};
+      const candidates = Array.isArray(context.candidates) ? context.candidates : [];
+      let dictionaryValueId = Number(item.dictionary_value_id || item.dictionaryValueId || 0);
+      let valueText = cleanText(item.value_text || item.value || '');
+      if (Number(attr.dictionaryId || 0) > 0) {
+        if (!candidates.length) {
+          // Without the live candidate set no AI-provided ID can be trusted.
+          // Keep only the query so the renderer may retry through Ozon.
+          dictionaryValueId = 0;
+        } else {
+          let selected = candidates.find((candidate) => Number(candidate.id) === dictionaryValueId) || null;
+          if (!selected && valueText) {
+            const exact = normalizeDictionaryMatchText(valueText);
+            selected = candidates.find((candidate) => normalizeDictionaryMatchText(candidate.value) === exact) || null;
+          }
+          if (!selected && context.recommended) selected = context.recommended;
+          if (!selected) {
+            dictionaryValueId = 0;
+            valueText = '';
+          } else {
+            dictionaryValueId = Number(selected.id);
+            valueText = cleanText(selected.value);
+          }
+        }
+      }
+      return {
+        attribute_id: attributeId,
+        value_text: valueText,
+        dictionary_query: cleanText(item.dictionary_query || item.query || valueText || ''),
+        dictionary_value_id: dictionaryValueId > 0 ? dictionaryValueId : undefined,
         confidence: Number(item.confidence || 0),
         reason: cleanText(item.reason || ''),
-      }))
-      .filter((item) => attrIds.has(item.attribute_id))
-      .slice(0, 80),
+      };
+    })
+    .filter(Boolean);
+
+  const included = new Set(normalized.map((item) => Number(item.attribute_id)));
+  for (const [id, attr] of attrsById) {
+    if (included.has(id) || !Number(attr.dictionaryId || 0)) continue;
+    const recommended = dictionaryContexts[String(id)]?.recommended;
+    if (!recommended) continue;
+    normalized.push({
+      attribute_id: id,
+      value_text: cleanText(recommended.value),
+      dictionary_query: cleanText(recommended.value),
+      dictionary_value_id: Number(recommended.id),
+      confidence: 0.95,
+      reason: '根据 1688 商品属性与 SKU 信息确定性匹配 Ozon 字典值',
+    });
+  }
+  return {
+    ok: true,
+    attributes: normalized.slice(0, 80),
   };
 }
 
-module.exports = { generateOzonDraft, submitOzonDraft, collectDraftMissing, generateOzonAttributeSuggestions, sanitizeGeneratedAttributeValues, resolveMergeCardKeys };
+module.exports = { generateOzonDraft, submitOzonDraft, collectDraftMissing, generateOzonAttributeSuggestions, sanitizeGeneratedAttributeValues, resolveMergeCardKeys, rankDictionaryCandidates };

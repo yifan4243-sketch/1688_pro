@@ -186,33 +186,20 @@ export default function App() {
             type="button"
             className={`brand-logo-card ${workspaceView === '1688' ? 'active' : ''}`}
             onClick={() => setWorkspaceView('1688')}
-            aria-label="1688"
+            aria-label="1688采集"
           >
             <img src="/nav/1688.png" alt="1688" />
+            <span className="brand-logo-label">1688采集</span>
           </button>
-
-          <div className="brand-flow-bridge">
-            <span className="brand-flow-line" />
-            <span className="brand-flow-arrow">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2.25 6h7M6.75 3.5 9.25 6 6.75 8.5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-          </div>
 
           <button
             type="button"
             className={`brand-logo-card ${workspaceView === 'ozon' ? 'active' : ''}`}
             onClick={() => setWorkspaceView('ozon')}
-            aria-label="Ozon"
+            aria-label="OZON上架"
           >
             <img src="/nav/ozon.png" alt="Ozon" />
+            <span className="brand-logo-label">OZON上架</span>
           </button>
         </div>
 

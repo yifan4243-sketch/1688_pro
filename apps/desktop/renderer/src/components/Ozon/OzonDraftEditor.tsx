@@ -815,7 +815,7 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
   }
 
   async function applyAttributeSuggestions(
-    suggestions: Array<{ attribute_id: number; value_text: string; dictionary_query?: string }>,
+    suggestions: Array<{ attribute_id: number; value_text: string; dictionary_query?: string; dictionary_value_id?: number }>,
     attrs: OzonCategoryAttribute[],
   ) {
     const attrMap = new Map(attrs.map((attr) => [Number(attr.id), attr]));
@@ -830,6 +830,14 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
       if (!suggestedText && !dictionaryQuery) continue;
 
       if (attr.dictionaryId) {
+        const dictionaryValueId = Number(suggestion.dictionary_value_id || 0);
+        if (dictionaryValueId > 0 && suggestedText) {
+          updateDynamicValue(attr.id, suggestedText);
+          updateDictionaryValueIds(attr.id, { [suggestedText]: dictionaryValueId });
+          continue;
+        }
+        // Backward-compatible fallback for historical/backend responses that
+        // only contain a query. New responses carry a validated real ID.
         const selected = await resolveDictionaryValueForSuggestion(attr, dictionaryQuery || suggestedText);
         if (!selected) continue;
         updateDynamicValue(attr.id, selected.label);
@@ -872,7 +880,7 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
       try {
         await applyDefaultOriginCountry(attrs);
         applyPrefilledAttributeValues(requiredPrefillValues, requiredAiAttributes);
-        setMessage('AI 已尝试填写类目特征，请检查字典项是否正确。');
+        setMessage('AI 已根据 1688 商品数据匹配真实 Ozon 字典值，请复核。');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : String(error));
       } finally {
@@ -893,7 +901,7 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
       });
 
       await applyAttributeSuggestions(response.attributes || [], attrs);
-      setMessage('AI 已尝试填写类目特征，请检查字典项是否正确。');
+      setMessage('AI 已根据 1688 商品数据匹配真实 Ozon 字典值，请复核。');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
