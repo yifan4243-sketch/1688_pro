@@ -1615,7 +1615,7 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
                 <div><span>RFBS 佣金</span><strong>{pricingPercent(pricingCategory.commissionRate)}{pricingCategory.commissionSourceRow ? `（源表第 ${text(pricingCategory.commissionSourceRow)} 行）` : ''}</strong></div>
                 <div><span>平台服务费</span><strong>{pricingPercent(pricingSettings.platformServiceRate)}（固定）</strong></div>
                 <div><span>其他费用 / 期望利润</span><strong>{pricingPercent(pricingSettings.otherFeeRate)} / {pricingPercent(pricingSettings.targetProfitRate)}</strong></div>
-                <div><span>CEL / 交接 / 贴单</span><strong>{text(pricingSettings.shippingSpeed) || '-'} / {text(pricingSettings.handoffMode) || '-'} / {pricingMoney(pricingSettings.labelFeeCny)}</strong></div>
+                <div><span>交接 / 贴单</span><strong>{text(pricingSettings.shippingSpeed) || '-'} / {text(pricingSettings.handoffMode) || '-'} / {pricingMoney(pricingSettings.labelFeeCny)}</strong></div>
               </div>
 
               {pricingErrors.length > 0 && (
@@ -1636,7 +1636,7 @@ export default function OzonDraftEditor({ task, onTaskUpdate, onBackTo1688, onCl
                       <tr>
                         <th>SKU 货号</th>
                         <th>采购价</th>
-                        <th>CEL 分组</th>
+                        <th>分组</th>
                         <th>运费</th>
                         <th>RFBS 佣金</th>
                         <th>平台费</th>

@@ -78,7 +78,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
       ? '绑定一次 Ozon 店铺，之后提交上架会自动复用。'
       : storeTab === 'manage'
         ? '查看已绑定店铺和今日可上架额度。'
-        : '设置草稿生成时自动使用的利润、杂费和 CEL 运输方式。';
+        : '设置草稿生成时自动使用的利润、杂费和运输方式。';
   const noteLength = form.note.length;
 
   const refreshStoreStats = async () => {
