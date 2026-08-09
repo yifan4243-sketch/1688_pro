@@ -1270,6 +1270,42 @@
   font-weight: 900;
 }
 
+.ozon-product-detail-close {
+  min-width: 68px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border: 1px solid rgba(148,163,184,0.28);
+  border-radius: 999px;
+  padding: 0 18px;
+  background: rgba(255,255,255,0.76);
+  box-shadow: 0 8px 22px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.92);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.ozon-product-detail-close:hover {
+  border-color: rgba(124,58,237,0.36);
+  background: rgba(255,255,255,0.94);
+  box-shadow: 0 10px 26px rgba(124,58,237,0.14), inset 0 1px 0 #fff;
+  color: #6d28d9;
+  transform: translateY(-1px);
+}
+
+.ozon-product-detail-close:focus-visible {
+  outline: 3px solid rgba(124,58,237,0.20);
+  outline-offset: 2px;
+}
+
+.ozon-product-detail-close:active {
+  transform: translateY(0);
+}
+
 .ozon-product-detail-status {
   border-radius: 14px;
   padding: 10px 12px;

@@ -322,7 +322,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
               </label>
 
               <label>
-                <span>CEL 运输速度</span>
+                <span>运输速度</span>
                 <GlassSelect
                   value={form.shippingSpeed}
                   options={[
@@ -335,7 +335,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
               </label>
 
               <label>
-                <span>CEL 交接方式</span>
+                <span>交接方式</span>
                 <GlassSelect
                   value={form.handoffMode}
                   options={[
@@ -347,7 +347,7 @@ export default function OzonSettingsModal({ mode, open, onClose }: Props) {
               </label>
 
               <div className="ozon-pricing-version-note">
-                佣金数据：{settings?.pricing.commissionDataVersion || '-'} · CEL 数据：{settings?.pricing.shippingDataVersion || '-'}
+                佣金数据：{settings?.pricing.commissionDataVersion || '-'}
               </div>
             </div>
           )}

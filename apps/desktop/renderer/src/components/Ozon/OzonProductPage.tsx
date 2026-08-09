@@ -221,7 +221,7 @@ export default function OzonProductPage({ tasks, onBackTo1688, onTaskUpdate }: P
                 <span>{selectedTask.offerId || '无 Offer ID'}</span>
                 <h3>{selectedTask.title || selectedTask.draftId || 'Ozon 草稿详情'}</h3>
               </div>
-              <button type="button" onClick={closeTask}>关闭</button>
+              <button type="button" className="ozon-product-detail-close" onClick={closeTask}>关闭</button>
             </div>
             <OzonDraftEditor
               task={selectedTask}
